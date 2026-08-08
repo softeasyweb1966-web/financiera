@@ -1,9 +1,16 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from sqlalchemy import inspect
 
 db = SQLAlchemy()
 migrate = Migrate()
+
+
+def _ensure_schema():
+    inspector = inspect(db.engine)
+    if not inspector.has_table('tipo_tercero'):
+        db.create_all()
 
 
 def create_app():
@@ -20,5 +27,10 @@ def create_app():
     from app.routes import all_blueprints
     for bp in all_blueprints:
         app.register_blueprint(bp)
+
+    # En despliegues nuevos, Railway puede partir de una base vacía.
+    # Creamos el esquema base para evitar 500s por tablas inexistentes.
+    with app.app_context():
+        _ensure_schema()
 
     return app
