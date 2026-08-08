@@ -6,3 +6,4 @@ psycopg2-binary==2.9.12
 pandas==3.0.5
 openpyxl==3.1.5
 alembic==1.19.0
+gunicorn==23.0.0
