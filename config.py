@@ -6,6 +6,18 @@ def _database_url():
         # Some platforms still provide postgres:// URLs, but SQLAlchemy expects postgresql://
         return database_url.replace('postgres://', 'postgresql://', 1)
 
+    pg_host = os.environ.get('PGHOST')
+    pg_port = os.environ.get('PGPORT')
+    pg_user = os.environ.get('PGUSER')
+    pg_password = os.environ.get('PGPASSWORD')
+    pg_database = os.environ.get('PGDATABASE')
+
+    if all([pg_host, pg_port, pg_user, pg_password, pg_database]):
+        return (
+            f'postgresql+psycopg2://{pg_user}:{pg_password}'
+            f'@{pg_host}:{pg_port}/{pg_database}'
+        )
+
     return 'postgresql+psycopg2://postgres:PreventPg2026Local1@127.0.0.1:5432/financiera_gastos'
 
 
