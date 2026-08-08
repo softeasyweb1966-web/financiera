@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{{ obligacion.tercero.nombre }} - Historial{% endblock %}
+
+{% block content %}
+<style>
+    .ind-pendiente  { background: #fb923c; }
+    .ind-causado    { background: #facc15; }
+    .ind-pagado     { background: #10b981; }
+    .ind-vencido    { background: #ef4444; }
+    .ind-parcial    { background: #8b5cf6; }
+    .indicador { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h5 class="fw-bold mb-0"><i class="bi bi-clock-history text-primary"></i> {{ obligacion.tercero.nombre }}</h5>
+        <small class="text-muted">
+            {{ obligacion.concepto.nombre }} ·
+            {{ obligacion.modalidad.replace('_', ' ')|title }} ·
+            Dia pago: {{ obligacion.dia_limite_pago or '-' }} ·
+            Cuota: ${{ "{:,.0f}".format(obligacion.valor_cuota_fija) if obligacion.valor_cuota_fija else '-' }} ·
+            Saldo: ${{ "{:,.0f}".format(obligacion.saldo_actual) if obligacion.saldo_actual else '-' }}
+        </small>
+    </div>
+    <div class="d-flex gap-1">
+        <a href="{{ url_for('obligaciones.detalle', id=obligacion.id, anio=anio-1) }}" class="btn btn-outline-secondary btn-sm">← {{ anio-1 }}</a>
+        <span class="btn btn-sm btn-primary disabled">{{ anio }}</span>
+        <a href="{{ url_for('obligaciones.detalle', id=obligacion.id, anio=anio+1) }}" class="btn btn-outline-secondary btn-sm">{{ anio+1 }} →</a>
+        <a href="{{ url_for('obligaciones.pagos', anio=anio) }}" class="btn btn-outline-secondary btn-sm">← Volver</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Mes</th>
+                    <th>Estado</th>
+                    <th>Valor causado</th>
+                    <th>Fecha causacion</th>
+                    <th>Valor pagado</th>
+                    <th>Capital</th>
+                    <th>Interes</th>
+                    <th>Fecha pago</th>
+                    <th>Medio</th>
+                    <th>Observaciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in range(1, 13) %}
+                {% set pago = pagos.get(i) %}
+                <tr class="{{ 'table-success' if pago and pago.estado == 'pagado' else 'table-warning' if pago and pago.estado == 'causado' else 'table-danger' if pago and pago.estado == 'vencido' else '' }}">
+                    <td class="fw-semibold">{{ meses[i-1] }}</td>
+                    <td>
+                        {% if pago %}
+                            <span class="indicador ind-{{ pago.estado }}"></span>
+                            {{ pago.estado.replace('_', ' ')|title }}
+                        {% else %}
+                            <span class="text-muted">Sin registro</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ "${:,.0f}".format(pago.valor_causado) if pago and pago.valor_causado else '-' }}</td>
+                    <td>{{ pago.fecha_causacion.strftime('%d/%m/%Y') if pago and pago.fecha_causacion else '-' }}</td>
+                    <td class="fw-bold">{{ "${:,.0f}".format(pago.valor_pagado) if pago and pago.valor_pagado else '-' }}</td>
+                    <td>{{ "${:,.0f}".format(pago.componente_capital) if pago and pago.componente_capital else '-' }}</td>
+                    <td>{{ "${:,.0f}".format(pago.componente_interes) if pago and pago.componente_interes else '-' }}</td>
+                    <td>{{ pago.fecha_pago.strftime('%d/%m/%Y') if pago and pago.fecha_pago else '-' }}</td>
+                    <td>{{ pago.medio_pago.nombre if pago and pago.medio_pago else '-' }}</td>
+                    <td><small>{{ pago.observaciones if pago and pago.observaciones else '' }}</small></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot class="table-light">
+                <tr class="fw-bold">
+                    <td>TOTAL</td>
+                    <td></td>
+                    <td>${{ "{:,.0f}".format(pagos.values()|selectattr('valor_causado')|map(attribute='valor_causado')|map('float')|sum) }}</td>
+                    <td></td>
+                    <td>${{ "{:,.0f}".format(pagos.values()|selectattr('valor_pagado')|map(attribute='valor_pagado')|map('float')|sum) }}</td>
+                    <td>${{ "{:,.0f}".format(pagos.values()|selectattr('componente_capital')|map(attribute='componente_capital')|map('float')|sum) }}</td>
+                    <td>${{ "{:,.0f}".format(pagos.values()|selectattr('componente_interes')|map(attribute='componente_interes')|map('float')|sum) }}</td>
+                    <td colspan="3"></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+{% endblock %}

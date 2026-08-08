@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if empleado else 'Nuevo' }} Empleado{% endblock %}
+
+{% block content %}
+<style>
+    .employee-form-card { border: 1px solid #dbeafe; box-shadow: 0 10px 30px rgba(37, 99, 235, 0.08); }
+    .section-title { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #475569; }
+    .section-box { border: 1px solid #e2e8f0; border-radius: 14px; padding: 1rem; background: #fff; }
+    .section-box + .section-box { margin-top: 1rem; }
+    .toggle-card { border: 1px dashed #cbd5e1; border-radius: 12px; background: #f8fafc; }
+    @media (max-width: 767px) {
+        .employee-form-shell { padding-left: 0; padding-right: 0; }
+        .employee-form-card { border-radius: 16px; padding: 1rem !important; }
+        .section-box { padding: 0.9rem; }
+    }
+</style>
+
+<div class="row justify-content-center employee-form-shell">
+    <div class="col-12 col-xl-9">
+        <div class="card employee-form-card p-4">
+            <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+                <div>
+                    <h5 class="fw-bold mb-1"><i class="bi bi-people text-success"></i> {{ 'Editar' if empleado else 'Nuevo' }} Empleado</h5>
+                    <small class="text-muted">Catálogo base para nómina, preliquidación y futuros desprendibles por WhatsApp.</small>
+                </div>
+                <a href="{{ url_for('nomina.lista') }}" class="btn btn-outline-secondary btn-sm">Volver</a>
+            </div>
+
+            <form method="POST">
+                {% if not empleado %}
+                <div class="section-box">
+                    <div class="section-title mb-3">Vinculación</div>
+                    <div class="row g-3">
+                        <div class="col-12 col-lg-7">
+                            <label class="form-label">Tercero existente (opcional)</label>
+                            <select name="tercero_id" class="form-select">
+                                <option value="">-- Crear nuevo tercero --</option>
+                                {% for t in terceros %}
+                                <option value="{{ t.id }}">{{ t.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Si selecciona un tercero existente, solo completa los datos propios del empleado.</div>
+                        </div>
+                        <div class="col-12 col-lg-5">
+                            <label class="form-label">Nombre completo (si es nuevo)</label>
+                            <input type="text" name="nombre" class="form-control" placeholder="Se creará como tercero tipo empleado">
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="section-box">
+                    <div class="section-title mb-3">Identificación</div>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-8">
+                            <label class="form-label">Nombre</label>
+                            <input type="text" class="form-control" value="{{ empleado.nombre }}" disabled>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label">Estado</label>
+                            <input type="text" class="form-control" value="{{ empleado.estado|title if empleado.estado else 'Activo' }}" disabled>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="section-box">
+                    <div class="section-title mb-3">Condiciones Laborales</div>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6 col-xl-3">
+                            <label class="form-label">Cargo</label>
+                            <input type="text" name="cargo" class="form-control" value="{{ empleado.cargo if empleado else '' }}">
+                        </div>
+                        <div class="col-12 col-md-6 col-xl-3">
+                            <label class="form-label">Salario base</label>
+                            <input type="number" name="salario_base" class="form-control" value="{{ empleado.salario_base if empleado and empleado.salario_base else '' }}">
+                        </div>
+                        <div class="col-12 col-md-6 col-xl-3">
+                            <label class="form-label">Tipo de contrato</label>
+                            <select name="tipo_contrato" class="form-select">
+                                <option value="laboral" {{ 'selected' if not empleado or empleado.tipo_contrato == 'laboral' else '' }}>Contrato laboral</option>
+                                <option value="prestacion_servicios" {{ 'selected' if empleado and empleado.tipo_contrato == 'prestacion_servicios' else '' }}>Prestación de servicios</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-6 col-xl-3">
+                            <label class="form-label">Forma de pago</label>
+                            <select name="forma_pago" class="form-select">
+                                {% for valor, etiqueta in formas_pago %}
+                                <option value="{{ valor }}" {{ 'selected' if (empleado and empleado.forma_pago == valor) or (not empleado and valor == 'quincenal') else '' }}>{{ etiqueta }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Fecha ingreso</label>
+                            <input type="date" name="fecha_ingreso" class="form-control" value="{{ empleado.fecha_ingreso if empleado and empleado.fecha_ingreso else '' }}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-box">
+                    <div class="section-title mb-3">Contacto y Desprendible</div>
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">WhatsApp</label>
+                            <input type="text" name="whatsapp" class="form-control" inputmode="tel" placeholder="3001234567" value="{{ empleado.whatsapp if empleado and empleado.whatsapp else '' }}">
+                            <div class="form-text">Número para envío futuro del desprendible de nómina.</div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label d-block">Autorización</label>
+                            <div class="toggle-card p-3 h-100 d-flex align-items-center">
+                                <div class="form-check mb-0">
+                                    <input class="form-check-input" type="checkbox" value="1" id="autoriza_whatsapp" name="autoriza_whatsapp" {{ 'checked' if empleado and empleado.autoriza_whatsapp else '' }}>
+                                    <label class="form-check-label" for="autoriza_whatsapp">
+                                        Autoriza envío de desprendibles y comunicaciones de nómina por WhatsApp
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-box">
+                    <div class="section-title mb-3">Observaciones</div>
+                    <textarea name="observaciones" class="form-control" rows="3" placeholder="Notas internas, acuerdos especiales o aclaraciones del empleado">{{ empleado.observaciones if empleado else '' }}</textarea>
+                </div>
+
+                <div class="d-flex gap-2 flex-wrap mt-3">
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Guardar</button>
+                    <a href="{{ url_for('nomina.lista') }}" class="btn btn-outline-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

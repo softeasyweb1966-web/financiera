@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% block title %}Nómina — {{ meses[mes-1] }} Q{{ quincena }} {{ anio }}{% endblock %}
+
+{% block content %}
+<style>
+    .card-servicio { border-left: 4px solid #e2e8f0; transition: box-shadow 0.15s; }
+    .card-servicio:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .estado-pendiente { border-left-color: #fb923c; }
+    .estado-pagado { border-left-color: #10b981; }
+    .indicador { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .ind-pendiente { background: #fb923c; }
+    .ind-pagado { background: #10b981; }
+    .alerta-deuda { background: #fef2f2; border-left: 3px solid #ef4444; }
+    .nav-mes .btn { min-width: 44px; }
+    .nav-mes .btn.activo { background: #2563eb; color: #fff; font-weight: 700; }
+    .nav-quincena .btn.activo { background: #059669; color: #fff; font-weight: 700; }
+    .concepto-bar { height: 6px; border-radius: 3px; background: #e2e8f0; overflow: hidden; }
+    .concepto-bar-fill { height: 100%; border-radius: 3px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .metric-item { background: rgba(255,255,255,0.72); border: 1px solid #dbeafe; border-radius: 10px; padding: 7px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .metric-label { font-size: 0.68rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; line-height: 1.1; }
+    .metric-value { font-size: 0.95rem; font-weight: 700; line-height: 1.1; white-space: nowrap; }
+    .summary-stack { display: flex; flex-direction: column; gap: 8px; }
+    .summary-side-card { padding: 10px 14px !important; }
+    .summary-inline { display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; }
+    .summary-inline-label { font-size: 0.78rem; color: #475569; }
+    .summary-inline-value { font-size: 1rem; font-weight: 700; line-height: 1; white-space: nowrap; }
+    .title-meta { font-size: 0.78rem; color: #7c3aed; font-weight: 700; }
+    @media (max-width: 991px) {
+        .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 575px) {
+        .metric-grid { grid-template-columns: 1fr; }
+        .metric-item { align-items: flex-start; flex-direction: column; }
+        .summary-inline { flex-direction: column; align-items: flex-start; }
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <h5 class="fw-bold mb-0"><i class="bi bi-people text-success"></i> Nómina — {{ meses[mes-1] }} Q{{ quincena }} {{ anio }}</h5>
+        <span class="title-meta">{{ empleados_mes|length }} empleados</span>
+    </div>
+    <div class="d-flex gap-1 align-items-center">
+        <a href="{{ url_for('nomina.pagos', anio=anio-1, mes=mes, quincena=quincena) }}" class="btn btn-outline-secondary btn-sm">{{ anio-1 }}</a>
+        <span class="fw-bold mx-1">{{ anio }}</span>
+        <a href="{{ url_for('nomina.pagos', anio=anio+1, mes=mes, quincena=quincena) }}" class="btn btn-outline-secondary btn-sm">{{ anio+1 }}</a>
+        <a href="{{ url_for('nomina.preliquidar', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-warning btn-sm ms-2"><i class="bi bi-calculator"></i> Preliquidar</a>
+        <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-success btn-sm ms-2"><i class="bi bi-cash"></i> Registrar</a>
+    </div>
+</div>
+
+<div class="nav-mes d-flex flex-wrap gap-1 mb-2">
+    {% for i in range(1, 13) %}
+    <a href="{{ url_for('nomina.pagos', anio=anio, mes=i, quincena=quincena) }}"
+       class="btn btn-sm {{ 'activo' if i == mes else 'btn-outline-secondary' }}">{{ meses[i-1][:3] }}</a>
+    {% endfor %}
+</div>
+
+<div class="nav-quincena d-flex gap-1 mb-3">
+    <a href="{{ url_for('nomina.pagos', anio=anio, mes=mes, quincena=1) }}"
+       class="btn btn-sm {{ 'activo' if quincena == 1 else 'btn-outline-secondary' }}">Quincena 1 (1-15)</a>
+    <a href="{{ url_for('nomina.pagos', anio=anio, mes=mes, quincena=2) }}"
+       class="btn btn-sm {{ 'activo' if quincena == 2 else 'btn-outline-secondary' }}">Quincena 2 (16-30)</a>
+</div>
+
+<div class="row g-2 mb-3 align-items-start">
+    <div class="col-lg-3 col-md-4">
+        <div class="summary-stack">
+            <div>
+                <div class="card summary-side-card" style="background:#f0fdf4; border:1px solid #bbf7d0; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-acum-nom">
+                    <div class="summary-inline">
+                        <span class="summary-inline-label">Pagado anteriores {{ anio }} <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></span>
+                        <span class="summary-inline-value text-success">${{ "{:,.0f}".format(acum_pagado_anterior) }}</span>
+                    </div>
+                </div>
+                <div class="collapse mt-1" id="detalle-acum-nom">
+                    <div class="card p-2" style="font-size:0.72rem; max-height:220px; overflow-y:auto;">
+                        {% for item in acum_empleados_detalle %}
+                        <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                            <a href="{{ url_for('nomina.detalle', id=item.empleado.id, anio=anio) }}" class="text-decoration-none">
+                                <span class="indicador ind-pagado"></span>
+                                {{ item.empleado.nombre }} <small class="text-muted">- {{ item.empleado.cargo or 'Sin cargo' }}</small>
+                            </a>
+                            <span class="text-success fw-bold">${{ "{:,.0f}".format(item.total) }}</span>
+                        </div>
+                        {% endfor %}
+                        {% if not acum_empleados_detalle %}
+                        <small class="text-muted">Sin pagos acumulados en quincenas anteriores</small>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div>
+                <div class="card summary-side-card" style="background:#fef2f2; border:1px solid #fecaca; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-deuda-nom">
+                    <div class="summary-inline">
+                        <span class="summary-inline-label">Quincenas sin pagar <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></span>
+                        <span class="summary-inline-value text-danger">${{ "{:,.0f}".format(total_deuda_anterior) }}</span>
+                    </div>
+                    {% if pendientes_anteriores %}<small class="text-danger mt-1 d-block">{{ pendientes_anteriores|length }} pendientes</small>{% endif %}
+                </div>
+                <div class="collapse mt-1" id="detalle-deuda-nom">
+                    <div class="card p-2" style="font-size:0.72rem; max-height:220px; overflow-y:auto;">
+                        {% for item in pendientes_anteriores %}
+                        <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                            <a href="{{ url_for('nomina.detalle', id=item.empleado.id, anio=anio) }}" class="text-decoration-none">
+                                <span class="indicador ind-pendiente"></span>
+                                {{ item.empleado.nombre }} <small class="text-muted">- {{ item.mes_nombre }} Q{{ item.quincena }}</small>
+                            </a>
+                            <span class="text-danger fw-bold">${{ "{:,.0f}".format(item.valor_esperado) }}</span>
+                        </div>
+                        {% endfor %}
+                        {% if not pendientes_anteriores %}
+                        <small class="text-muted">Sin quincenas pendientes</small>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-9 col-md-8">
+        <div class="card p-3" id="toggle-detalle-mes-nom" style="background:#eff6ff; border:1px solid #bfdbfe; cursor:pointer;">
+            <small class="text-muted d-block">Q{{ quincena }} {{ meses[mes-1][:3] }}: resumen detallado <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
+            <div class="metric-grid text-start mt-2">
+                <div class="metric-item">
+                    <span class="metric-label">Esperado</span>
+                    <span class="metric-value text-primary">${{ "{:,.0f}".format(esperado_quincena) }}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Pagado</span>
+                    <span class="metric-value text-success">${{ "{:,.0f}".format(pagado_quincena_actual) }}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Pendiente</span>
+                    <span class="metric-value text-danger">${{ "{:,.0f}".format(pendiente_quincena) }}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Empleados</span>
+                    <span class="metric-value text-dark">{{ empleados_mes|length }}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Con pago</span>
+                    <span class="metric-value text-success">{{ empleados_pagados_count }}</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Registros</span>
+                    <span class="metric-value text-secondary">{{ registros_quincena_count }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="collapse mt-1" id="detalle-mes-nom">
+            <div class="card p-2" style="font-size:0.72rem; max-height:300px; overflow-y:auto;">
+                <table class="table table-sm table-borderless mb-0">
+                    <thead><tr><th>Empleado</th><th>Estado</th><th>Esperado</th><th>Pagado</th></tr></thead>
+                    <tbody>
+                    {% for item in empleados_mes %}
+                    <tr>
+                        <td><a href="{{ url_for('nomina.detalle', id=item.empleado.id, anio=anio) }}" class="text-decoration-none">{{ item.empleado.nombre }}</a></td>
+                        <td><span class="indicador ind-{{ item.estado }}"></span> {{ item.estado }}</td>
+                        <td>${{ "{:,.0f}".format(item.valor_quincena) }}</td>
+                        <td>${{ "{:,.0f}".format(item.total_pagado) if item.tiene_pago else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if pendientes_anteriores %}
+<div class="collapse show mb-3" id="detalle-pendientes-nom">
+    <div class="alerta-deuda p-3 rounded">
+        <h6 class="fw-bold text-danger mb-2"><i class="bi bi-exclamation-triangle"></i> Quincenas pendientes anteriores ({{ pendientes_anteriores|length }})</h6>
+        <div class="row g-2" style="max-height:300px; overflow-y:auto;">
+            {% for item in pendientes_anteriores %}
+            <div class="col-12 col-md-6 col-lg-4">
+                <a href="{{ url_for('nomina.detalle', id=item.empleado.id, anio=anio) }}" class="text-decoration-none">
+                    <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded small">
+                        <div>
+                            <span class="indicador ind-pendiente"></span>
+                            <strong class="text-dark">{{ item.empleado.nombre }}</strong>
+                            <br><small class="text-muted">{{ item.mes_nombre }} Q{{ item.quincena }}</small>
+                        </div>
+                        <span class="text-danger fw-bold">${{ "{:,.0f}".format(item.valor_esperado) }}</span>
+                    </div>
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if resumen_grupos %}
+<div class="card p-3 mb-3">
+    <h6 class="fw-bold mb-2"><i class="bi bi-pie-chart text-primary"></i> Distribución por concepto — Q{{ quincena }} {{ meses[mes-1] }}</h6>
+    <div class="row g-2">
+        {% for g in resumen_grupos %}
+        <div class="col-6 col-md-3">
+            <div class="small">
+                <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:{{ g.color }}; vertical-align:middle;"></span>
+                <span class="fw-semibold">{{ g.nombre }}</span> <small class="text-muted">({{ g.cantidad }})</small>
+                <div class="fw-bold" style="font-size:0.8rem; color:{{ g.color }}">
+                    ${{ "{:,.0f}".format(g.total) }}
+                </div>
+                <small class="text-muted">{{ g.tipo|title }}</small>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="d-flex flex-wrap gap-3 mb-3" style="font-size:0.72rem;">
+    <span><span class="indicador ind-pendiente"></span> Sin pago</span>
+    <span><span class="indicador ind-pagado"></span> Pagado</span>
+</div>
+
+<div class="row g-2">
+    {% for item in empleados_mes %}
+    {% set e = item.empleado %}
+    <div class="col-12 col-md-6 col-lg-4">
+        <div class="card card-servicio estado-{{ item.estado }} p-3 h-100">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="fw-bold" style="font-size:0.9rem;">{{ e.nombre }}</div>
+                    <small class="text-muted">{{ e.cargo or 'Sin cargo' }} · {{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</small>
+                </div>
+                <span class="indicador ind-{{ item.estado }}"></span>
+            </div>
+
+            <div class="mt-2">
+                {% if item.tiene_pago %}
+                <span class="fs-5 fw-bold text-success">${{ "{:,.0f}".format(item.total_pagado) }}</span>
+                <small class="text-success d-block">pagado esta quincena</small>
+                {% else %}
+                <span class="fs-5 fw-bold" style="color:#9ca3af;">${{ "{:,.0f}".format(item.valor_quincena) }}</span>
+                <small class="text-muted d-block">valor esperado quincena</small>
+                {% endif %}
+            </div>
+
+            {% if item.registros %}
+            <div class="mt-1" style="font-size:0.72rem;">
+                {% for r in item.registros %}
+                <span class="badge" style="background:#e0f2fe; color:#1e40af; font-size:0.65rem;">
+                    {{ r.concepto_nomina.nombre }}: ${{ "{:,.0f}".format(r.valor) }}
+                </span>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="mt-1">
+                <small class="text-muted">Salario: ${{ "{:,.0f}".format(e.salario_base) if e.salario_base else '—' }}</small>
+            </div>
+
+            <div class="mt-2 d-flex gap-1 flex-wrap">
+                {% if not item.tiene_pago %}
+                <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-sm btn-outline-success">
+                    <i class="bi bi-cash"></i> Registrar
+                </a>
+                {% endif %}
+                <a href="{{ url_for('nomina.detalle', id=e.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary" title="Historial">
+                    <i class="bi bi-clock-history"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if not empleados_mes %}
+<div class="text-center text-muted mt-4"><i class="bi bi-people fs-1 text-success"></i><p>No hay empleados activos.</p></div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const toggle = document.getElementById('toggle-detalle-mes-nom');
+    const detalleMesEl = document.getElementById('detalle-mes-nom');
+    const pendientesEl = document.getElementById('detalle-pendientes-nom');
+
+    if (!toggle || !detalleMesEl || typeof bootstrap === 'undefined') {
+        return;
+    }
+
+    const detalleMes = bootstrap.Collapse.getOrCreateInstance(detalleMesEl, { toggle: false });
+    const pendientes = pendientesEl ? bootstrap.Collapse.getOrCreateInstance(pendientesEl, { toggle: false }) : null;
+
+    toggle.addEventListener('click', function() {
+        const abierto = detalleMesEl.classList.contains('show');
+        if (abierto) {
+            detalleMes.hide();
+            if (pendientes) pendientes.hide();
+        } else {
+            detalleMes.show();
+            if (pendientes) pendientes.show();
+        }
+    });
+});
+</script>
+{% endblock %}

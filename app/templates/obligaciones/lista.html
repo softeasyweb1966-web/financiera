@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Obligaciones{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h5 class="fw-bold mb-0"><i class="bi bi-bank text-info"></i> Obligaciones Financieras</h5>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('obligaciones.pagos', anio=anio) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-calendar-check"></i> Pagos {{ anio }}</a>
+        <a href="{{ url_for('catalogos.conceptos') }}" class="btn btn-outline-secondary btn-sm" title="Administrar conceptos de obligaciones"><i class="bi bi-tags"></i> Conceptos</a>
+        <a href="{{ url_for('obligaciones.nueva') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Nueva obligación</a>
+    </div>
+</div>
+
+<!-- Resumen rápido con drill-down -->
+{% if obligaciones %}
+{% set total_saldo = obligaciones|map(attribute='saldo_actual')|select('!=', none)|map('float')|sum %}
+{% set total_cuota = obligaciones|selectattr('valor_cuota_fija')|map(attribute='valor_cuota_fija')|map('float')|sum %}
+<div class="row g-2 mb-3">
+    <div class="col-md-4">
+        <div class="card p-2 text-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-saldo">
+            <small class="text-muted">Total saldo actual <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
+            <span class="fw-bold text-danger">${{ "{:,.0f}".format(total_saldo) }}</span>
+        </div>
+        <div class="collapse mt-1" id="detalle-saldo">
+            <div class="card p-2" style="font-size:0.75rem; max-height:300px; overflow-y:auto;">
+                {% for o in obligaciones %}
+                <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                    <a href="{{ url_for('obligaciones.detalle', id=o.id, anio=anio) }}" class="text-decoration-none">
+                        {{ o.tercero.nombre }}
+                        <small class="text-muted">· {{ o.modalidad.replace('_',' ')|title }}</small>
+                    </a>
+                    <span class="text-danger fw-bold">${{ "{:,.0f}".format(o.saldo_actual) if o.saldo_actual else '0' }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-2 text-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-activas">
+            <small class="text-muted">Obligaciones activas <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
+            <span class="fw-bold">{{ obligaciones|length }}</span>
+        </div>
+        <div class="collapse mt-1" id="detalle-activas">
+            <div class="card p-2" style="font-size:0.75rem; max-height:300px; overflow-y:auto;">
+                {% for o in obligaciones %}
+                <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                    <a href="{{ url_for('obligaciones.detalle', id=o.id, anio=anio) }}" class="text-decoration-none">
+                        {{ o.tercero.nombre }}
+                    </a>
+                    <div>
+                        <span class="badge bg-{{ {'bancario_cuota_fija': 'primary', 'solo_interes': 'warning', 'cadena': 'purple', 'pago_total_pactado': 'success', 'prestamo_corto_plazo': 'danger'}.get(o.modalidad, 'secondary') }}" style="font-size:0.6rem;">{{ o.modalidad.replace('_',' ')|title }}</span>
+                        {% if o.cuotas_pendientes is not none %}<small class="text-muted ms-1">{{ o.cuotas_pendientes }} cuotas</small>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-2 text-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-cuota">
+            <small class="text-muted">Cuota mensual estimada <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
+            <span class="fw-bold text-primary">${{ "{:,.0f}".format(total_cuota) }}</span>
+        </div>
+        <div class="collapse mt-1" id="detalle-cuota">
+            <div class="card p-2" style="font-size:0.75rem; max-height:300px; overflow-y:auto;">
+                {% for o in obligaciones %}
+                {% if o.valor_cuota_fija %}
+                <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                    <a href="{{ url_for('obligaciones.detalle', id=o.id, anio=anio) }}" class="text-decoration-none">
+                        {{ o.tercero.nombre }}
+                    </a>
+                    <span class="text-primary fw-bold">${{ "{:,.0f}".format(o.valor_cuota_fija) }}</span>
+                </div>
+                {% endif %}
+                {% endfor %}
+                {% for o in obligaciones %}
+                {% if not o.valor_cuota_fija %}
+                <div class="d-flex justify-content-between align-items-center border-bottom py-1 text-muted">
+                    <a href="{{ url_for('obligaciones.detalle', id=o.id, anio=anio) }}" class="text-decoration-none text-muted">
+                        {{ o.tercero.nombre }}
+                    </a>
+                    <span class="small">Sin cuota fija</span>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Acreedor</th>
+                    <th>Concepto</th>
+                    <th>Modalidad</th>
+                    <th>Capital</th>
+                    <th>Saldo</th>
+                    <th>Cuota</th>
+                    <th>Plazo</th>
+                    <th>Día</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for o in obligaciones %}
+                <tr>
+                    <td class="fw-semibold">{{ o.tercero.nombre }}<br><small class="text-muted">{{ o.titular or '' }}</small></td>
+                    <td><small class="text-muted">{{ o.concepto.nombre }}</small></td>
+                    <td>
+                        {% set mod_colors = {'bancario_cuota_fija': 'primary', 'solo_interes': 'warning', 'cadena': 'purple', 'pago_total_pactado': 'success', 'prestamo_corto_plazo': 'danger'} %}
+                        <span class="badge bg-{{ mod_colors.get(o.modalidad, 'secondary') }}" style="font-size:0.65rem;">
+                            {{ o.modalidad.replace('_', ' ')|title }}
+                        </span>
+                    </td>
+                    <td>${{ "{:,.0f}".format(o.capital_inicial) if o.capital_inicial else '-' }}</td>
+                    <td class="fw-bold text-danger">${{ "{:,.0f}".format(o.saldo_actual) if o.saldo_actual else '-' }}</td>
+                    <td>${{ "{:,.0f}".format(o.valor_cuota_fija) if o.valor_cuota_fija else '-' }}</td>
+                    <td>
+                        {% if o.plazo_dias %}{{ o.plazo_dias }} días
+                        {% elif o.plazo_meses %}{{ o.plazo_meses }} meses
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>{{ o.dia_limite_pago or '-' }}</td>
+                    <td class="text-nowrap">
+                        <a href="{{ url_for('obligaciones.detalle', id=o.id) }}" class="btn btn-sm btn-outline-primary py-0" title="Historial"><i class="bi bi-clock-history"></i></a>
+                        <a href="{{ url_for('obligaciones.editar', id=o.id) }}" class="btn btn-sm btn-outline-secondary py-0" title="Editar"><i class="bi bi-pencil"></i></a>
+                        <a href="{{ url_for('obligaciones.refinanciaciones', id=o.id) }}" class="btn btn-sm btn-outline-info py-0" title="Abonos, refinanciaciones y cambios"><i class="bi bi-arrow-repeat"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if not obligaciones %}
+<div class="text-center text-muted mt-4">
+    <i class="bi bi-inbox fs-1"></i>
+    <p>No hay obligaciones registradas.</p>
+    <a href="{{ url_for('obligaciones.nueva') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Crear la primera obligación</a>
+    <p class="small text-muted mt-2">Antes de crear una obligación, asegúrese de tener los <a href="{{ url_for('catalogos.conceptos') }}">conceptos</a> y <a href="{{ url_for('terceros.lista') }}">terceros</a> necesarios.</p>
+</div>
+{% endif %}
+{% endblock %}

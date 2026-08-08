@@ -1,0 +1,472 @@
+{% extends "base.html" %}
+{% block title %}Servicios - {{ meses[mes-1] }} {{ anio }}{% endblock %}
+
+{% block content %}
+<style>
+    .card-servicio { border-left: 4px solid #e2e8f0; transition: box-shadow 0.15s; }
+    .card-servicio:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .estado-sin_causar  { border-left-color: #fb923c; }
+    .estado-causado     { border-left-color: #facc15; }
+    .estado-pagado      { border-left-color: #10b981; }
+    .estado-vencido     { border-left-color: #ef4444; }
+    .estado-parcial     { border-left-color: #8b5cf6; }
+    .estado-na          { border-left-color: #94a3b8; }
+    .indicador { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .ind-sin_causar  { background: #fb923c; }
+    .ind-causado     { background: #facc15; }
+    .ind-pagado      { background: #10b981; }
+    .ind-vencido     { background: #ef4444; }
+    .ind-parcial     { background: #8b5cf6; }
+    .valor-estimado  { font-style: italic; color: #9ca3af; }
+    .valor-real      { color: #1e293b; font-weight: 700; }
+    .alerta-deuda    { background: #fef2f2; border-left: 3px solid #ef4444; }
+    .resumen-box     { background: linear-gradient(135deg, #f0f9ff, #e0f2fe); border-radius: 12px; }
+    .nav-mes .btn { min-width: 44px; }
+    .nav-mes .btn.activo { background: #2563eb; color: #fff; font-weight: 700; }
+    .dias-badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; }
+    .dias-ok { background: #dcfce7; color: #166534; }
+    .dias-alerta { background: #fef3c7; color: #92400e; }
+    .dias-vencido { background: #fee2e2; color: #991b1b; }
+    .tipo-anticipado { color: #059669; }
+    .tipo-a_tiempo { color: #2563eb; }
+    .tipo-tarde { color: #dc2626; }
+    .concepto-bar { height: 6px; border-radius: 3px; background: #e2e8f0; overflow: hidden; }
+    .concepto-bar-fill { height: 100%; border-radius: 3px; background: #10b981; }
+    .metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .metric-item { background: rgba(255,255,255,0.72); border: 1px solid #dbeafe; border-radius: 10px; padding: 7px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .metric-label { font-size: 0.68rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; line-height: 1.1; }
+    .metric-value { font-size: 0.95rem; font-weight: 700; line-height: 1.1; white-space: nowrap; }
+    .summary-stack { display: flex; flex-direction: column; gap: 8px; }
+    .summary-side-card { padding: 10px 14px !important; }
+    .summary-inline { display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; }
+    .summary-inline-label { font-size: 0.78rem; color: #475569; }
+    .summary-inline-value { font-size: 1rem; font-weight: 700; line-height: 1; white-space: nowrap; }
+    .title-meta { font-size: 0.78rem; color: #7c3aed; font-weight: 700; }
+    @media (max-width: 991px) {
+        .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 575px) {
+        .metric-grid { grid-template-columns: 1fr; }
+        .metric-item { align-items: flex-start; flex-direction: column; }
+        .summary-inline { flex-direction: column; align-items: flex-start; }
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <h5 class="fw-bold mb-0"><i class="bi bi-lightning text-warning"></i> Servicios - {{ meses[mes-1] }} {{ anio }}</h5>
+        <span class="title-meta">{{ total_items_mes }} items</span>
+    </div>
+    <div class="d-flex gap-1 align-items-center">
+        <a href="{{ url_for('servicios.pagos', anio=anio-1, mes=mes) }}" class="btn btn-outline-secondary btn-sm">{{ anio-1 }}</a>
+        <span class="fw-bold mx-1">{{ anio }}</span>
+        <a href="{{ url_for('servicios.pagos', anio=anio+1, mes=mes) }}" class="btn btn-outline-secondary btn-sm">{{ anio+1 }}</a>
+    </div>
+</div>
+
+<div class="nav-mes d-flex flex-wrap gap-1 mb-3">
+    {% for i in range(1, 13) %}
+    <a href="{{ url_for('servicios.pagos', anio=anio, mes=i) }}"
+       class="btn btn-sm {{ 'activo' if i == mes else 'btn-outline-secondary' }}">{{ meses[i-1][:3] }}</a>
+    {% endfor %}
+</div>
+
+<div class="row g-2 mb-3 align-items-start">
+    <div class="col-lg-3 col-md-4">
+        <div class="summary-stack">
+            <div class="card summary-side-card" style="background:#f0fdf4; border:1px solid #bbf7d0; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-acum-servicios">
+                <div class="summary-inline">
+                    <span class="summary-inline-label">Pagado Ene-{{ meses[mes-2][:3] if mes > 1 else '-' }} <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></span>
+                    <span class="summary-inline-value text-success">${{ "{:,.0f}".format(acum_pagado_anterior) }}</span>
+                </div>
+            </div>
+            <div class="collapse mt-1" id="detalle-acum-servicios">
+                <div class="card p-2" style="font-size:0.72rem; max-height:220px; overflow-y:auto;">
+                    {% for item in acum_servicios_detalle %}
+                    <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                        <a href="{{ url_for('servicios.detalle', id=item.servicio.id, anio=anio) }}" class="text-decoration-none">
+                            <span class="indicador ind-pagado"></span>
+                            {{ item.servicio.tercero.nombre }} <small class="text-muted">- {{ item.servicio.concepto.nombre }}</small>
+                        </a>
+                        <span class="text-success fw-bold">${{ "{:,.0f}".format(item.total) }}</span>
+                    </div>
+                    {% endfor %}
+                    {% if not acum_servicios_detalle %}
+                    <small class="text-muted">Sin pagos acumulados en meses anteriores</small>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card summary-side-card" style="background:#fef2f2; border:1px solid #fecaca; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-deuda-servicios">
+                <div class="summary-inline">
+                    <span class="summary-inline-label">Deuda meses anteriores <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></span>
+                    <span class="summary-inline-value text-danger">${{ "{:,.0f}".format(total_deuda_anterior) }}</span>
+                </div>
+                {% if pendientes_anteriores %}<small class="text-danger mt-1 d-block">{{ pendientes_anteriores|length }} pendientes</small>{% endif %}
+            </div>
+            <div class="collapse mt-1" id="detalle-deuda-servicios">
+                <div class="card p-2" style="font-size:0.72rem; max-height:220px; overflow-y:auto;">
+                    {% for item in pendientes_anteriores %}
+                    <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                        <a href="{{ url_for('servicios.detalle', id=item.servicio.id, anio=item.anio) }}" class="text-decoration-none">
+                            <span class="indicador ind-{{ item.pago.estado }}"></span>
+                            {{ item.servicio.tercero.nombre }} <small class="text-muted">- {{ item.mes_nombre }} {{ item.anio }}</small>
+                        </a>
+                        <span class="text-danger fw-bold">${{ "{:,.0f}".format(item.valor_deuda) }}</span>
+                    </div>
+                    {% endfor %}
+                    {% if not pendientes_anteriores %}
+                    <small class="text-muted">Sin deudas pendientes</small>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-9 col-md-8">
+        <div class="card p-3" style="background:#eff6ff; border:1px solid #bfdbfe; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-mes-actual">
+            <small class="text-muted d-block">{{ meses[mes-1] }}: resumen detallado <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
+            <div class="metric-grid text-start mt-2">
+                <div class="metric-item">
+                    <span class="metric-label">Estimado del mes</span>
+                    <span class="metric-value text-dark">
+                        ${{ "{:,.0f}".format(total_estimado_mes) }}
+                        <small class="text-muted">({{ total_estimado_items }})</small>
+                    </span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Total causado</span>
+                    <span class="metric-value text-warning">
+                        ${{ "{:,.0f}".format(causado_mes_actual) }}
+                        <small class="text-muted">({{ total_causado_items }})</small>
+                    </span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Total sin causar</span>
+                    <span class="metric-value text-secondary">
+                        ${{ "{:,.0f}".format(sin_causar_mes) }}
+                        <small class="text-muted">({{ sin_causar_items }})</small>
+                    </span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Total esperado</span>
+                    <span class="metric-value text-primary">
+                        ${{ "{:,.0f}".format(total_esperado_mes) }}
+                        <small class="text-muted">({{ total_esperado_items }})</small>
+                    </span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Total pagado</span>
+                    <span class="metric-value text-success">
+                        ${{ "{:,.0f}".format(pagado_mes_actual) }}
+                        <small class="text-muted">({{ total_pagado_items }})</small>
+                    </span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Total pendiente</span>
+                    <span class="metric-value text-danger">
+                        ${{ "{:,.0f}".format(pendiente_mes) }}
+                        <small class="text-muted">({{ total_pendiente_items }})</small>
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="collapse mt-1" id="detalle-mes-actual">
+            <div class="card p-2" style="font-size:0.72rem; max-height:300px; overflow-y:auto;">
+                <table class="table table-sm table-borderless mb-0">
+                    <thead><tr><th>Servicio</th><th>Estado</th><th>Estimado</th><th>Causado</th><th>Pagado</th></tr></thead>
+                    <tbody>
+                    {% for item in items_mes_actual %}
+                    <tr>
+                        <td><a href="{{ url_for('servicios.detalle', id=item.id, anio=anio) }}" class="text-decoration-none">{{ item.nombre }}</a></td>
+                        <td><span class="indicador ind-{{ item.estado }}"></span> {{ item.estado }}</td>
+                        <td>${{ "{:,.0f}".format(item.valor_estimado) if item.valor_estimado else '-' }}</td>
+                        <td>${{ "{:,.0f}".format(item.valor_causado) if item.valor_causado else '-' }}</td>
+                        <td>${{ "{:,.0f}".format(item.valor_pagado) if item.valor_pagado else '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if pendientes_anteriores %}
+<div class="alerta-deuda p-3 rounded mb-3">
+    <h6 class="fw-bold text-danger mb-2"><i class="bi bi-exclamation-triangle"></i> Deuda de meses anteriores</h6>
+    <div class="row g-2">
+        {% for item in pendientes_anteriores %}
+        <div class="col-12 col-md-6 col-lg-4">
+            <a href="{{ url_for('servicios.detalle', id=item.servicio.id, anio=item.anio) }}" class="text-decoration-none">
+                <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded small">
+                    <div>
+                        <span class="indicador ind-{{ item.pago.estado }}"></span>
+                        <strong class="text-dark">{{ item.servicio.tercero.nombre }}</strong>
+                        <br><small class="text-muted">{{ item.mes_nombre }} {{ item.anio }}</small>
+                    </div>
+                    <span class="text-danger fw-bold">${{ "{:,.0f}".format(item.valor_deuda) }}</span>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if resumen_grupos %}
+<div class="card p-3 mb-3">
+    <h6 class="fw-bold mb-2"><i class="bi bi-pie-chart text-primary"></i> Resumen {{ meses[mes-1] }}</h6>
+    <p class="small text-muted mb-2">Pagado ($verde) vs esperado ($total) por grupo. Haga clic en un grupo para ver el detalle.</p>
+    <div class="row g-2">
+        {% for g in resumen_grupos %}
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="small" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#grupo-detail-{{ loop.index }}">
+                <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:{{ g.color }}; vertical-align:middle;"></span>
+                <span class="fw-semibold">{{ g.nombre }}</span> <small class="text-muted">({{ g.cantidad }})</small>
+                <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i>
+                <div class="d-flex justify-content-between" style="font-size:0.7rem">
+                    <span class="text-success fw-bold">${{ "{:,.0f}".format(g.pagado) }}</span>
+                    <span class="text-muted">de ${{ "{:,.0f}".format(g.causado) }}</span>
+                </div>
+                <div class="concepto-bar mt-1">
+                    {% set pct = (g.pagado / g.causado * 100) if g.causado > 0 else 0 %}
+                    <div class="concepto-bar-fill" style="width:{{ pct|int }}%; background:{{ g.color }};"></div>
+                </div>
+            </div>
+            <div class="collapse mt-1" id="grupo-detail-{{ loop.index }}">
+                <div class="bg-light rounded p-2" style="font-size:0.7rem;">
+                    {% for item in g.detalle %}
+                    <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                        <a href="{{ url_for('servicios.detalle', id=item.id, anio=anio) }}" class="text-decoration-none">
+                            <span class="indicador ind-{{ item.estado }}"></span>
+                            {{ item.nombre }}
+                        </a>
+                        <span>
+                            <span class="text-success">${{ "{:,.0f}".format(item.pagado) }}</span>
+                            <span class="text-muted">/ ${{ "{:,.0f}".format(item.causado) }}</span>
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="d-flex flex-wrap gap-3 mb-3" style="font-size:0.72rem;">
+    <span><span class="indicador ind-sin_causar"></span> Sin causar</span>
+    <span><span class="indicador ind-causado"></span> Causado</span>
+    <span><span class="indicador ind-pagado"></span> Pagado</span>
+    <span><span class="indicador ind-vencido"></span> Vencido</span>
+    <span><span class="indicador ind-parcial"></span> Parcial</span>
+</div>
+
+<div class="row g-2">
+    {% for item in servicios_mes %}
+    {% set s = item.servicio %}
+    {% set pago = item.pago %}
+    <div class="col-12 col-md-6 col-lg-4">
+        <div class="card card-servicio estado-{{ item.estado }} p-3 h-100">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="fw-bold" style="font-size:0.9rem;">{{ s.tercero.nombre }}</div>
+                    <small class="text-muted">{{ s.concepto.nombre }}</small>
+                </div>
+                <div class="text-end">
+                    <span class="indicador ind-{{ item.estado }}"></span>
+                    {% if item.dias_restantes is not none %}
+                        {% if item.dias_restantes > 5 %}
+                            <br><span class="dias-badge dias-ok">{{ item.dias_restantes }}d</span>
+                        {% elif item.dias_restantes >= 0 %}
+                            <br><span class="dias-badge dias-alerta">{{ item.dias_restantes }}d</span>
+                        {% else %}
+                            <br><span class="dias-badge dias-vencido">{{ item.dias_restantes }}d</span>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="mt-2">
+                <span class="fs-5 {{ 'valor-estimado' if item.es_estimado else 'valor-real' }}">
+                    ${{ "{:,.0f}".format(item.valor_mostrar) if item.valor_mostrar else '-' }}
+                </span>
+                {% if item.es_estimado %}
+                    <small class="text-muted d-block">valor estimado</small>
+                {% elif item.estado == 'causado' %}
+                    <small class="text-warning d-block">factura confirmada - sin pagar</small>
+                {% elif item.estado == 'parcial' %}
+                    <small style="color:#8b5cf6" class="d-block">pago parcial</small>
+                {% elif item.estado == 'pagado' %}
+                    <small class="text-success d-block">
+                        pagado{{ ' - ' + pago.fecha_pago.strftime('%d/%m') if pago and pago.fecha_pago else '' }}{{ ' - ' + pago.medio_pago.nombre if pago and pago.medio_pago else '' }}
+                        {% if item.tipo_pago == 'anticipado' %}
+                            <span class="tipo-anticipado"> - anticipado</span>
+                        {% elif item.tipo_pago == 'a_tiempo' %}
+                            <span class="tipo-a_tiempo"> - a tiempo</span>
+                        {% elif item.tipo_pago == 'tarde' %}
+                            <span class="tipo-tarde"> - pago tarde</span>
+                        {% endif %}
+                    </small>
+                {% elif item.estado == 'vencido' %}
+                    <small class="text-danger d-block">vencido - pago pendiente</small>
+                {% endif %}
+            </div>
+
+            <div class="mt-1">
+                <small class="text-muted">Dia limite: {{ s.dia_limite_pago or '-' }} - {{ s.periodicidad|title }}</small>
+            </div>
+
+            <div class="mt-2 d-flex gap-1 flex-wrap">
+                {% if item.estado != 'pagado' %}
+                <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
+                        onclick="prepararPago({{ s.id }}, '{{ s.tercero.nombre }}', {{ mes }}, {{ item.valor_mostrar or 0 }}, '{{ item.estado }}')">
+                    <i class="bi bi-check-lg"></i> Pagar
+                </button>
+                {% if item.estado == 'sin_causar' %}
+                <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#modalPago"
+                        onclick="prepararCausar({{ s.id }}, '{{ s.tercero.nombre }}', {{ mes }}, {{ item.valor_mostrar or 0 }})">
+                    <i class="bi bi-pencil"></i> Causar
+                </button>
+                {% endif %}
+                {% endif %}
+                <a href="{{ url_for('servicios.detalle', id=s.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary" title="Historial mes a mes">
+                    <i class="bi bi-clock-history"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if not servicios_mes %}
+<div class="text-center text-muted mt-4"><i class="bi bi-check-circle fs-1 text-success"></i><p>No hay servicios programados para este mes.</p></div>
+{% endif %}
+
+<div class="modal fade" id="modalPago" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('servicios.registrar_pago') }}">
+                <input type="hidden" name="servicio_id" id="pago_servicio_id">
+                <input type="hidden" name="anio" value="{{ anio }}">
+                <input type="hidden" name="mes" id="pago_mes">
+                <input type="hidden" name="accion" id="pago_accion" value="pagar">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold" id="pago_titulo">Registrar</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="seccion-causar" style="display:none">
+                        <p class="small text-muted mb-2">Confirme el valor real de la factura/recibo. La fecha de causacion se asigna automaticamente.</p>
+                        <div class="row">
+                            <div class="col-12 mb-2">
+                                <label class="form-label">Valor a causar</label>
+                                <input type="number" name="valor_causado" id="pago_valor_causado" class="form-control">
+                                <div class="form-text">Valor exacto de la factura</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="seccion-pagar">
+                        <div class="row">
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Valor factura</label>
+                                <input type="number" name="valor_causado" id="pago_valor_causado2" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Valor pagado</label>
+                                <input type="number" name="valor_pagado" id="pago_valor_pagado" class="form-control form-control-sm">
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Fecha de pago</label>
+                                <input type="date" name="fecha_pago" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6 mb-2">
+                                <label class="form-label">Medio de pago</label>
+                                <select name="medio_pago_id" id="medio_pago_select" class="form-select form-select-sm" onchange="toggleTCFields()">
+                                    <option value="">--</option>
+                                    {% for m in medios %}<option value="{{ m.id }}" data-nombre="{{ m.nombre }}">{{ m.nombre }}</option>{% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div id="seccion-tc" style="display:none" class="border rounded p-2 mb-2 bg-light">
+                            <small class="fw-bold text-muted d-block mb-1"><i class="bi bi-credit-card"></i> Datos Tarjeta de Credito</small>
+                            <div class="row">
+                                <div class="col-6 mb-1">
+                                    <label class="form-label" style="font-size:0.75rem;">Titular TC</label>
+                                    <input type="text" name="titular_tc" class="form-control form-control-sm" placeholder="Nombre del titular">
+                                </div>
+                                <div class="col-3 mb-1">
+                                    <label class="form-label" style="font-size:0.75rem;">Cuotas</label>
+                                    <input type="number" name="numero_cuotas_tc" class="form-control form-control-sm" min="1" value="1">
+                                </div>
+                                <div class="col-3 mb-1">
+                                    <label class="form-label" style="font-size:0.75rem;">Fecha pago TC</label>
+                                    <input type="date" name="fecha_pago_tc" class="form-control form-control-sm">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Estado</label>
+                            <select name="estado" id="pago_estado" class="form-select form-select-sm">
+                                <option value="pagado">Pagado</option>
+                                <option value="parcial">Pago parcial</option>
+                                <option value="vencido">Vencido</option>
+                                <option value="causado">Solo causar</option>
+                                <option value="n/a">No aplica</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Observaciones</label>
+                        <input type="text" name="observaciones" class="form-control form-control-sm">
+                    </div>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check-lg"></i> Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function prepararPago(id, nombre, mes, valor, estado) {
+    document.getElementById('pago_servicio_id').value = id;
+    document.getElementById('pago_mes').value = mes;
+    document.getElementById('pago_valor_causado2').value = valor || '';
+    document.getElementById('pago_valor_pagado').value = valor || '';
+    document.getElementById('pago_estado').value = 'pagado';
+    document.getElementById('pago_accion').value = 'pagar';
+    document.getElementById('pago_titulo').textContent = 'Pagar - ' + nombre;
+    document.getElementById('seccion-causar').style.display = 'none';
+    document.getElementById('seccion-pagar').style.display = 'block';
+    document.getElementById('seccion-tc').style.display = 'none';
+}
+
+function prepararCausar(id, nombre, mes, valor) {
+    document.getElementById('pago_servicio_id').value = id;
+    document.getElementById('pago_mes').value = mes;
+    document.getElementById('pago_valor_causado').value = valor || '';
+    document.getElementById('pago_accion').value = 'causar';
+    document.getElementById('pago_titulo').textContent = 'Causar - ' + nombre;
+    document.getElementById('seccion-causar').style.display = 'block';
+    document.getElementById('seccion-pagar').style.display = 'none';
+}
+
+function toggleTCFields() {
+    var select = document.getElementById('medio_pago_select');
+    var option = select.options[select.selectedIndex];
+    var nombre = (option.getAttribute('data-nombre') || '').toLowerCase();
+    var seccionTC = document.getElementById('seccion-tc');
+    if (nombre.includes('tarjeta') && nombre.includes('cr')) {
+        seccionTC.style.display = 'block';
+    } else {
+        seccionTC.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}

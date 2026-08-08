@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Nómina{% endblock %}
+
+{% block content %}
+<style>
+    .catalog-shell { gap: 1rem; }
+    .catalog-summary { border: 1px solid #dbeafe; background: linear-gradient(135deg, #eff6ff, #f8fafc); }
+    .employee-card { border: 1px solid #e2e8f0; border-left: 4px solid #10b981; transition: box-shadow 0.15s ease, transform 0.15s ease; }
+    .employee-card:hover { box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08); transform: translateY(-1px); }
+    .label-mini { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; }
+    .value-mini { font-size: 0.9rem; font-weight: 600; color: #0f172a; }
+    @media (max-width: 767px) {
+        .header-actions .btn { flex: 1 1 calc(50% - 0.5rem); }
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h5 class="fw-bold mb-1"><i class="bi bi-people text-success"></i> Nómina</h5>
+        <small class="text-muted">Catálogo base de empleados para liquidación, pago y futuros desprendibles.</small>
+    </div>
+    <div class="d-flex gap-2 flex-wrap header-actions">
+        <a href="{{ url_for('nomina.pagos', anio=anio) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-table"></i> Pagos {{ anio }}</a>
+        <a href="{{ url_for('nomina.preliquidar', anio=anio) }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-calculator"></i> Preliquidar</a>
+        <a href="{{ url_for('nomina.registrar_quincena') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-cash"></i> Registrar quincena</a>
+        <a href="{{ url_for('nomina.nuevo') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus"></i> Nuevo</a>
+    </div>
+</div>
+
+<div class="card catalog-summary p-3 mb-3">
+    <div class="row g-3">
+        <div class="col-6 col-lg-3">
+            <div class="label-mini">Empleados activos</div>
+            <div class="value-mini">{{ empleados|length }}</div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="label-mini">Laborales</div>
+            <div class="value-mini">{{ empleados|selectattr('tipo_contrato', 'equalto', 'laboral')|list|length }}</div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="label-mini">Prestación servicios</div>
+            <div class="value-mini">{{ empleados|selectattr('tipo_contrato', 'equalto', 'prestacion_servicios')|list|length }}</div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="label-mini">Con WhatsApp autorizado</div>
+            <div class="value-mini">{{ empleados|selectattr('autoriza_whatsapp')|list|length }}</div>
+        </div>
+    </div>
+</div>
+
+{% if empleados %}
+<div class="card d-none d-lg-block">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Empleado</th>
+                    <th>Contrato</th>
+                    <th>Forma pago</th>
+                    <th>Salario base</th>
+                    <th>WhatsApp</th>
+                    <th class="text-center">Desprendible</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in empleados %}
+                <tr>
+                    <td>
+                        <div class="fw-semibold">{{ e.nombre }}</div>
+                        <small class="text-muted">{{ e.cargo or 'Sin cargo' }}</small>
+                    </td>
+                    <td><span class="badge {{ 'bg-primary' if e.tipo_contrato == 'laboral' else 'bg-secondary' }}">{{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</span></td>
+                    <td>{{ (e.forma_pago or 'quincenal')|title }}</td>
+                    <td>{{ "${:,.0f}".format(e.salario_base) if e.salario_base else '-' }}</td>
+                    <td>{{ e.whatsapp or '-' }}</td>
+                    <td class="text-center">
+                        {% if e.autoriza_whatsapp %}
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">Autorizado</span>
+                        {% else %}
+                        <span class="badge bg-light text-muted border">Pendiente</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <a href="{{ url_for('nomina.editar', id=e.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="row g-3 d-lg-none">
+    {% for e in empleados %}
+    <div class="col-12 col-md-6">
+        <div class="card employee-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+                <div>
+                    <div class="fw-bold">{{ e.nombre }}</div>
+                    <small class="text-muted">{{ e.cargo or 'Sin cargo' }}</small>
+                </div>
+                <a href="{{ url_for('nomina.editar', id=e.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap mt-2">
+                <span class="badge {{ 'bg-primary' if e.tipo_contrato == 'laboral' else 'bg-secondary' }}">{{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</span>
+                <span class="badge bg-light text-dark border">{{ (e.forma_pago or 'quincenal')|title }}</span>
+                {% if e.autoriza_whatsapp %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle">WhatsApp OK</span>
+                {% endif %}
+            </div>
+
+            <div class="row g-2 mt-2">
+                <div class="col-6">
+                    <div class="label-mini">Salario base</div>
+                    <div class="value-mini">{{ "${:,.0f}".format(e.salario_base) if e.salario_base else '-' }}</div>
+                </div>
+                <div class="col-6">
+                    <div class="label-mini">WhatsApp</div>
+                    <div class="value-mini">{{ e.whatsapp or '-' }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center text-muted mt-4">
+    <i class="bi bi-inbox fs-1"></i>
+    <p class="mb-2">No hay empleados registrados.</p>
+    <a href="{{ url_for('nomina.nuevo') }}" class="btn btn-primary btn-sm">Agregar el primero</a>
+</div>
+{% endif %}
+{% endblock %}

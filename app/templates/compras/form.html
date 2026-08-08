@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if compra else 'Nueva' }} Compra{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card p-4">
+            <h5 class="fw-bold mb-3"><i class="bi bi-cart text-danger"></i> {{ 'Editar' if compra else 'Nueva' }} Compra</h5>
+            <form method="POST" id="form-compra">
+                <div class="row g-3">
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Fecha *</label>
+                        <input type="date" name="fecha" class="form-control" required value="{{ compra.fecha.strftime('%Y-%m-%d') if compra else '' }}">
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Concepto *</label>
+                        <select name="concepto_compra_id" id="concepto_compra_id" class="form-select" required>
+                            <option value="">Seleccione...</option>
+                            {% for c in conceptos %}
+                            <option value="{{ c.id }}" {{ 'selected' if compra and compra.concepto_compra_id == c.id else '' }}>{{ c.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Item</label>
+                        <select name="producto_compra_id" id="producto_compra_id" class="form-select">
+                            <option value="">-- Sin catalogar --</option>
+                            {% for p in productos %}
+                            <option value="{{ p.id }}" data-concepto="{{ p.concepto_compra_id }}" {{ 'selected' if compra and compra.producto_compra_id == p.id else '' }}>{{ p.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Ayuda a analizar en qué item se está comprando más.</div>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Descripción *</label>
+                        <input type="text" name="descripcion" class="form-control" required value="{{ compra.descripcion if compra else '' }}" placeholder="Detalle de la compra">
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Proveedor</label>
+                        <select name="tercero_id" class="form-select">
+                            <option value="">-- Opcional --</option>
+                            {% for t in terceros %}
+                            <option value="{{ t.id }}" {{ 'selected' if compra and compra.tercero_id == t.id else '' }}>{{ t.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Valor *</label>
+                        <input type="number" name="valor" class="form-control" required value="{{ compra.valor if compra else '' }}">
+                    </div>
+
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Medio de pago</label>
+                        <select name="medio_pago_id" class="form-select">
+                            <option value="">--</option>
+                            {% for m in medios %}
+                            <option value="{{ m.id }}" {{ 'selected' if compra and compra.medio_pago_id == m.id else '' }}>{{ m.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Fecha pago</label>
+                        <input type="date" name="fecha_pago" class="form-control" value="{{ compra.fecha_pago.strftime('%Y-%m-%d') if compra and compra.fecha_pago else '' }}">
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Estado</label>
+                        <select name="estado" class="form-select">
+                            <option value="pendiente" {{ 'selected' if not compra or compra.estado == 'pendiente' else '' }}>Pendiente</option>
+                            <option value="pagado" {{ 'selected' if compra and compra.estado == 'pagado' else '' }}>Pagado</option>
+                        </select>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Observaciones</label>
+                        <textarea name="observaciones" class="form-control" rows="2">{{ compra.observaciones if compra else '' }}</textarea>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 flex-wrap mt-3">
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Guardar</button>
+                    <a href="{{ url_for('compras.lista') }}" class="btn btn-outline-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filtrarProductosCompra() {
+    const concepto = document.getElementById('concepto_compra_id').value;
+    const select = document.getElementById('producto_compra_id');
+    Array.from(select.options).forEach(function(option, index) {
+        if (index === 0) {
+            option.hidden = false;
+            return;
+        }
+        option.hidden = concepto && option.dataset.concepto !== concepto;
+    });
+    const selected = select.options[select.selectedIndex];
+    if (selected && selected.dataset && selected.dataset.concepto && selected.dataset.concepto !== concepto) {
+        select.value = '';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('concepto_compra_id').addEventListener('change', filtrarProductosCompra);
+    filtrarProductosCompra();
+});
+</script>
+{% endblock %}

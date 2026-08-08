@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}Cambios de Obligacion{% endblock %}
+
+{% block content %}
+<style>
+    .metric-card {
+        border: 1px solid #dbeafe;
+        border-radius: 14px;
+        padding: 14px;
+        background: linear-gradient(135deg, #f8fbff, #ffffff);
+        height: 100%;
+    }
+    .metric-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #64748b;
+    }
+    .metric-value {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .soft-panel {
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        background: #fff;
+    }
+    .history-chip {
+        font-size: 0.72rem;
+        border-radius: 999px;
+        padding: 3px 8px;
+        background: #eff6ff;
+        color: #1d4ed8;
+    }
+    @media (max-width: 767px) {
+        .metric-value {
+            font-size: 1rem;
+        }
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h5 class="fw-bold mb-1"><i class="bi bi-arrow-repeat text-info"></i> Cambios de obligacion: {{ obligacion.tercero.nombre }}</h5>
+        <small class="text-muted">
+            {{ obligacion.concepto.nombre }} ·
+            {{ obligacion.modalidad.replace('_', ' ')|title }} ·
+            Saldo actual: ${{ "{:,.0f}".format(obligacion.saldo_actual) if obligacion.saldo_actual else '0' }}
+        </small>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('obligaciones.detalle', id=obligacion.id) }}" class="btn btn-outline-secondary btn-sm">Historial</a>
+        <a href="{{ url_for('obligaciones.pagos') }}" class="btn btn-outline-secondary btn-sm">Volver</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-6 col-xl-3">
+        <div class="metric-card">
+            <div class="metric-label">Capital inicial</div>
+            <div class="metric-value">${{ "{:,.0f}".format(resumen_costos.capital_inicial) }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="metric-card">
+            <div class="metric-label">Saldo actual</div>
+            <div class="metric-value text-danger">${{ "{:,.0f}".format(resumen_costos.saldo_actual) }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="metric-card">
+            <div class="metric-label">Total pagado</div>
+            <div class="metric-value text-success">${{ "{:,.0f}".format(resumen_costos.total_pagado) }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="metric-card">
+            <div class="metric-label">Salida total caja</div>
+            <div class="metric-value text-primary">${{ "{:,.0f}".format(resumen_costos.salida_total) }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="metric-card">
+            <div class="metric-label">Interes pagado</div>
+            <div class="metric-value text-warning">${{ "{:,.0f}".format(resumen_costos.total_interes_pagado) }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="metric-card">
+            <div class="metric-label">Capital en cuotas</div>
+            <div class="metric-value">${{ "{:,.0f}".format(resumen_costos.total_capital_pagado) }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="metric-card">
+            <div class="metric-label">Abonos a capital</div>
+            <div class="metric-value text-info">${{ "{:,.0f}".format(resumen_costos.total_abonos_capital) }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="metric-card">
+            <div class="metric-label">Capital amortizado</div>
+            <div class="metric-value">${{ "{:,.0f}".format(resumen_costos.total_amortizado) }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-xl-5">
+        <div class="soft-panel p-3 mb-3">
+            <h6 class="fw-bold mb-2"><i class="bi bi-cash-coin text-success"></i> Abono a capital</h6>
+            <p class="text-muted small mb-3">
+                Registre un abono extraordinario al saldo y decida si desea conservar el plazo para bajar la cuota,
+                o conservar la cuota para acortar el tiempo restante.
+            </p>
+            <form method="POST" action="{{ url_for('obligaciones.abonar_capital', id=obligacion.id) }}">
+                <div class="row g-2">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Fecha del abono *</label>
+                        <input type="date" name="fecha_abono" class="form-control form-control-sm" value="{{ hoy.strftime('%Y-%m-%d') }}" required>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Valor del abono *</label>
+                        <input type="number" step="0.01" min="0.01" max="{{ resumen_costos.saldo_actual }}" name="valor_abono" class="form-control form-control-sm" required>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Efecto del abono *</label>
+                        <select name="opcion_recalculo" class="form-select form-select-sm" required>
+                            <option value="reducir_cuota">Bajar cuota y mantener tiempo</option>
+                            <option value="reducir_plazo">Mantener cuota y bajar tiempo</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Observaciones</label>
+                        <textarea name="observaciones" class="form-control form-control-sm" rows="3" placeholder="Ej. abono extraordinario por excedente de caja"></textarea>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success btn-sm mt-3"><i class="bi bi-check2"></i> Registrar abono</button>
+            </form>
+        </div>
+
+        <div class="soft-panel p-3">
+            <h6 class="fw-bold mb-2"><i class="bi bi-arrow-repeat text-info"></i> Refinanciacion</h6>
+            <form method="POST" action="{{ url_for('obligaciones.refinanciar', id=obligacion.id) }}">
+                <div class="mb-2">
+                    <label class="form-label">Fecha de refinanciacion *</label>
+                    <input type="date" name="fecha_refinanciacion" class="form-control form-control-sm" value="{{ hoy.strftime('%Y-%m-%d') }}" required>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Valor a refinanciar *</label>
+                    <input type="number" name="valor_refinanciado" class="form-control form-control-sm" required value="{{ obligacion.saldo_actual or '' }}">
+                </div>
+                <div class="row g-2">
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Nueva tasa mensual %</label>
+                        <input type="number" step="0.0001" name="nueva_tasa_mensual" class="form-control form-control-sm" value="{{ obligacion.tasa_interes_mensual or '' }}">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Nuevo plazo (meses)</label>
+                        <input type="number" name="nuevo_plazo_meses" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Nuevo valor cuota</label>
+                        <input type="number" name="nuevo_valor_cuota" class="form-control form-control-sm">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Nueva fecha vencimiento</label>
+                        <input type="date" name="nueva_fecha_vencimiento" class="form-control form-control-sm">
+                    </div>
+                </div>
+                <div class="mb-2 mt-2">
+                    <label class="form-label">Observaciones</label>
+                    <textarea name="observaciones" class="form-control form-control-sm" rows="2"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm mt-2"><i class="bi bi-check2"></i> Registrar refinanciacion</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-7">
+        <div class="soft-panel p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <h6 class="fw-bold mb-0">Historial de abonos a capital</h6>
+                <span class="history-chip">{{ abonos|length }} registros</span>
+            </div>
+            {% if abonos %}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Abono</th>
+                            <th>Decision</th>
+                            <th>Saldo</th>
+                            <th>Cuota / plazo</th>
+                            <th>Observaciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in abonos %}
+                        <tr>
+                            <td>{{ a.fecha_abono.strftime('%d/%m/%Y') }}</td>
+                            <td class="fw-bold text-success">${{ "{:,.0f}".format(a.valor_abono) }}</td>
+                            <td>{{ 'Baja cuota' if a.opcion_recalculo == 'reducir_cuota' else 'Baja tiempo' }}</td>
+                            <td>
+                                <small class="text-muted d-block">Antes: ${{ "{:,.0f}".format(a.saldo_anterior) if a.saldo_anterior else '0' }}</small>
+                                <small class="fw-semibold">Despues: ${{ "{:,.0f}".format(a.saldo_nuevo) if a.saldo_nuevo else '0' }}</small>
+                            </td>
+                            <td>
+                                <small class="text-muted d-block">Cuota: ${{ "{:,.0f}".format(a.cuota_anterior) if a.cuota_anterior else '0' }} -> ${{ "{:,.0f}".format(a.cuota_nueva) if a.cuota_nueva else '0' }}</small>
+                                <small class="text-muted d-block">Pend.: {{ a.cuotas_pendientes_antes or 0 }} -> {{ a.cuotas_pendientes_despues or 0 }}</small>
+                            </td>
+                            <td><small>{{ a.observaciones or '' }}</small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted small mb-0">No hay abonos a capital registrados.</p>
+            {% endif %}
+        </div>
+
+        <div class="soft-panel p-3">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <h6 class="fw-bold mb-0">Historial de refinanciaciones</h6>
+                <span class="history-chip">{{ refinanciaciones|length }} registros</span>
+            </div>
+            {% if refinanciaciones %}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Valor</th>
+                            <th>Tasa</th>
+                            <th>Plazo</th>
+                            <th>Cuota</th>
+                            <th>Vencimiento</th>
+                            <th>Observaciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in refinanciaciones %}
+                        <tr>
+                            <td>{{ r.fecha_refinanciacion.strftime('%d/%m/%Y') }}</td>
+                            <td>${{ "{:,.0f}".format(r.valor_refinanciado) }}</td>
+                            <td>{{ r.nueva_tasa_mensual or '-' }}{% if r.nueva_tasa_mensual %}%{% endif %}</td>
+                            <td>{{ r.nuevo_plazo_meses or '-' }}</td>
+                            <td>${{ "{:,.0f}".format(r.nuevo_valor_cuota) if r.nuevo_valor_cuota else '-' }}</td>
+                            <td>{{ r.nueva_fecha_vencimiento.strftime('%d/%m/%Y') if r.nueva_fecha_vencimiento else '-' }}</td>
+                            <td><small>{{ r.observaciones or '' }}</small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted small mb-0">No hay refinanciaciones registradas.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

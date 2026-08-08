@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}{{ empleado.nombre }} - Historial Nomina{% endblock %}
+
+{% block content %}
+<style>
+    .badge-concepto { background: #e0f2fe; color: #1e40af; font-size: 0.65rem; }
+    .badge-deduccion { background: #fef2f2; color: #dc2626; font-size: 0.65rem; }
+    .celda-quincena { vertical-align: top; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h5 class="fw-bold mb-0"><i class="bi bi-clock-history text-success"></i> {{ empleado.nombre }}</h5>
+        <small class="text-muted">
+            {{ empleado.cargo or 'Sin cargo' }} ·
+            Salario: ${{ "{:,.0f}".format(empleado.salario_base) if empleado.salario_base else '-' }} ·
+            {{ (empleado.tipo_contrato or 'laboral').replace('_', ' ')|title }}
+        </small>
+    </div>
+    <div class="d-flex gap-1">
+        <a href="{{ url_for('nomina.detalle', id=empleado.id, anio=anio-1) }}" class="btn btn-outline-secondary btn-sm">← {{ anio-1 }}</a>
+        <span class="btn btn-sm btn-primary disabled">{{ anio }}</span>
+        <a href="{{ url_for('nomina.detalle', id=empleado.id, anio=anio+1) }}" class="btn btn-outline-secondary btn-sm">{{ anio+1 }} →</a>
+        <a href="{{ url_for('nomina.pagos', anio=anio) }}" class="btn btn-outline-secondary btn-sm">← Volver</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Mes</th>
+                    <th class="celda-quincena">Q1 Conceptos</th>
+                    <th>Q1 Total</th>
+                    <th class="celda-quincena">Q2 Conceptos</th>
+                    <th>Q2 Total</th>
+                    <th>Total Mes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set ns = namespace(total_anual=0) %}
+                {% for i in range(1, 13) %}
+                {% set registros_q1 = pagos.get((i, 1), []) %}
+                {% set registros_q2 = pagos.get((i, 2), []) %}
+                {% set total_q1 = registros_q1|sum(attribute='valor')|float %}
+                {% set total_q2 = registros_q2|sum(attribute='valor')|float %}
+                {% set total_mes = total_q1 + total_q2 %}
+                {% set ns.total_anual = ns.total_anual + total_mes %}
+                <tr class="{{ 'table-success' if total_mes > 0 else '' }}">
+                    <td class="fw-semibold">{{ meses[i-1] }}</td>
+                    <td class="celda-quincena">
+                        {% if registros_q1 %}
+                            {% for r in registros_q1 %}
+                            <span class="badge {{ 'badge-deduccion' if r.concepto_nomina and r.concepto_nomina.tipo == 'deduccion' else 'badge-concepto' }}">
+                                {{ r.concepto_nomina.nombre if r.concepto_nomina else 'N/A' }}
+                            </span>
+                            {% endfor %}
+                            {% if causaciones.get((i, 1)) %}
+                            <br><small class="text-muted">Causado: {{ causaciones[(i, 1)].strftime('%d/%m/%Y') }}</small>
+                            {% endif %}
+                            {% if registros_q1[0].fecha_pago %}
+                            <br><small class="text-muted">Pagado: {{ registros_q1[0].fecha_pago.strftime('%d/%m/%Y') }}{{ ' · ' + registros_q1[0].medio_pago.nombre if registros_q1[0].medio_pago else '' }}</small>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="fw-bold {{ 'text-success' if total_q1 > 0 else 'text-muted' }}">
+                        {{ "${:,.0f}".format(total_q1) if total_q1 > 0 else '-' }}
+                    </td>
+                    <td class="celda-quincena">
+                        {% if registros_q2 %}
+                            {% for r in registros_q2 %}
+                            <span class="badge {{ 'badge-deduccion' if r.concepto_nomina and r.concepto_nomina.tipo == 'deduccion' else 'badge-concepto' }}">
+                                {{ r.concepto_nomina.nombre if r.concepto_nomina else 'N/A' }}
+                            </span>
+                            {% endfor %}
+                            {% if causaciones.get((i, 2)) %}
+                            <br><small class="text-muted">Causado: {{ causaciones[(i, 2)].strftime('%d/%m/%Y') }}</small>
+                            {% endif %}
+                            {% if registros_q2[0].fecha_pago %}
+                            <br><small class="text-muted">Pagado: {{ registros_q2[0].fecha_pago.strftime('%d/%m/%Y') }}{{ ' · ' + registros_q2[0].medio_pago.nombre if registros_q2[0].medio_pago else '' }}</small>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="fw-bold {{ 'text-success' if total_q2 > 0 else 'text-muted' }}">
+                        {{ "${:,.0f}".format(total_q2) if total_q2 > 0 else '-' }}
+                    </td>
+                    <td class="fw-bold">
+                        {{ "${:,.0f}".format(total_mes) if total_mes > 0 else '-' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot class="table-light">
+                <tr class="fw-bold">
+                    <td>TOTAL {{ anio }}</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td class="text-primary fs-6">${{ "{:,.0f}".format(ns.total_anual) }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+{% endblock %}

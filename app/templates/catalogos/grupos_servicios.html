@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Grupos de Servicios{% endblock %}
+
+{% block content %}
+<h5 class="fw-bold mb-3"><i class="bi bi-collection"></i> Grupos de Servicios</h5>
+<p class="text-muted small mb-3">Defina cómo agrupar los conceptos de servicio en el resumen mensual. Ejemplo: "Servicios Públicos" = Acueducto + Energía + Gas.</p>
+
+<div class="row g-3">
+    <div class="col-md-5">
+        <div class="card p-3">
+            <h6 class="fw-bold" id="form-titulo">Crear grupo</h6>
+            <form method="POST" action="{{ url_for('catalogos.grupos_servicios_guardar') }}" id="form-grupo">
+                <input type="hidden" name="id" id="grp_id">
+                <div class="mb-2">
+                    <label class="form-label">Nombre del grupo *</label>
+                    <input type="text" name="nombre" id="grp_nombre" class="form-control form-control-sm" required placeholder="Ej: Servicios Públicos Domiciliarios">
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-2">
+                        <label class="form-label">Color</label>
+                        <input type="color" name="color" id="grp_color" class="form-control form-control-sm form-control-color" value="#6366f1">
+                    </div>
+                    <div class="col-6 mb-2">
+                        <label class="form-label">Orden</label>
+                        <input type="number" name="orden" id="grp_orden" class="form-control form-control-sm" value="0" min="0">
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Conceptos que incluye *</label>
+                    <div style="max-height:200px; overflow-y:auto; border:1px solid #dee2e6; border-radius:6px; padding:8px;">
+                        {% for c in conceptos %}
+                        <div class="form-check">
+                            <input type="checkbox" name="conceptos_ids" value="{{ c.id }}" class="form-check-input conc-check" id="conc_{{ c.id }}">
+                            <label class="form-check-label small" for="conc_{{ c.id }}">{{ c.nombre }}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="form-text">Seleccione los conceptos que pertenecen a este grupo</div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check"></i> Guardar</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="limpiarForm()">Limpiar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="col-md-7">
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr><th>Grupo</th><th>Conceptos</th><th>Orden</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        {% for g in grupos %}
+                        <tr>
+                            <td>
+                                <span style="display:inline-block; width:12px; height:12px; border-radius:3px; background:{{ g.color }}; vertical-align:middle;"></span>
+                                <strong>{{ g.nombre }}</strong>
+                            </td>
+                            <td>
+                                {% for gc in g.conceptos.all() %}
+                                <span class="badge bg-light text-dark" style="font-size:0.7rem;">{{ gc.concepto.nombre }}</span>
+                                {% endfor %}
+                            </td>
+                            <td>{{ g.orden }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-secondary py-0" onclick="editarGrupo({{ g.id }}, '{{ g.nombre }}', '{{ g.color }}', {{ g.orden }}, [{% for gc in g.conceptos.all() %}{{ gc.concepto_id }}{{ ',' if not loop.last else '' }}{% endfor %}])"><i class="bi bi-pencil"></i></button>
+                                <form method="POST" action="{{ url_for('catalogos.grupos_servicios_eliminar', id=g.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar este grupo?')">
+                                    <button class="btn btn-sm btn-outline-danger py-0"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% if not grupos %}
+        <div class="text-center text-muted mt-3"><p class="small">No hay grupos. Cree el primero para organizar el resumen mensual.</p></div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function editarGrupo(id, nombre, color, orden, conceptosIds) {
+    document.getElementById('grp_id').value = id;
+    document.getElementById('grp_nombre').value = nombre;
+    document.getElementById('grp_color').value = color;
+    document.getElementById('grp_orden').value = orden;
+    document.getElementById('form-titulo').textContent = 'Editar grupo';
+    // Marcar checkboxes
+    document.querySelectorAll('.conc-check').forEach(cb => cb.checked = false);
+    conceptosIds.forEach(cid => {
+        const cb = document.getElementById('conc_' + cid);
+        if (cb) cb.checked = true;
+    });
+}
+
+function limpiarForm() {
+    document.getElementById('grp_id').value = '';
+    document.getElementById('grp_nombre').value = '';
+    document.getElementById('grp_color').value = '#6366f1';
+    document.getElementById('grp_orden').value = '0';
+    document.getElementById('form-titulo').textContent = 'Crear grupo';
+    document.querySelectorAll('.conc-check').forEach(cb => cb.checked = false);
+}
+</script>
+{% endblock %}

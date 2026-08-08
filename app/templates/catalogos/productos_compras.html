@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Items Compras{% endblock %}
+
+{% block content %}
+<h5 class="fw-bold mb-3"><i class="bi bi-box-seam"></i> Items Compras</h5>
+
+<div class="row g-3">
+    <div class="col-md-5">
+        <div class="card p-3">
+            <h6 class="fw-bold">Agregar / Editar</h6>
+            <form method="POST" action="{{ url_for('catalogos.productos_compras_guardar') }}">
+                <input type="hidden" name="id" id="pc_id">
+                <div class="mb-2">
+                    <select name="concepto_compra_id" id="pc_concepto" class="form-select form-select-sm" required>
+                        <option value="">Concepto</option>
+                        {% for c in conceptos %}
+                        <option value="{{ c.id }}">{{ c.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <input type="text" name="nombre" id="pc_nombre" class="form-control form-control-sm" required placeholder="Nombre del item">
+                </div>
+                <div class="mb-2">
+                    <input type="text" name="descripcion" id="pc_desc" class="form-control form-control-sm" placeholder="DescripciÃ³n">
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check"></i> Guardar</button>
+            </form>
+        </div>
+    </div>
+    <div class="col-md-7">
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light"><tr><th>Concepto</th><th>Item</th><th>Estado</th><th></th></tr></thead>
+                    <tbody>
+                        {% for p in productos %}
+                        <tr class="{{ 'text-muted' if not p.activo else '' }}">
+                            <td>{{ p.concepto_compra.nombre if p.concepto_compra else '—' }}</td>
+                            <td>{{ p.nombre }}</td>
+                            <td><span class="badge {{ 'bg-success' if p.activo else 'bg-secondary' }}">{{ 'Activo' if p.activo else 'Inactivo' }}</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-secondary py-0" onclick='editarPC({{ p.id }}, {{ p.concepto_compra_id }}, {{ p.nombre|tojson }}, {{ (p.descripcion or "")|tojson }})'><i class="bi bi-pencil"></i></button>
+                                <form method="POST" action="{{ url_for('catalogos.productos_compras_toggle', id=p.id) }}" class="d-inline">
+                                    <button class="btn btn-sm btn-outline-{{ 'warning' if p.activo else 'success' }} py-0"><i class="bi bi-{{ 'pause' if p.activo else 'play' }}"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function editarPC(id, conceptoId, nombre, desc) {
+    document.getElementById('pc_id').value = id;
+    document.getElementById('pc_concepto').value = conceptoId;
+    document.getElementById('pc_nombre').value = nombre;
+    document.getElementById('pc_desc').value = desc;
+}
+</script>
+{% endblock %}

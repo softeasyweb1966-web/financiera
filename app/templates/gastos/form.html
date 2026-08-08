@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if gasto else 'Nuevo' }} Gasto{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card p-4">
+            <h5 class="fw-bold mb-3"><i class="bi bi-cash-stack text-secondary"></i> {{ 'Editar' if gasto else 'Nuevo' }} Gasto</h5>
+            <form method="POST">
+                <div class="row g-3">
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Fecha *</label>
+                        <input type="date" name="fecha" class="form-control" required value="{{ gasto.fecha.strftime('%Y-%m-%d') if gasto else '' }}">
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Concepto *</label>
+                        <select name="concepto_gasto_id" id="concepto_gasto_id" class="form-select" required>
+                            <option value="">Seleccione...</option>
+                            {% for c in conceptos %}
+                            <option value="{{ c.id }}" {{ 'selected' if gasto and gasto.concepto_gasto_id == c.id else '' }}>{{ c.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Item</label>
+                        <select name="item_gasto_id" id="item_gasto_id" class="form-select">
+                            <option value="">-- Sin catalogar --</option>
+                            {% for i in items_catalogo %}
+                            <option value="{{ i.id }}" data-concepto="{{ i.concepto_gasto_id }}" {{ 'selected' if gasto and gasto.item_gasto_id == i.id else '' }}>{{ i.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Ayuda a analizar en qué item se está gastando más.</div>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Descripción</label>
+                        <input type="text" name="descripcion" class="form-control" value="{{ gasto.descripcion if gasto else '' }}" placeholder="Detalle adicional del gasto">
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Valor *</label>
+                        <input type="number" name="valor" class="form-control" required value="{{ gasto.valor if gasto else '' }}">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Responsable</label>
+                        <input type="text" name="responsable" class="form-control" value="{{ gasto.responsable if gasto else '' }}" placeholder="¿Quién generó el gasto?">
+                    </div>
+
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Tercero</label>
+                        <select name="tercero_id" class="form-select">
+                            <option value="">-- Opcional --</option>
+                            {% for t in terceros %}
+                            <option value="{{ t.id }}" {{ 'selected' if gasto and gasto.tercero_id == t.id else '' }}>{{ t.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Medio de pago</label>
+                        <select name="medio_pago_id" class="form-select">
+                            <option value="">--</option>
+                            {% for m in medios %}
+                            <option value="{{ m.id }}" {{ 'selected' if gasto and gasto.medio_pago_id == m.id else '' }}>{{ m.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Fecha pago</label>
+                        <input type="date" name="fecha_pago" class="form-control" value="{{ gasto.fecha_pago.strftime('%Y-%m-%d') if gasto and gasto.fecha_pago else '' }}">
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Observaciones</label>
+                        <textarea name="observaciones" class="form-control" rows="2">{{ gasto.observaciones if gasto else '' }}</textarea>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 flex-wrap mt-3">
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Guardar</button>
+                    <a href="{{ url_for('gastos.lista') }}" class="btn btn-outline-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filtrarItemsGasto() {
+    const concepto = document.getElementById('concepto_gasto_id').value;
+    const select = document.getElementById('item_gasto_id');
+    Array.from(select.options).forEach(function(option, index) {
+        if (index === 0) {
+            option.hidden = false;
+            return;
+        }
+        option.hidden = concepto && option.dataset.concepto !== concepto;
+    });
+    const selected = select.options[select.selectedIndex];
+    if (selected && selected.dataset && selected.dataset.concepto && selected.dataset.concepto !== concepto) {
+        select.value = '';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('concepto_gasto_id').addEventListener('change', filtrarItemsGasto);
+    filtrarItemsGasto();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Medios de Pago{% endblock %}
+
+{% block content %}
+<h5 class="fw-bold mb-3"><i class="bi bi-credit-card"></i> Medios de Pago</h5>
+
+<div class="row g-3">
+    <div class="col-md-5">
+        <div class="card p-3">
+            <h6 class="fw-bold">Agregar / Editar</h6>
+            <form method="POST" action="{{ url_for('catalogos.medios_pago_guardar') }}">
+                <input type="hidden" name="id" id="medio_id">
+                <div class="mb-2">
+                    <input type="text" name="nombre" id="medio_nombre" class="form-control form-control-sm" required placeholder="Nombre del medio de pago">
+                </div>
+                <div class="mb-2">
+                    <input type="text" name="descripcion" id="medio_desc" class="form-control form-control-sm" placeholder="Descripción (opcional)">
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check"></i> Guardar</button>
+            </form>
+        </div>
+    </div>
+    <div class="col-md-7">
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light"><tr><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+                    <tbody>
+                        {% for m in medios %}
+                        <tr class="{{ 'text-muted' if not m.activo else '' }}">
+                            <td>{{ m.nombre }}</td>
+                            <td><span class="badge {{ 'bg-success' if m.activo else 'bg-secondary' }}">{{ 'Activo' if m.activo else 'Inactivo' }}</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-secondary py-0" onclick="editarMedio({{ m.id }}, '{{ m.nombre }}', '{{ m.descripcion or '' }}')"><i class="bi bi-pencil"></i></button>
+                                <form method="POST" action="{{ url_for('catalogos.medios_pago_toggle', id=m.id) }}" class="d-inline">
+                                    <button class="btn btn-sm btn-outline-{{ 'warning' if m.activo else 'success' }} py-0" title="{{ 'Desactivar' if m.activo else 'Activar' }}">
+                                        <i class="bi bi-{{ 'pause' if m.activo else 'play' }}"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function editarMedio(id, nombre, desc) {
+    document.getElementById('medio_id').value = id;
+    document.getElementById('medio_nombre').value = nombre;
+    document.getElementById('medio_desc').value = desc;
+    document.getElementById('medio_nombre').focus();
+}
+</script>
+{% endblock %}

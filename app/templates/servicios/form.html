@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if servicio else 'Nuevo' }} Servicio{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card p-4">
+            <h5 class="fw-bold mb-3"><i class="bi bi-lightning text-warning"></i> {{ 'Editar' if servicio else 'Nuevo' }} Servicio</h5>
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Empresa (Tercero) *</label>
+                    <select name="tercero_id" class="form-select" required>
+                        <option value="">Seleccione...</option>
+                        {% for t in terceros %}
+                        <option value="{{ t.id }}" {{ 'selected' if servicio and servicio.tercero_id == t.id else '' }}>{{ t.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Si no existe, créelo primero en <a href="{{ url_for('terceros.nuevo') }}">Terceros</a></div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Concepto *</label>
+                    <select name="concepto_id" class="form-select" required>
+                        <option value="">Seleccione...</option>
+                        {% for c in conceptos %}
+                        <option value="{{ c.id }}" {{ 'selected' if servicio and servicio.concepto_id == c.id else '' }}>{{ c.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <label class="form-label">Referencia de pago</label>
+                        <input type="text" name="referencia" class="form-control" value="{{ servicio.referencia if servicio else '' }}" placeholder="No. cuenta">
+                    </div>
+                    <div class="col-3 mb-3">
+                        <label class="form-label">Día pago</label>
+                        <input type="number" name="dia_limite_pago" class="form-control" min="1" max="31" value="{{ servicio.dia_limite_pago if servicio else '' }}">
+                    </div>
+                    <div class="col-3 mb-3">
+                        <label class="form-label">Día causación</label>
+                        <input type="number" name="dia_causacion" class="form-control" min="1" max="31" value="{{ servicio.dia_causacion if servicio and servicio.dia_causacion else '' }}">
+                        <div class="form-text">Día del mes en que llega la factura</div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-4 mb-3">
+                        <label class="form-label">Periodicidad</label>
+                        <select name="periodicidad" class="form-select" id="periodicidad-select">
+                            {% for p in ['mensual', 'bimestral', 'anual'] %}
+                            <option value="{{ p }}" {{ 'selected' if servicio and servicio.periodicidad == p else '' }}>{{ p|capitalize }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-4 mb-3">
+                        <label class="form-label">Estado</label>
+                        <select name="estado" class="form-select">
+                            {% for e in ['activo', 'inactivo', 'retirado', 'anulado'] %}
+                            <option value="{{ e }}" {{ 'selected' if servicio and servicio.estado == e else '' }}>{{ e|capitalize }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <label class="form-label">Valor estimado</label>
+                        <input type="number" name="valor_estimado" id="valor_estimado" class="form-control" value="{{ servicio.valor_estimado if servicio and servicio.valor_estimado else '' }}" onchange="calcularProvision()">
+                    </div>
+                    <div class="col-3 mb-3">
+                        <label class="form-label">Estrato</label>
+                        <input type="number" name="estrato" class="form-control" min="1" max="6" value="{{ servicio.estrato if servicio and servicio.estrato else '' }}">
+                    </div>
+                </div>
+                <!-- Provisión mensual y fecha de pago anual (solo para periodicidad anual) -->
+                <div class="row" id="provision-row" style="display:none;">
+                    <div class="col-6 mb-3">
+                        <label class="form-label">Provisión mensual</label>
+                        <input type="number" name="provision_mensual" id="provision_mensual" class="form-control" step="0.01" value="{{ servicio.provision_mensual if servicio and servicio.provision_mensual else '' }}">
+                        <div class="form-text">Se calcula como valor_estimado / 12, pero puede editarse</div>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <label class="form-label">Fecha de pago anual</label>
+                        <input type="date" name="fecha_pago_anual" id="fecha_pago_anual" class="form-control" value="{{ servicio.fecha_pago_anual.strftime('%Y-%m-%d') if servicio and servicio.fecha_pago_anual else '' }}">
+                        <div class="form-text">Fecha exacta en que se paga este servicio anual</div>
+                    </div>
+                </div>
+                <!-- Mes inicio bimestral (solo para periodicidad bimestral) -->
+                <div class="row" id="bimestral-row" style="display:none;">
+                    <div class="col-6 mb-3">
+                        <label class="form-label">Inicia en mes:</label>
+                        <select name="mes_inicio_bimestral" id="mes_inicio_bimestral" class="form-select">
+                            <option value="1" {{ 'selected' if not servicio or not servicio.mes_inicio_bimestral or servicio.mes_inicio_bimestral == 1 else '' }}>Enero (meses impares: Ene,Mar,May...)</option>
+                            <option value="2" {{ 'selected' if servicio and servicio.mes_inicio_bimestral == 2 else '' }}>Febrero (meses pares: Feb,Abr,Jun...)</option>
+                        </select>
+                        <div class="form-text">Define si se cobra en meses impares o pares</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Dirección del inmueble</label>
+                    <input type="text" name="direccion_inmueble" class="form-control" value="{{ servicio.direccion_inmueble if servicio else '' }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Observaciones</label>
+                    <textarea name="observaciones" class="form-control" rows="2">{{ servicio.observaciones if servicio else '' }}</textarea>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Guardar</button>
+                    <a href="{{ url_for('servicios.lista') }}" class="btn btn-outline-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var periodicidadSelect = document.getElementById('periodicidad-select');
+    togglePeriodicidad();
+    periodicidadSelect.addEventListener('change', togglePeriodicidad);
+});
+
+function togglePeriodicidad() {
+    var periodicidad = document.getElementById('periodicidad-select').value;
+    var provisionRow = document.getElementById('provision-row');
+    var bimestralRow = document.getElementById('bimestral-row');
+
+    // Anual: show provision + fecha pago anual
+    if (periodicidad === 'anual') {
+        provisionRow.style.display = '';
+        calcularProvision();
+    } else {
+        provisionRow.style.display = 'none';
+    }
+
+    // Bimestral: show mes inicio
+    if (periodicidad === 'bimestral') {
+        bimestralRow.style.display = '';
+    } else {
+        bimestralRow.style.display = 'none';
+    }
+}
+
+function calcularProvision() {
+    var periodicidad = document.getElementById('periodicidad-select').value;
+    if (periodicidad !== 'anual') return;
+    var valorEstimado = parseFloat(document.getElementById('valor_estimado').value) || 0;
+    var provisionInput = document.getElementById('provision_mensual');
+    // Solo auto-calcular si está vacío
+    if (!provisionInput.value && valorEstimado > 0) {
+        provisionInput.value = (valorEstimado / 12).toFixed(2);
+    }
+}
+</script>
+{% endblock %}

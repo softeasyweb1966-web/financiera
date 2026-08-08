@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Registrar Quincena{% endblock %}
+
+{% block content %}
+<style>
+    .liquidacion-card { border: 1px solid #dbeafe; box-shadow: 0 10px 24px rgba(37, 99, 235, 0.06); }
+    .alert-preliq { border: 1px solid #fde68a; background: #fffbeb; }
+    .label-mini { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; }
+    @media (max-width: 767px) {
+        .liquidacion-actions .btn { flex: 1 1 calc(50% - 0.5rem); }
+    }
+</style>
+
+<div class="card liquidacion-card p-3">
+    <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+        <div>
+            <h5 class="fw-bold mb-1"><i class="bi bi-cash text-success"></i> Registrar Nómina - {{ meses[mes-1] }} {{ anio }} - Quincena {{ quincena }}</h5>
+            <small class="text-muted">Liquidación del periodo. Puede venir cargada desde la preliquidación o registrar directamente.</small>
+        </div>
+        <div class="d-flex gap-2 flex-wrap liquidacion-actions">
+            <a href="{{ url_for('nomina.preliquidar', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-warning btn-sm">Volver a preliquidar</a>
+            <a href="{{ url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-secondary btn-sm">Volver a pagos</a>
+        </div>
+    </div>
+
+    {% if preliquidacion_rows %}
+    <div class="alert alert-preliq mb-3">
+        <div class="fw-semibold mb-1"><i class="bi bi-check-circle text-warning"></i> Preliquidación aplicada</div>
+        <small class="text-muted">Los valores e inclusiones de esta pantalla se cargaron desde la preliquidación del mismo periodo.</small>
+    </div>
+    {% endif %}
+
+    <form method="POST">
+        <input type="hidden" name="anio" value="{{ anio }}">
+        <input type="hidden" name="mes" value="{{ mes }}">
+        <input type="hidden" name="quincena" value="{{ quincena }}">
+
+        <div class="row mb-3 g-3">
+            <div class="col-12 col-md-4">
+                <label class="form-label">Fecha de pago</label>
+                <input type="date" name="fecha_pago" class="form-control form-control-sm">
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label">Medio de pago</label>
+                <select name="medio_pago_id" class="form-select form-select-sm">
+                    <option value="">--</option>
+                    {% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label">Mes</label>
+                <select class="form-select form-select-sm" onchange="location.href='?anio={{ anio }}&mes='+this.value+'&quincena={{ quincena }}'">
+                    {% for i in range(1, 13) %}
+                    <option value="{{ i }}" {{ 'selected' if i == mes else '' }}>{{ meses[i-1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label">Quincena</label>
+                <select class="form-select form-select-sm" onchange="location.href='?anio={{ anio }}&mes={{ mes }}&quincena='+this.value">
+                    <option value="1" {{ 'selected' if quincena == 1 else '' }}>Quincena 1</option>
+                    <option value="2" {{ 'selected' if quincena == 2 else '' }}>Quincena 2</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Empleado</th>
+                        <th>Concepto</th>
+                        <th>Valor</th>
+                        <th>Incluir</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in empleados %}
+                    {% set row = preliquidacion_rows.get(e.id|string, {}) if preliquidacion_rows else {} %}
+                    {% set default_val = row.get('valor_preliquidado') if row else ((e.salario_base / 2)|int if e.salario_base else '') %}
+                    <tr>
+                        <td class="fw-semibold">
+                            {{ e.nombre }}
+                            <br>
+                            <small class="text-muted">
+                                {{ e.cargo or '' }} - ${{ "{:,.0f}".format(e.salario_base) if e.salario_base else '0' }}
+                                {% if row %}
+                                · {{ formas_pago_labels.get(row.get('forma_pago_aplicada'), row.get('forma_pago_aplicada', 'quincenal')|title) }}
+                                {% endif %}
+                            </small>
+                            {% if row and row.get('pendiente_anterior', 0) > 0 %}
+                            <br><small class="text-danger">Pendiente anterior: ${{ "{:,.0f}".format(row.get('pendiente_anterior', 0)) }}</small>
+                            {% endif %}
+                            {% if row and row.get('novedades') %}
+                            <div class="mt-1 d-flex flex-wrap gap-1">
+                                {% for novedad in row.get('novedades', []) %}
+                                <span class="badge {{ 'bg-danger-subtle text-danger border border-danger-subtle' if novedad.tipo == 'deduccion' else 'bg-success-subtle text-success border border-success-subtle' }}">
+                                    {{ novedad.concepto_nombre }}: {{ '-' if novedad.tipo == 'deduccion' else '+' }}${{ "{:,.0f}".format(novedad.valor) }}
+                                </span>
+                                {% endfor %}
+                            </div>
+                            <small class="text-muted d-block mt-1">
+                                Devengados: ${{ "{:,.0f}".format(row.get('total_devengados', 0)) }}
+                                · Deducciones: ${{ "{:,.0f}".format(row.get('total_deducciones', 0)) }}
+                                · Neto novedades: ${{ "{:,.0f}".format(row.get('total_novedades', 0)) }}
+                            </small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <select name="concepto_{{ e.id }}" class="form-select form-select-sm">
+                                {% for c in conceptos %}
+                                <option value="{{ c.id }}" {{ 'selected' if c.nombre == 'Salario' else '' }}>{{ c.nombre }} ({{ c.tipo[:3] }})</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <input type="number" name="valor_{{ e.id }}" class="form-control form-control-sm"
+                                   value="{{ default_val }}" style="max-width:140px">
+                        </td>
+                        <td class="text-center">
+                            <input type="checkbox" name="empleado_ids" value="{{ e.id }}" class="form-check-input" {{ 'checked' if row.get('incluir', True) else '' }}>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Guardar registros</button>
+    </form>
+</div>
+{% endblock %}

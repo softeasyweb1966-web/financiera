@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h5 class="fw-bold mb-0"><i class="bi bi-speedometer2 text-primary"></i> {{ meses[mes-1] }} {{ anio }}</h5>
+    <div class="d-flex gap-1">
+        <a href="?anio={{ anio }}&mes={{ mes-1 if mes > 1 else 12 }}" class="btn btn-outline-secondary btn-sm">← Anterior</a>
+        <a href="?anio={{ anio }}&mes={{ mes+1 if mes < 12 else 1 }}" class="btn btn-outline-secondary btn-sm">Siguiente →</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-lg">
+        <a href="{{ url_for('servicios.lista') }}" class="text-decoration-none">
+            <div class="card card-modulo p-3 text-center">
+                <i class="bi bi-lightning text-warning fs-3"></i>
+                <div class="fw-bold small mt-1">Servicios</div>
+                <div class="text-primary fw-bold">${{ "{:,.0f}".format(total_servicios) }}</div>
+                <small class="text-muted">{{ servicios_activos }} activos</small>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg">
+        <a href="{{ url_for('obligaciones.lista') }}" class="text-decoration-none">
+            <div class="card card-modulo p-3 text-center">
+                <i class="bi bi-bank text-info fs-3"></i>
+                <div class="fw-bold small mt-1">Obligaciones</div>
+                <div class="text-primary fw-bold">${{ "{:,.0f}".format(total_obligaciones) }}</div>
+                <small class="text-muted">{{ obligaciones_activas }} activas</small>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg">
+        <a href="{{ url_for('nomina.lista') }}" class="text-decoration-none">
+            <div class="card card-modulo p-3 text-center">
+                <i class="bi bi-people text-success fs-3"></i>
+                <div class="fw-bold small mt-1">Nómina</div>
+                <div class="text-primary fw-bold">${{ "{:,.0f}".format(total_nomina) }}</div>
+                <small class="text-muted">{{ empleados_activos }} empleados</small>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg">
+        <a href="{{ url_for('compras.lista') }}" class="text-decoration-none">
+            <div class="card card-modulo p-3 text-center">
+                <i class="bi bi-cart text-danger fs-3"></i>
+                <div class="fw-bold small mt-1">Compras</div>
+                <div class="text-primary fw-bold">${{ "{:,.0f}".format(total_compras) }}</div>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg">
+        <a href="{{ url_for('gastos.lista') }}" class="text-decoration-none">
+            <div class="card card-modulo p-3 text-center">
+                <i class="bi bi-cash-stack text-secondary fs-3"></i>
+                <div class="fw-bold small mt-1">Gastos</div>
+                <div class="text-primary fw-bold">${{ "{:,.0f}".format(total_gastos) }}</div>
+            </div>
+        </a>
+    </div>
+</div>
+
+{% set gran_total = total_servicios + total_obligaciones + total_nomina + total_compras + total_gastos %}
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h6 class="fw-bold"><i class="bi bi-calculator text-primary"></i> Total egresos del mes</h6>
+            <div class="display-6 fw-bold text-primary">${{ "{:,.0f}".format(gran_total) }}</div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h6 class="fw-bold"><i class="bi bi-exclamation-triangle text-warning"></i> Pendientes</h6>
+            <p class="mb-1 small">Servicios pendientes: <strong>{{ servicios_pendientes }}</strong></p>
+            <p class="mb-0 small">Obligaciones pendientes: <strong>{{ obligaciones_pendientes }}</strong></p>
+        </div>
+    </div>
+</div>
+{% endblock %}

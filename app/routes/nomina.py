@@ -1,0 +1,544 @@
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from app import db
+from app.models import (
+    Empleado, Tercero, TipoTercero, RegistroNomina,
+    ConceptoNomina, MedioPago
+)
+from datetime import date, datetime
+import calendar
+import json
+from sqlalchemy import func
+
+nomina_bp = Blueprint('nomina', __name__, url_prefix='/nomina')
+
+MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+FORMAS_PAGO = [
+    ('diaria', 'Diaria'),
+    ('semanal', 'Semanal'),
+    ('quincenal', 'Quincenal'),
+    ('mensual', 'Mensual'),
+]
+FORMAS_PAGO_LABELS = dict(FORMAS_PAGO)
+
+
+def _preliquidacion_session_key(anio, mes, quincena):
+    return f'nomina_preliquidacion_{anio}_{mes}_{quincena}'
+
+
+def _dias_periodo_nomina(anio, mes, quincena):
+    dias_mes = calendar.monthrange(anio, mes)[1]
+    return 15 if quincena == 1 else max(dias_mes - 15, 0)
+
+
+def _valor_periodo_empleado(empleado, anio, mes, quincena, forma_pago=None):
+    salario = float(empleado.salario_base or 0)
+    frecuencia = forma_pago or empleado.forma_pago or 'quincenal'
+    dias_mes = calendar.monthrange(anio, mes)[1]
+    dias_periodo = _dias_periodo_nomina(anio, mes, quincena)
+
+    if not salario:
+        return 0
+    if frecuencia == 'mensual':
+        return salario if quincena == 2 else 0
+    if frecuencia in ('diaria', 'semanal'):
+        return salario / dias_mes * dias_periodo if dias_mes else 0
+    return salario / 2
+
+
+def _pendiente_anterior_empleado(empleado, anio, mes, quincena):
+    total = 0
+    for m_check in range(1, mes + 1):
+        q_range = [1, 2] if m_check < mes else list(range(1, quincena))
+        for q_check in q_range:
+            tiene_registro = RegistroNomina.query.filter_by(
+                empleado_id=empleado.id, anio=anio, mes=m_check, quincena=q_check
+            ).first()
+            if not tiene_registro and empleado.salario_base:
+                total += _valor_periodo_empleado(empleado, anio, m_check, q_check)
+    return total
+
+
+def _parse_novedades_periodo(raw_payload, conceptos_dict):
+    novedades = []
+    total_devengados = 0
+    total_deducciones = 0
+
+    try:
+        rows = json.loads(raw_payload or '[]')
+    except (TypeError, ValueError):
+        rows = []
+
+    for row in rows:
+        concepto_id = int(row.get('concepto_id') or 0)
+        valor = float(row.get('valor') or 0)
+        justificacion = (row.get('justificacion') or '').strip()
+        concepto = conceptos_dict.get(concepto_id)
+
+        if not concepto or not valor or not justificacion:
+            continue
+
+        tipo = concepto.tipo or 'otro'
+        if tipo == 'deduccion':
+            total_deducciones += valor
+        else:
+            total_devengados += valor
+
+        novedades.append({
+            'concepto_id': concepto.id,
+            'concepto_nombre': concepto.nombre,
+            'tipo': tipo,
+            'valor': valor,
+            'justificacion': justificacion
+        })
+
+    return {
+        'items': novedades,
+        'total_devengados': total_devengados,
+        'total_deducciones': total_deducciones,
+        'total_neto': total_devengados - total_deducciones,
+    }
+
+
+@nomina_bp.route('/')
+def lista():
+    empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo).all()
+    anio = request.args.get('anio', date.today().year, type=int)
+    return render_template('nomina/lista.html', empleados=empleados, anio=anio, meses=MESES)
+
+
+@nomina_bp.route('/nuevo', methods=['GET', 'POST'])
+def nuevo():
+    if request.method == 'POST':
+        # Crear tercero si no existe
+        tercero_id = request.form.get('tercero_id')
+        if not tercero_id:
+            tipo_emp = TipoTercero.query.filter_by(nombre='Empleado').first()
+            tercero = Tercero(
+                tipo_tercero_id=tipo_emp.id,
+                nombre=request.form['nombre'].strip().upper()
+            )
+            db.session.add(tercero)
+            db.session.flush()
+            tercero_id = tercero.id
+
+        empleado = Empleado(
+            tercero_id=tercero_id,
+            cargo=request.form.get('cargo', '').strip(),
+            salario_base=request.form.get('salario_base') or None,
+            tipo_contrato=request.form.get('tipo_contrato', 'laboral'),
+            forma_pago=request.form.get('forma_pago', 'quincenal'),
+            whatsapp=request.form.get('whatsapp', '').strip() or None,
+            autoriza_whatsapp=bool(request.form.get('autoriza_whatsapp')),
+            fecha_ingreso=request.form.get('fecha_ingreso') or None,
+            observaciones=request.form.get('observaciones', '').strip()
+        )
+        db.session.add(empleado)
+        db.session.commit()
+        flash('Empleado creado correctamente.', 'success')
+        return redirect(url_for('nomina.lista'))
+
+    terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.nombre).all()
+    return render_template('nomina/form.html', empleado=None, terceros=terceros, formas_pago=FORMAS_PAGO)
+
+
+@nomina_bp.route('/<int:id>/editar', methods=['GET', 'POST'])
+def editar(id):
+    empleado = Empleado.query.get_or_404(id)
+    if request.method == 'POST':
+        empleado.cargo = request.form.get('cargo', '').strip()
+        empleado.salario_base = request.form.get('salario_base') or None
+        empleado.tipo_contrato = request.form.get('tipo_contrato', 'laboral')
+        empleado.forma_pago = request.form.get('forma_pago', 'quincenal')
+        empleado.whatsapp = request.form.get('whatsapp', '').strip() or None
+        empleado.autoriza_whatsapp = bool(request.form.get('autoriza_whatsapp'))
+        empleado.fecha_ingreso = request.form.get('fecha_ingreso') or None
+        empleado.observaciones = request.form.get('observaciones', '').strip()
+        db.session.commit()
+        flash('Empleado actualizado.', 'success')
+        return redirect(url_for('nomina.lista'))
+
+    terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.nombre).all()
+    return render_template('nomina/form.html', empleado=empleado, terceros=terceros, formas_pago=FORMAS_PAGO)
+
+
+@nomina_bp.route('/preliquidar', methods=['GET', 'POST'])
+@nomina_bp.route('/preliquidar/<int:anio>/<int:mes>/<int:quincena>', methods=['GET', 'POST'])
+def preliquidar(anio=None, mes=None, quincena=None):
+    if anio is None:
+        anio = request.args.get('anio', date.today().year, type=int)
+    if mes is None:
+        mes = request.args.get('mes', date.today().month, type=int)
+    if quincena is None:
+        quincena = request.args.get('quincena', 1 if date.today().day <= 15 else 2, type=int)
+
+    empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo).all()
+    conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
+    conceptos_dict = {c.id: c for c in conceptos}
+    draft_key = _preliquidacion_session_key(anio, mes, quincena)
+
+    if request.method == 'POST':
+        draft_rows = {}
+        actualizados = 0
+        total_novedades_periodo = 0
+
+        for e in empleados:
+            incluir = bool(request.form.get(f'incluir_{e.id}'))
+            forma_aplicada = request.form.get(f'forma_pago_{e.id}', e.forma_pago or 'quincenal')
+            valor_preliquidado = float(request.form.get(f'valor_{e.id}') or 0)
+            pendiente_anterior = float(request.form.get(f'pendiente_{e.id}') or 0)
+            actualizar_catalogo = bool(request.form.get(f'actualizar_catalogo_{e.id}'))
+            novedades_resumen = _parse_novedades_periodo(request.form.get(f'novedades_{e.id}'), conceptos_dict)
+            total_novedades_periodo += novedades_resumen['total_neto']
+            total_propuesto = valor_preliquidado + pendiente_anterior + novedades_resumen['total_neto']
+
+            draft_rows[str(e.id)] = {
+                'incluir': incluir,
+                'forma_pago_aplicada': forma_aplicada,
+                'valor_preliquidado': valor_preliquidado,
+                'pendiente_anterior': pendiente_anterior,
+                'novedades': novedades_resumen['items'],
+                'total_devengados': novedades_resumen['total_devengados'],
+                'total_deducciones': novedades_resumen['total_deducciones'],
+                'total_novedades': novedades_resumen['total_neto'],
+                'total_propuesto': total_propuesto
+            }
+
+            if actualizar_catalogo and e.forma_pago != forma_aplicada:
+                e.forma_pago = forma_aplicada
+                actualizados += 1
+
+        if actualizados:
+            db.session.commit()
+
+        session[draft_key] = {
+            'anio': anio,
+            'mes': mes,
+            'quincena': quincena,
+            'rows': draft_rows,
+            'created_at': datetime.utcnow().isoformat()
+        }
+        flash('Preliquidación preparada. Ya puede continuar a la liquidación de nómina.', 'success')
+        return redirect(url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena))
+
+    draft = session.get(draft_key, {})
+    rows = []
+    total_estimado = 0
+    total_pendiente = 0
+    total_novedades_periodo = 0
+
+    for e in empleados:
+        draft_row = draft.get('rows', {}).get(str(e.id), {})
+        forma_aplicada = draft_row.get('forma_pago_aplicada', e.forma_pago or 'quincenal')
+        valor_preliquidado = float(draft_row.get('valor_preliquidado', _valor_periodo_empleado(e, anio, mes, quincena, forma_aplicada)))
+        pendiente_anterior = float(draft_row.get('pendiente_anterior', _pendiente_anterior_empleado(e, anio, mes, quincena)))
+        incluir = draft_row.get('incluir', True)
+        novedades = draft_row.get('novedades', [])
+        total_devengados = float(draft_row.get('total_devengados', 0))
+        total_deducciones = float(draft_row.get('total_deducciones', 0))
+        total_novedades = float(draft_row.get('total_novedades', 0))
+        total_propuesto = valor_preliquidado + pendiente_anterior + total_novedades
+
+        total_estimado += valor_preliquidado
+        total_pendiente += pendiente_anterior
+        total_novedades_periodo += total_novedades
+        rows.append({
+            'empleado': e,
+            'forma_catalogo': e.forma_pago or 'quincenal',
+            'forma_aplicada': forma_aplicada,
+            'valor_preliquidado': valor_preliquidado,
+            'pendiente_anterior': pendiente_anterior,
+            'novedades': novedades,
+            'total_devengados': total_devengados,
+            'total_deducciones': total_deducciones,
+            'total_novedades': total_novedades,
+            'total_propuesto': total_propuesto,
+            'incluir': incluir,
+        })
+
+    return render_template(
+        'nomina/preliquidar.html',
+        empleados_preliquidacion=rows,
+        conceptos_novedad=conceptos,
+        anio=anio,
+        mes=mes,
+        quincena=quincena,
+        meses=MESES,
+        formas_pago=FORMAS_PAGO,
+        formas_pago_labels=FORMAS_PAGO_LABELS,
+        dias_mes=calendar.monthrange(anio, mes)[1],
+        dias_periodo=_dias_periodo_nomina(anio, mes, quincena),
+        total_estimado=total_estimado,
+        total_pendiente=total_pendiente,
+        total_novedades_periodo=total_novedades_periodo,
+        total_empleados=len(rows)
+    )
+
+
+@nomina_bp.route('/pagos')
+@nomina_bp.route('/pagos/<int:anio>')
+@nomina_bp.route('/pagos/<int:anio>/<int:mes>')
+@nomina_bp.route('/pagos/<int:anio>/<int:mes>/<int:quincena>')
+def pagos(anio=None, mes=None, quincena=None):
+    if anio is None:
+        anio = date.today().year
+    if mes is None:
+        mes = date.today().month
+    if quincena is None:
+        # Default: Q1 si estamos en primera mitad del mes, Q2 si segunda
+        quincena = 1 if date.today().day <= 15 else 2
+
+    empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo).all()
+    conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
+    medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
+
+    # Registros de esta quincena
+    registros_quincena = RegistroNomina.query.filter_by(
+        anio=anio, mes=mes, quincena=quincena
+    ).all()
+
+    # Agrupar por empleado
+    registros_por_empleado = {}
+    for r in registros_quincena:
+        if r.empleado_id not in registros_por_empleado:
+            registros_por_empleado[r.empleado_id] = []
+        registros_por_empleado[r.empleado_id].append(r)
+
+    # Acumulado pagado meses anteriores
+    acum_pagado_anterior = db.session.query(
+        func.coalesce(func.sum(RegistroNomina.valor), 0)
+    ).filter(
+        RegistroNomina.anio == anio,
+        db.or_(
+            RegistroNomina.mes < mes,
+            db.and_(RegistroNomina.mes == mes, RegistroNomina.quincena < quincena)
+        )
+    ).scalar()
+
+    # Pagado en la quincena actual
+    pagado_quincena_actual = db.session.query(
+        func.coalesce(func.sum(RegistroNomina.valor), 0)
+    ).filter(
+        RegistroNomina.anio == anio, RegistroNomina.mes == mes,
+        RegistroNomina.quincena == quincena
+    ).scalar()
+
+    # Total esperado del periodo segun la frecuencia configurada
+    esperado_quincena = sum(
+        _valor_periodo_empleado(e, anio, mes, quincena) for e in empleados
+    )
+
+    # Quincenas sin pagar de periodos anteriores
+    pendientes_anteriores = []
+    total_deuda_anterior = 0
+    for e in empleados:
+        # Check si hay quincenas anteriores sin registros
+        for m_check in range(1, mes + 1):
+            q_range = [1, 2] if m_check < mes else list(range(1, quincena))
+            for q_check in q_range:
+                tiene_registro = RegistroNomina.query.filter_by(
+                    empleado_id=e.id, anio=anio, mes=m_check, quincena=q_check
+                ).first()
+                if not tiene_registro and e.salario_base:
+                    valor_esperado = _valor_periodo_empleado(e, anio, m_check, q_check)
+                    total_deuda_anterior += valor_esperado
+                    pendientes_anteriores.append({
+                        'empleado': e,
+                        'mes_nombre': MESES[m_check - 1],
+                        'anio': anio,
+                        'quincena': q_check,
+                        'valor_esperado': valor_esperado
+                    })
+
+    # Resumen por concepto de nómina
+    resumen_conceptos = {}
+    for r in registros_quincena:
+        concepto_nombre = r.concepto_nomina.nombre if r.concepto_nomina else 'Sin concepto'
+        tipo = r.concepto_nomina.tipo if r.concepto_nomina else 'otro'
+        if concepto_nombre not in resumen_conceptos:
+            resumen_conceptos[concepto_nombre] = {
+                'nombre': concepto_nombre,
+                'tipo': tipo,
+                'color': '#10b981' if tipo == 'devengado' else '#ef4444',
+                'total': 0,
+                'cantidad': 0
+            }
+        resumen_conceptos[concepto_nombre]['total'] += float(r.valor)
+        resumen_conceptos[concepto_nombre]['cantidad'] += 1
+
+    resumen_grupos = list(resumen_conceptos.values())
+
+    # Tarjetas por empleado
+    empleados_mes = []
+    for e in empleados:
+        registros_emp = registros_por_empleado.get(e.id, [])
+        total_pagado = sum(float(r.valor) for r in registros_emp)
+        tiene_pago = len(registros_emp) > 0
+        valor_quincena = _valor_periodo_empleado(e, anio, mes, quincena)
+
+        empleados_mes.append({
+            'empleado': e,
+            'registros': registros_emp,
+            'total_pagado': total_pagado,
+            'tiene_pago': tiene_pago,
+            'valor_quincena': valor_quincena,
+            'estado': 'pagado' if tiene_pago else 'pendiente',
+        })
+
+    empleados_pagados_count = sum(1 for item in empleados_mes if item['tiene_pago'])
+    empleados_pendientes_count = len(empleados_mes) - empleados_pagados_count
+    registros_quincena_count = len(registros_quincena)
+
+    # Acumulado pagado por empleado (para drill-down)
+    from sqlalchemy import func as sqlfunc
+    acum_por_empleado = db.session.query(
+        RegistroNomina.empleado_id,
+        sqlfunc.sum(RegistroNomina.valor).label('total')
+    ).filter(
+        RegistroNomina.anio == anio,
+        db.or_(
+            RegistroNomina.mes < mes,
+            db.and_(RegistroNomina.mes == mes, RegistroNomina.quincena < quincena)
+        )
+    ).group_by(RegistroNomina.empleado_id).all()
+
+    acum_empleados_dict = {row[0]: float(row[1]) for row in acum_por_empleado}
+    acum_empleados_detalle = []
+    for item in empleados_mes:
+        total_acum = acum_empleados_dict.get(item['empleado'].id, 0)
+        if total_acum > 0:
+            acum_empleados_detalle.append({
+                'empleado': item['empleado'],
+                'total': total_acum
+            })
+    acum_empleados_detalle.sort(key=lambda item: item['total'], reverse=True)
+
+    return render_template('nomina/pagos.html',
+                           empleados_mes=empleados_mes,
+                           pendientes_anteriores=pendientes_anteriores,
+                           anio=anio, mes=mes, quincena=quincena, meses=MESES,
+                           medios=medios, conceptos=conceptos,
+                           acum_pagado_anterior=float(acum_pagado_anterior),
+                           acum_empleados_detalle=acum_empleados_detalle,
+                           pagado_quincena_actual=float(pagado_quincena_actual),
+                           esperado_quincena=esperado_quincena,
+                           pendiente_quincena=esperado_quincena - float(pagado_quincena_actual),
+                           total_deuda_anterior=total_deuda_anterior,
+                           resumen_grupos=resumen_grupos,
+                           acum_empleados_dict=acum_empleados_dict,
+                           empleados_pagados_count=empleados_pagados_count,
+                           empleados_pendientes_count=empleados_pendientes_count,
+                           registros_quincena_count=registros_quincena_count)
+
+
+@nomina_bp.route('/detalle/<int:id>')
+def detalle(id):
+    """Vista detalle de un empleado: historial de pagos del año por quincena"""
+    empleado = Empleado.query.get_or_404(id)
+    anio = request.args.get('anio', date.today().year, type=int)
+    registros = RegistroNomina.query.filter_by(empleado_id=id, anio=anio).order_by(
+        RegistroNomina.mes, RegistroNomina.quincena, RegistroNomina.created_at
+    ).all()
+    # Group by (mes, quincena)
+    pagos_dict = {}
+    causaciones_dict = {}
+    for r in registros:
+        key = (r.mes, r.quincena)
+        if key not in pagos_dict:
+            pagos_dict[key] = []
+        pagos_dict[key].append(r)
+        if key not in causaciones_dict and r.created_at:
+            causaciones_dict[key] = r.created_at.date()
+    return render_template('nomina/detalle.html', empleado=empleado, anio=anio,
+                           meses=MESES, pagos=pagos_dict, causaciones=causaciones_dict)
+
+
+@nomina_bp.route('/registrar', methods=['GET', 'POST'])
+def registrar_quincena():
+    if request.method == 'POST':
+        anio = int(request.form['anio'])
+        mes = int(request.form['mes'])
+        quincena = int(request.form['quincena'])
+        medio_pago_id = request.form.get('medio_pago_id') or None
+        fecha_pago = request.form.get('fecha_pago') or None
+        draft_key = _preliquidacion_session_key(anio, mes, quincena)
+        draft = session.get(draft_key, {})
+        draft_rows = draft.get('rows', {}) if draft else {}
+
+        empleados_ids = request.form.getlist('empleado_ids')
+        count = 0
+        for emp_id in empleados_ids:
+            concepto_id = request.form.get(f'concepto_{emp_id}')
+            valor = request.form.get(f'valor_{emp_id}')
+            registros_a_guardar = {}
+
+            if concepto_id and valor:
+                registros_a_guardar[int(concepto_id)] = {
+                    'valor': float(valor),
+                    'observaciones': []
+                }
+
+            draft_row = draft_rows.get(str(emp_id), {})
+            for novedad in draft_row.get('novedades', []):
+                concepto_novedad_id = int(novedad.get('concepto_id') or 0)
+                if not concepto_novedad_id:
+                    continue
+                valor_novedad = float(novedad.get('valor') or 0)
+                if novedad.get('tipo') == 'deduccion':
+                    valor_novedad *= -1
+
+                if concepto_novedad_id not in registros_a_guardar:
+                    registros_a_guardar[concepto_novedad_id] = {
+                        'valor': 0,
+                        'observaciones': []
+                    }
+
+                registros_a_guardar[concepto_novedad_id]['valor'] += valor_novedad
+                if novedad.get('justificacion'):
+                    registros_a_guardar[concepto_novedad_id]['observaciones'].append(novedad['justificacion'])
+
+            for concepto_guardar_id, data in registros_a_guardar.items():
+                if not data['valor']:
+                    continue
+                existe = RegistroNomina.query.filter_by(
+                    empleado_id=emp_id,
+                    concepto_nomina_id=concepto_guardar_id,
+                    anio=anio,
+                    mes=mes,
+                    quincena=quincena
+                ).first()
+                if not existe:
+                    registro = RegistroNomina(
+                        empleado_id=emp_id,
+                        concepto_nomina_id=concepto_guardar_id,
+                        anio=anio,
+                        mes=mes,
+                        quincena=quincena,
+                        valor=data['valor'],
+                        medio_pago_id=medio_pago_id,
+                        fecha_pago=fecha_pago,
+                        observaciones=' | '.join(data['observaciones']) if data['observaciones'] else None
+                    )
+                    db.session.add(registro)
+                    count += 1
+
+        db.session.commit()
+        flash(f'{count} registros de nómina guardados.', 'success')
+        session.pop(draft_key, None)
+        return redirect(url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena))
+
+    anio = request.args.get('anio', date.today().year, type=int)
+    mes = request.args.get('mes', date.today().month, type=int)
+    quincena = request.args.get('quincena', 1, type=int)
+    empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo).all()
+    conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
+    medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
+    draft = session.get(_preliquidacion_session_key(anio, mes, quincena), {})
+    draft_rows = draft.get('rows', {}) if draft else {}
+
+    return render_template('nomina/registrar_quincena.html',
+                           empleados=empleados, conceptos=conceptos,
+                           medios=medios, anio=anio, mes=mes,
+                           quincena=quincena, meses=MESES,
+                           formas_pago_labels=FORMAS_PAGO_LABELS,
+                           preliquidacion_rows=draft_rows)

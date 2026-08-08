@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if tercero else 'Nuevo' }} Tercero{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card p-4">
+            <h5 class="fw-bold mb-3"><i class="bi bi-person-lines-fill"></i> {{ 'Editar' if tercero else 'Nuevo' }} Tercero</h5>
+            <form method="POST">
+                <div class="row">
+                    <div class="col-8 mb-3">
+                        <label class="form-label">Tipo de tercero *</label>
+                        <select name="tipo_tercero_id" class="form-select" required>
+                            <option value="">Seleccione...</option>
+                            {% for t in tipos %}
+                            <option value="{{ t.id }}" {{ 'selected' if tercero and tercero.tipo_tercero_id == t.id else '' }}>{{ t.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-4 mb-3">
+                        <label class="form-label">Estado</label>
+                        <select name="estado" id="estado_select" class="form-select" onchange="toggleMotivo()">
+                            {% for e in ['activo', 'inactivo', 'retirado', 'anulado'] %}
+                            <option value="{{ e }}" {{ 'selected' if tercero and tercero.estado == e else ('selected' if not tercero and e == 'activo' else '') }}>{{ e|capitalize }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <!-- Motivo del cambio de estado (visible solo al cambiar) -->
+                <div class="row" id="motivo-row" style="display:none;">
+                    <div class="col-12 mb-3">
+                        <div class="alert alert-warning py-2 small mb-2">
+                            <i class="bi bi-exclamation-triangle"></i> Está cambiando el estado. Ingrese la fecha y el motivo del cambio.
+                        </div>
+                        <div class="row">
+                            <div class="col-6">
+                                <label class="form-label">Fecha del cambio *</label>
+                                <input type="date" name="fecha_cambio_estado" class="form-control form-control-sm" value="{{ today }}">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Motivo *</label>
+                                <input type="text" name="motivo_estado" class="form-control form-control-sm" placeholder="Razón del cambio de estado">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Nombre *</label>
+                    <input type="text" name="nombre" class="form-control" required value="{{ tercero.nombre if tercero else '' }}" placeholder="Nombre completo o razón social">
+                </div>
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <label class="form-label">Identificación</label>
+                        <input type="text" name="identificacion" class="form-control" value="{{ tercero.identificacion if tercero and tercero.identificacion else '' }}" placeholder="NIT o cédula">
+                    </div>
+                    <div class="col-6 mb-3">
+                        <label class="form-label">Teléfono</label>
+                        <input type="text" name="telefono" class="form-control" value="{{ tercero.telefono if tercero and tercero.telefono else '' }}">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="email" class="form-control" value="{{ tercero.email if tercero and tercero.email else '' }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Dirección</label>
+                    <input type="text" name="direccion" class="form-control" value="{{ tercero.direccion if tercero and tercero.direccion else '' }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Observaciones</label>
+                    <textarea name="observaciones" class="form-control" rows="2">{{ tercero.observaciones if tercero and tercero.observaciones else '' }}</textarea>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Guardar</button>
+                    <a href="{{ url_for('terceros.lista') }}" class="btn btn-outline-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var estadoOriginal = '{{ tercero.estado if tercero else "activo" }}';
+
+function toggleMotivo() {
+    var estadoActual = document.getElementById('estado_select').value;
+    var motivoRow = document.getElementById('motivo-row');
+    if (estadoActual !== estadoOriginal) {
+        motivoRow.style.display = '';
+    } else {
+        motivoRow.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}

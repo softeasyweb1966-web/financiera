@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Compra - {{ compra.descripcion }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h5 class="fw-bold mb-0"><i class="bi bi-cart text-danger"></i> Detalle de Compra</h5>
+    <div class="d-flex gap-1">
+        <a href="{{ url_for('compras.lista', anio=compra.fecha.year, mes=compra.fecha.month) }}" class="btn btn-outline-secondary btn-sm">Volver</a>
+        <a href="{{ url_for('compras.editar', id=compra.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> Editar</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-12">
+                <h4 class="fw-bold mb-1">{{ compra.descripcion }}</h4>
+                <span class="badge {{ 'bg-success' if compra.estado == 'pagado' else 'bg-warning text-dark' }}">
+                    {{ compra.estado|title }}
+                </span>
+            </div>
+
+            <div class="col-md-6">
+                <table class="table table-sm table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted" style="width:150px;">Fecha</td>
+                        <td class="fw-semibold">{{ compra.fecha.strftime('%d/%m/%Y') }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Concepto</td>
+                        <td>{{ compra.concepto_compra.nombre if compra.concepto_compra else '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Item de compra</td>
+                        <td>{{ compra.producto_compra.nombre if compra.producto_compra else '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Proveedor</td>
+                        <td>{{ compra.tercero.nombre if compra.tercero else '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Valor</td>
+                        <td class="fs-5 fw-bold text-primary">${{ "{:,.0f}".format(compra.valor) }}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="col-md-6">
+                <table class="table table-sm table-borderless mb-0">
+                    <tr>
+                        <td class="text-muted" style="width:150px;">Medio de pago</td>
+                        <td>{{ compra.medio_pago.nombre if compra.medio_pago else '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Fecha de pago</td>
+                        <td>{{ compra.fecha_pago.strftime('%d/%m/%Y') if compra.fecha_pago else '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Estado</td>
+                        <td>
+                            <span class="badge {{ 'bg-success' if compra.estado == 'pagado' else 'bg-warning text-dark' }}">
+                                {{ compra.estado|title }}
+                            </span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Registrado</td>
+                        <td><small>{{ compra.created_at.strftime('%d/%m/%Y %H:%M') if compra.created_at else '-' }}</small></td>
+                    </tr>
+                </table>
+            </div>
+
+            {% if compra.observaciones %}
+            <div class="col-12">
+                <hr class="my-2">
+                <p class="text-muted mb-1"><strong>Observaciones:</strong></p>
+                <p class="mb-0">{{ compra.observaciones }}</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

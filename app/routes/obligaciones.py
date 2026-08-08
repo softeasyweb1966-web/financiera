@@ -1,0 +1,652 @@
+from flask import Blueprint, render_template, request, redirect, url_for, flash
+from app import db
+from app.models import (
+    Obligacion, PagoObligacion, Refinanciacion, AbonoCapitalObligacion,
+    Tercero, Concepto, Categoria, MedioPago
+)
+from datetime import date, datetime
+from sqlalchemy import func
+import math
+
+obligaciones_bp = Blueprint('obligaciones', __name__, url_prefix='/obligaciones')
+
+MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+
+MODALIDADES = [
+    ('bancario_cuota_fija', 'Bancario cuota fija'),
+    ('solo_interes', 'Solo interés mensual (capital al final)'),
+    ('cadena', 'Cadena (cuota fija entre personas)'),
+    ('pago_total_pactado', 'Pago total pactado'),
+    ('prestamo_corto_plazo', 'Préstamo a días (corto plazo)'),
+]
+
+MODALIDAD_LABELS = dict(MODALIDADES)
+
+
+def _valor_estimado_obligacion(obligacion, ultimo_pago=None):
+    if obligacion.valor_cuota_fija:
+        return float(obligacion.valor_cuota_fija)
+    if obligacion.interes_mensual_calculado:
+        return obligacion.interes_mensual_calculado
+    if obligacion.cuota_francesa_calculada:
+        return obligacion.cuota_francesa_calculada
+    if ultimo_pago and ultimo_pago.valor_pagado:
+        return float(ultimo_pago.valor_pagado)
+    return 0
+
+
+def _fecha_referencia_obligacion(obligacion, anio, mes):
+    if obligacion.modalidad == 'pago_total_pactado' and obligacion.fecha_vencimiento:
+        return obligacion.fecha_vencimiento
+    if obligacion.dia_limite_pago:
+        try:
+            return date(anio, mes, min(obligacion.dia_limite_pago, 28))
+        except ValueError:
+            return None
+    return None
+
+
+def _cuota_con_tasa(saldo, tasa_mensual, cuotas_pendientes):
+    if saldo <= 0 or tasa_mensual <= 0 or cuotas_pendientes <= 0:
+        return 0
+    return saldo * tasa_mensual / (1 - (1 + tasa_mensual) ** (-cuotas_pendientes))
+
+
+def _plazo_con_tasa(saldo, tasa_mensual, cuota_objetivo):
+    if saldo <= 0:
+        return 0
+    if tasa_mensual <= 0:
+        return max(1, math.ceil(saldo / cuota_objetivo)) if cuota_objetivo > 0 else 0
+    interes_periodo = saldo * tasa_mensual
+    if cuota_objetivo <= interes_periodo:
+        return None
+    plazo = math.log(cuota_objetivo / (cuota_objetivo - interes_periodo)) / math.log(1 + tasa_mensual)
+    return max(1, math.ceil(plazo))
+
+
+@obligaciones_bp.route('/')
+def lista():
+    obligaciones = Obligacion.query.filter_by(activo=True).order_by(Obligacion.dia_limite_pago).all()
+    anio = request.args.get('anio', date.today().year, type=int)
+    return render_template('obligaciones/lista.html',
+                           obligaciones=obligaciones, anio=anio, meses=MESES)
+
+
+@obligaciones_bp.route('/nueva', methods=['GET', 'POST'])
+def nueva():
+    if request.method == 'POST':
+        obligacion = Obligacion(
+            tercero_id=request.form['tercero_id'],
+            concepto_id=request.form['concepto_id'],
+            modalidad=request.form['modalidad'],
+            capital_inicial=request.form.get('capital_inicial') or None,
+            saldo_actual=request.form.get('saldo_actual') or request.form.get('capital_inicial') or None,
+            tasa_interes_mensual=request.form.get('tasa_interes_mensual') or None,
+            plazo_meses=request.form.get('plazo_meses') or None,
+            plazo_dias=request.form.get('plazo_dias') or None,
+            cuotas_totales=request.form.get('cuotas_totales') or None,
+            valor_cuota_fija=request.form.get('valor_cuota_fija') or None,
+            fecha_inicio=request.form.get('fecha_inicio') or None,
+            fecha_vencimiento=request.form.get('fecha_vencimiento') or None,
+            titular=request.form.get('titular', '').strip(),
+            dia_limite_pago=request.form.get('dia_limite_pago') or None,
+            estado=request.form.get('estado', 'activo'),
+            observaciones=request.form.get('observaciones', '').strip()
+        )
+        db.session.add(obligacion)
+        db.session.commit()
+        flash('Obligación creada correctamente.', 'success')
+        return redirect(url_for('obligaciones.lista'))
+
+    cat = Categoria.query.filter_by(nombre='Obligaciones Bancarias').first()
+    conceptos = Concepto.query.filter_by(categoria_id=cat.id, activo=True).all() if cat else []
+    terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.nombre).all()
+    medios = MedioPago.query.filter_by(activo=True).all()
+    return render_template('obligaciones/form.html', obligacion=None,
+                           conceptos=conceptos, terceros=terceros,
+                           modalidades=MODALIDADES, medios=medios)
+
+
+@obligaciones_bp.route('/<int:id>/editar', methods=['GET', 'POST'])
+def editar(id):
+    obligacion = Obligacion.query.get_or_404(id)
+    if request.method == 'POST':
+        obligacion.tercero_id = request.form['tercero_id']
+        obligacion.concepto_id = request.form['concepto_id']
+        obligacion.modalidad = request.form['modalidad']
+        obligacion.capital_inicial = request.form.get('capital_inicial') or None
+        obligacion.saldo_actual = request.form.get('saldo_actual') or None
+        obligacion.tasa_interes_mensual = request.form.get('tasa_interes_mensual') or None
+        obligacion.plazo_meses = request.form.get('plazo_meses') or None
+        obligacion.plazo_dias = request.form.get('plazo_dias') or None
+        obligacion.cuotas_totales = request.form.get('cuotas_totales') or None
+        obligacion.valor_cuota_fija = request.form.get('valor_cuota_fija') or None
+        obligacion.fecha_inicio = request.form.get('fecha_inicio') or None
+        obligacion.fecha_vencimiento = request.form.get('fecha_vencimiento') or None
+        obligacion.titular = request.form.get('titular', '').strip()
+        obligacion.dia_limite_pago = request.form.get('dia_limite_pago') or None
+        obligacion.estado = request.form.get('estado', 'activo')
+        obligacion.observaciones = request.form.get('observaciones', '').strip()
+        db.session.commit()
+        flash('Obligación actualizada.', 'success')
+        return redirect(url_for('obligaciones.lista'))
+
+    cat = Categoria.query.filter_by(nombre='Obligaciones Bancarias').first()
+    conceptos = Concepto.query.filter_by(categoria_id=cat.id, activo=True).all() if cat else []
+    terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.nombre).all()
+    medios = MedioPago.query.filter_by(activo=True).all()
+    return render_template('obligaciones/form.html', obligacion=obligacion,
+                           conceptos=conceptos, terceros=terceros,
+                           modalidades=MODALIDADES, medios=medios)
+
+
+@obligaciones_bp.route('/pagos')
+@obligaciones_bp.route('/pagos/<int:anio>')
+@obligaciones_bp.route('/pagos/<int:anio>/<int:mes>')
+def pagos(anio=None, mes=None):
+    if anio is None:
+        anio = date.today().year
+    if mes is None:
+        mes = date.today().month
+
+    hoy = date.today()
+    obligaciones = Obligacion.query.filter_by(activo=True).order_by(Obligacion.dia_limite_pago).all()
+    medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
+    obligacion_ids = [o.id for o in obligaciones]
+
+    # Pagos del mes seleccionado
+    pagos_mes = PagoObligacion.query.filter_by(anio=anio, mes=mes).all()
+    pagos_dict = {p.obligacion_id: p for p in pagos_mes}
+
+    ultimos_pagos_dict = {}
+    if obligacion_ids:
+        pagos_historicos = PagoObligacion.query.filter(
+            PagoObligacion.obligacion_id.in_(obligacion_ids),
+            PagoObligacion.valor_pagado.isnot(None),
+            db.or_(
+                PagoObligacion.anio < anio,
+                db.and_(PagoObligacion.anio == anio, PagoObligacion.mes <= mes)
+            )
+        ).order_by(
+            PagoObligacion.obligacion_id,
+            PagoObligacion.anio.desc(),
+            PagoObligacion.mes.desc(),
+            PagoObligacion.id.desc()
+        ).all()
+
+        for pago_historico in pagos_historicos:
+            if pago_historico.obligacion_id not in ultimos_pagos_dict:
+                ultimos_pagos_dict[pago_historico.obligacion_id] = pago_historico
+
+    # Pendientes de meses anteriores
+    pendientes_anteriores = []
+    total_deuda_anterior = 0
+    for o in obligaciones:
+        cuota_base = _valor_estimado_obligacion(o, ultimos_pagos_dict.get(o.id))
+        deudas = PagoObligacion.query.filter(
+            PagoObligacion.obligacion_id == o.id,
+            PagoObligacion.estado == 'pendiente',
+            db.or_(
+                PagoObligacion.anio < anio,
+                db.and_(PagoObligacion.anio == anio, PagoObligacion.mes < mes)
+            )
+        ).order_by(PagoObligacion.anio, PagoObligacion.mes).all()
+        for d in deudas:
+            valor_deuda = float(d.valor_causado or d.valor_pagado or cuota_base or 0)
+            total_deuda_anterior += valor_deuda
+            pendientes_anteriores.append({
+                'obligacion': o,
+                'pago': d,
+                'mes_nombre': MESES[d.mes - 1],
+                'anio': d.anio,
+                'valor_deuda': valor_deuda
+            })
+
+    # Acumulado pagado meses anteriores del año
+    acum_pagado_anterior = db.session.query(
+        func.coalesce(func.sum(PagoObligacion.valor_pagado), 0)
+    ).filter(
+        PagoObligacion.anio == anio, PagoObligacion.mes < mes,
+        PagoObligacion.estado.in_(['pagado', 'parcial'])
+    ).scalar()
+
+    acum_por_obligacion_rows = db.session.query(
+        PagoObligacion.obligacion_id,
+        func.coalesce(func.sum(PagoObligacion.valor_pagado), 0).label('total')
+    ).filter(
+        PagoObligacion.anio == anio,
+        PagoObligacion.mes < mes,
+        PagoObligacion.estado.in_(['pagado', 'parcial'])
+    ).group_by(PagoObligacion.obligacion_id).all()
+
+    acum_obligaciones_detalle = []
+    for obligacion_id, total in acum_por_obligacion_rows:
+        obligacion = next((o for o in obligaciones if o.id == obligacion_id), None)
+        if obligacion and float(total or 0) > 0:
+            acum_obligaciones_detalle.append({
+                'obligacion': obligacion,
+                'total': float(total)
+            })
+
+    acum_obligaciones_detalle.sort(key=lambda item: item['total'], reverse=True)
+
+    # Pagado en el mes actual
+    pagado_mes_actual = db.session.query(
+        func.coalesce(func.sum(PagoObligacion.valor_pagado), 0)
+    ).filter(
+        PagoObligacion.anio == anio, PagoObligacion.mes == mes,
+        PagoObligacion.estado.in_(['pagado', 'parcial'])
+    ).scalar()
+
+    # Total causado del mes actual
+    causado_mes_actual = db.session.query(
+        func.coalesce(func.sum(PagoObligacion.valor_causado), 0)
+    ).filter(
+        PagoObligacion.anio == anio, PagoObligacion.mes == mes
+    ).scalar()
+
+    # Totales del mes para el resumen detallado
+    total_estimado_mes = 0
+    total_estimado_items = 0
+    total_causado_items = 0
+    sin_causar_mes = 0
+    sin_causar_items = 0
+    total_pagado_items = 0
+    total_pendiente_items = 0
+    esperado_mes = 0
+    items_mes_actual = []
+    for o in obligaciones:
+        cuota_estimado = _valor_estimado_obligacion(o, ultimos_pagos_dict.get(o.id))
+        total_estimado_mes += cuota_estimado
+        if cuota_estimado > 0:
+            total_estimado_items += 1
+        pago = pagos_dict.get(o.id)
+        estado_item = pago.estado if pago else 'sin_causar'
+        valor_causado = float(pago.valor_causado or 0) if pago else 0
+        valor_pagado = float(pago.valor_pagado or 0) if pago else 0
+
+        if valor_causado > 0:
+            total_causado_items += 1
+        if valor_pagado > 0:
+            total_pagado_items += 1
+        if estado_item in ('sin_causar', 'pendiente'):
+            sin_causar_mes += cuota_estimado
+            if cuota_estimado > 0:
+                sin_causar_items += 1
+        if valor_causado > valor_pagado:
+            total_pendiente_items += 1
+
+        items_mes_actual.append({
+            'id': o.id,
+            'nombre': o.tercero.nombre,
+            'modalidad': o.modalidad.replace('_', ' ').title(),
+            'estado': estado_item,
+            'valor_estimado': cuota_estimado,
+            'valor_causado': valor_causado,
+            'cuota_esperada': cuota_estimado,
+            'valor_pagado': valor_pagado
+        })
+
+    esperado_mes = float(causado_mes_actual) + sin_causar_mes
+    total_esperado_items = len({
+        item['id'] for item in items_mes_actual
+        if item['valor_causado'] > 0 or (item['estado'] in ('sin_causar', 'pendiente') and item['valor_estimado'] > 0)
+    })
+
+    # Resumen agrupado por modalidad
+    resumen_modalidades = {}
+    for o in obligaciones:
+        mod = o.modalidad
+        label = MODALIDAD_LABELS.get(mod, mod.replace('_', ' ').title())
+        if mod not in resumen_modalidades:
+            resumen_modalidades[mod] = {
+                'nombre': label,
+                'color': _color_modalidad(mod),
+                'cantidad': 0,
+                'pagado': 0,
+                'esperado': 0,
+                'saldo_total': 0
+            }
+        resumen_modalidades[mod]['cantidad'] += 1
+        resumen_modalidades[mod]['saldo_total'] += float(o.saldo_actual or 0)
+
+        pago = pagos_dict.get(o.id)
+        if pago and pago.estado in ('pagado', 'parcial'):
+            resumen_modalidades[mod]['pagado'] += float(pago.valor_pagado or 0)
+
+        resumen_modalidades[mod]['esperado'] += _valor_estimado_obligacion(o, ultimos_pagos_dict.get(o.id))
+
+    resumen_grupos = [v for v in resumen_modalidades.values() if v['cantidad'] > 0]
+
+    # Tarjetas por obligación
+    obligaciones_mes = []
+    for o in obligaciones:
+        pago = pagos_dict.get(o.id)
+        estado = pago.estado if pago else 'sin_causar'
+
+        # Valor cuota esperada
+        cuota_esperada = _valor_estimado_obligacion(o, ultimos_pagos_dict.get(o.id))
+        if pago:
+            if pago.valor_pagado:
+                valor_mostrar = float(pago.valor_pagado)
+            elif pago.valor_causado:
+                valor_mostrar = float(pago.valor_causado)
+            else:
+                valor_mostrar = cuota_esperada
+        else:
+            valor_mostrar = cuota_esperada
+        valor_causado = float(pago.valor_causado or 0) if pago else 0
+
+        # Días restantes
+        dias_restantes = None
+        fecha_referencia = _fecha_referencia_obligacion(o, anio, mes)
+        if fecha_referencia and estado != 'pagado':
+            dias_restantes = (fecha_referencia - hoy).days
+
+        # Tipo de pago
+        tipo_pago = None
+        if pago and pago.estado == 'pagado' and pago.fecha_pago and fecha_referencia:
+            diff = (pago.fecha_pago - fecha_referencia).days
+            if diff < 0:
+                tipo_pago = 'anticipado'
+            elif diff == 0:
+                tipo_pago = 'a_tiempo'
+            else:
+                tipo_pago = 'tarde'
+
+        obligaciones_mes.append({
+            'obligacion': o,
+            'pago': pago,
+            'estado': estado,
+            'valor_mostrar': valor_mostrar,
+            'valor_causado': valor_causado,
+            'cuota_esperada': cuota_esperada,
+            'dias_restantes': dias_restantes,
+            'tipo_pago': tipo_pago,
+            'fecha_referencia': fecha_referencia,
+        })
+
+    total_items_mes = len(obligaciones_mes)
+
+    return render_template('obligaciones/pagos.html',
+                           obligaciones_mes=obligaciones_mes,
+                           pendientes_anteriores=pendientes_anteriores,
+                           anio=anio, mes=mes, meses=MESES,
+                           medios=medios,
+                           acum_pagado_anterior=float(acum_pagado_anterior),
+                           acum_obligaciones_detalle=acum_obligaciones_detalle,
+                           pagado_mes_actual=float(pagado_mes_actual),
+                           causado_mes_actual=float(causado_mes_actual),
+                           total_estimado_mes=total_estimado_mes,
+                           total_estimado_items=total_estimado_items,
+                           total_causado_items=total_causado_items,
+                           sin_causar_mes=sin_causar_mes,
+                           sin_causar_items=sin_causar_items,
+                           esperado_mes=esperado_mes,
+                           total_esperado_items=total_esperado_items,
+                           total_deuda_anterior=total_deuda_anterior,
+                           resumen_grupos=resumen_grupos,
+                           pendiente_mes=float(causado_mes_actual) - float(pagado_mes_actual),
+                           total_pagado_items=total_pagado_items,
+                           total_pendiente_items=total_pendiente_items,
+                           saldo_mes=esperado_mes - float(pagado_mes_actual),
+                           total_items_mes=total_items_mes,
+                           items_mes_actual=items_mes_actual)
+
+
+def _color_modalidad(mod):
+    colores = {
+        'bancario_cuota_fija': '#2563eb',
+        'solo_interes': '#f59e0b',
+        'cadena': '#8b5cf6',
+        'pago_total_pactado': '#059669',
+    }
+    return colores.get(mod, '#6366f1')
+
+
+@obligaciones_bp.route('/pago', methods=['POST'])
+def registrar_pago():
+    obligacion_id = int(request.form['obligacion_id'])
+    anio = int(request.form['anio'])
+    mes = int(request.form['mes'])
+    accion = request.form.get('accion', 'pagar')  # causar o pagar
+    valor_causado = request.form.get('valor_causado') or None
+    valor_pagado = request.form.get('valor_pagado') or None
+    componente_capital = request.form.get('componente_capital') or None
+    componente_interes = request.form.get('componente_interes') or None
+    estado = request.form.get('estado', 'pagado')
+    medio_pago_id = request.form.get('medio_pago_id') or None
+    fecha_pago = request.form.get('fecha_pago') or None
+    observaciones = request.form.get('observaciones', '').strip()
+
+    pago = PagoObligacion.query.filter_by(
+        obligacion_id=obligacion_id, anio=anio, mes=mes
+    ).first()
+
+    if pago:
+        if accion == 'causar':
+            pago.valor_causado = valor_causado
+            pago.fecha_causacion = date.today()
+            if pago.estado == 'sin_causar':
+                pago.estado = 'causado'
+        else:
+            pago.valor_pagado = valor_pagado
+            pago.componente_capital = componente_capital
+            pago.componente_interes = componente_interes
+            pago.estado = estado
+            pago.medio_pago_id = medio_pago_id
+            pago.fecha_pago = fecha_pago
+            if valor_causado:
+                pago.valor_causado = valor_causado
+        pago.observaciones = observaciones
+    else:
+        obligacion = Obligacion.query.get(obligacion_id)
+        numero_cuota = (obligacion.cuotas_pagadas or 0) + 1 if obligacion else None
+        if accion == 'causar':
+            pago = PagoObligacion(
+                obligacion_id=obligacion_id, anio=anio, mes=mes,
+                valor_causado=valor_causado, estado='causado',
+                fecha_causacion=date.today(),
+                numero_cuota=numero_cuota,
+                observaciones=observaciones
+            )
+        else:
+            pago = PagoObligacion(
+                obligacion_id=obligacion_id, anio=anio, mes=mes,
+                valor_causado=valor_causado, valor_pagado=valor_pagado,
+                componente_capital=componente_capital,
+                componente_interes=componente_interes,
+                numero_cuota=numero_cuota,
+                estado=estado, medio_pago_id=medio_pago_id,
+                fecha_pago=fecha_pago, observaciones=observaciones
+            )
+        db.session.add(pago)
+
+    # Actualizar saldo y cuotas de la obligación si se pagó
+    if accion == 'pagar' and estado == 'pagado' and componente_capital:
+        obligacion = Obligacion.query.get(obligacion_id)
+        if obligacion and obligacion.saldo_actual:
+            obligacion.saldo_actual = float(obligacion.saldo_actual) - float(componente_capital)
+            obligacion.cuotas_pagadas = (obligacion.cuotas_pagadas or 0) + 1
+
+    db.session.commit()
+    flash('Registro actualizado.', 'success')
+    return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
+
+
+@obligaciones_bp.route('/detalle/<int:id>')
+def detalle(id):
+    """Vista detalle de una obligación: historial de todos los meses del año"""
+    obligacion = Obligacion.query.get_or_404(id)
+    anio = request.args.get('anio', date.today().year, type=int)
+    medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
+    pagos = PagoObligacion.query.filter_by(obligacion_id=id, anio=anio).order_by(PagoObligacion.mes).all()
+    pagos_dict = {p.mes: p for p in pagos}
+    return render_template('obligaciones/detalle.html',
+                           obligacion=obligacion, anio=anio,
+                           meses=MESES, pagos=pagos_dict, medios=medios)
+
+
+# ==================== REFINANCIACIONES ====================
+
+@obligaciones_bp.route('/<int:id>/refinanciaciones')
+def refinanciaciones(id):
+    obligacion = Obligacion.query.get_or_404(id)
+    refis = Refinanciacion.query.filter_by(obligacion_id=id).order_by(
+        Refinanciacion.fecha_refinanciacion.desc()).all()
+    abonos = AbonoCapitalObligacion.query.filter_by(obligacion_id=id).order_by(
+        AbonoCapitalObligacion.fecha_abono.desc(),
+        AbonoCapitalObligacion.id.desc()
+    ).all()
+    pagos = PagoObligacion.query.filter_by(obligacion_id=id).all()
+
+    total_pagado = sum(float(p.valor_pagado or 0) for p in pagos)
+    total_capital_pagado = sum(float(p.componente_capital or 0) for p in pagos)
+    total_interes_pagado = sum(float(p.componente_interes or 0) for p in pagos)
+    total_abonos_capital = sum(float(a.valor_abono or 0) for a in abonos)
+    total_amortizado = total_capital_pagado + total_abonos_capital
+    salida_total = total_pagado + total_abonos_capital
+
+    return render_template('obligaciones/refinanciaciones.html',
+                           obligacion=obligacion,
+                           refinanciaciones=refis,
+                           abonos=abonos,
+                           hoy=date.today(),
+                           resumen_costos={
+                               'capital_inicial': float(obligacion.capital_inicial or 0),
+                               'saldo_actual': float(obligacion.saldo_actual or 0),
+                               'total_pagado': total_pagado,
+                               'total_capital_pagado': total_capital_pagado,
+                               'total_interes_pagado': total_interes_pagado,
+                               'total_abonos_capital': total_abonos_capital,
+                               'total_amortizado': total_amortizado,
+                               'salida_total': salida_total,
+                           })
+
+
+@obligaciones_bp.route('/<int:id>/abonar-capital', methods=['POST'])
+def abonar_capital(id):
+    obligacion = Obligacion.query.get_or_404(id)
+
+    try:
+        fecha_abono = datetime.strptime(request.form['fecha_abono'], '%Y-%m-%d').date()
+    except (KeyError, ValueError):
+        flash('La fecha del abono no es válida.', 'danger')
+        return redirect(url_for('obligaciones.refinanciaciones', id=id))
+
+    try:
+        valor_abono = float(request.form.get('valor_abono') or 0)
+    except ValueError:
+        valor_abono = 0
+
+    opcion_recalculo = request.form.get('opcion_recalculo')
+    observaciones = request.form.get('observaciones', '').strip()
+
+    saldo_anterior = float(obligacion.saldo_actual or 0)
+    cuotas_pendientes_antes = obligacion.cuotas_pendientes or 0
+    cuota_anterior = float(
+        obligacion.valor_cuota_fija
+        or obligacion.cuota_francesa_calculada
+        or _valor_estimado_obligacion(obligacion)
+        or 0
+    )
+
+    if valor_abono <= 0:
+        flash('El valor del abono debe ser mayor que cero.', 'danger')
+        return redirect(url_for('obligaciones.refinanciaciones', id=id))
+    if saldo_anterior <= 0:
+        flash('La obligación no tiene saldo pendiente para abonar.', 'warning')
+        return redirect(url_for('obligaciones.refinanciaciones', id=id))
+    if valor_abono > saldo_anterior:
+        flash('El abono no puede ser mayor al saldo actual.', 'danger')
+        return redirect(url_for('obligaciones.refinanciaciones', id=id))
+    if opcion_recalculo not in ('reducir_cuota', 'reducir_plazo'):
+        flash('Debe indicar si el abono reduce la cuota o reduce el plazo.', 'danger')
+        return redirect(url_for('obligaciones.refinanciaciones', id=id))
+
+    saldo_nuevo = max(saldo_anterior - valor_abono, 0)
+    tasa_mensual = float(obligacion.tasa_interes_mensual or 0) / 100
+    cuotas_pendientes_despues = cuotas_pendientes_antes
+    cuota_nueva = cuota_anterior
+
+    if saldo_nuevo <= 0:
+        cuotas_pendientes_despues = 0
+        cuota_nueva = 0
+    elif opcion_recalculo == 'reducir_cuota':
+        if cuotas_pendientes_antes <= 0:
+            flash('No hay cuotas pendientes para recalcular la cuota.', 'warning')
+            return redirect(url_for('obligaciones.refinanciaciones', id=id))
+        if tasa_mensual > 0:
+            cuota_nueva = _cuota_con_tasa(saldo_nuevo, tasa_mensual, cuotas_pendientes_antes)
+        else:
+            cuota_nueva = saldo_nuevo / cuotas_pendientes_antes
+    else:
+        cuota_objetivo = cuota_anterior
+        if cuota_objetivo <= 0:
+            flash('No fue posible determinar la cuota vigente para reducir el plazo.', 'warning')
+            return redirect(url_for('obligaciones.refinanciaciones', id=id))
+        cuotas_pendientes_despues = _plazo_con_tasa(saldo_nuevo, tasa_mensual, cuota_objetivo)
+        if cuotas_pendientes_despues is None:
+            flash('La cuota actual no alcanza a amortizar el interés mensual. Revise tasa o cuota.', 'warning')
+            return redirect(url_for('obligaciones.refinanciaciones', id=id))
+
+    abono = AbonoCapitalObligacion(
+        obligacion_id=id,
+        fecha_abono=fecha_abono,
+        valor_abono=valor_abono,
+        saldo_anterior=saldo_anterior,
+        saldo_nuevo=saldo_nuevo,
+        opcion_recalculo=opcion_recalculo,
+        cuotas_pendientes_antes=cuotas_pendientes_antes,
+        cuotas_pendientes_despues=cuotas_pendientes_despues,
+        cuota_anterior=cuota_anterior,
+        cuota_nueva=cuota_nueva,
+        observaciones=observaciones
+    )
+    db.session.add(abono)
+
+    obligacion.saldo_actual = saldo_nuevo
+    if opcion_recalculo == 'reducir_cuota':
+        obligacion.valor_cuota_fija = cuota_nueva
+    if obligacion.cuotas_totales is not None:
+        obligacion.cuotas_totales = (obligacion.cuotas_pagadas or 0) + cuotas_pendientes_despues
+    if saldo_nuevo <= 0:
+        obligacion.valor_cuota_fija = 0
+
+    db.session.commit()
+    flash('Abono a capital registrado y obligación actualizada.', 'success')
+    return redirect(url_for('obligaciones.refinanciaciones', id=id))
+
+
+@obligaciones_bp.route('/<int:id>/refinanciar', methods=['POST'])
+def refinanciar(id):
+    obligacion = Obligacion.query.get_or_404(id)
+
+    refi = Refinanciacion(
+        obligacion_id=id,
+        fecha_refinanciacion=datetime.strptime(request.form['fecha_refinanciacion'], '%Y-%m-%d').date(),
+        valor_refinanciado=request.form['valor_refinanciado'],
+        nueva_tasa_mensual=request.form.get('nueva_tasa_mensual') or None,
+        nuevo_plazo_meses=request.form.get('nuevo_plazo_meses') or None,
+        nuevo_valor_cuota=request.form.get('nuevo_valor_cuota') or None,
+        nueva_fecha_vencimiento=request.form.get('nueva_fecha_vencimiento') or None,
+        observaciones=request.form.get('observaciones', '').strip()
+    )
+    db.session.add(refi)
+
+    # Actualizar la obligación con las nuevas condiciones
+    if refi.nueva_tasa_mensual:
+        obligacion.tasa_interes_mensual = refi.nueva_tasa_mensual
+    if refi.nuevo_plazo_meses:
+        obligacion.plazo_meses = refi.nuevo_plazo_meses
+        obligacion.cuotas_totales = refi.nuevo_plazo_meses
+    if refi.nuevo_valor_cuota:
+        obligacion.valor_cuota_fija = refi.nuevo_valor_cuota
+    if refi.nueva_fecha_vencimiento:
+        obligacion.fecha_vencimiento = refi.nueva_fecha_vencimiento
+    obligacion.saldo_actual = refi.valor_refinanciado
+
+    db.session.commit()
+    flash('Refinanciación registrada. Condiciones de la obligación actualizadas.', 'success')
+    return redirect(url_for('obligaciones.refinanciaciones', id=id))

@@ -1,0 +1,208 @@
+POSTGRESQL - NOTAS DEL PROYECTO PREVENT
+======================================
+
+RESUMEN RAPIDO
+--------------
+- La base oficial del proyecto debe ser PostgreSQL, no SQLite.
+- La informacion mas solida disponible esta en: backups/pg_logical_backup_20260325_031434
+- La SQLite actual contiene principalmente pruebas recientes del modulo comercial.
+- Primero se debe apuntar DATABASE_URL a PostgreSQL, luego correr migraciones y despues restaurar el backup.
+- El script de restauracion ya esta listo: restore_postgres_logical.py
+- Tambien existe un script para subir a PostgreSQL lo que siga solo en SQLite: migrar_sqlite_restante_a_postgres.py
+- Ya se dejo lista una base local PostgreSQL funcional: prevent_utf8
+- Ya se reseteo la clave local del usuario postgres.
+
+
+DATOS LOCALES ACTUALES DE POSTGRESQL
+------------------------------------
+Servidor:
+- 127.0.0.1
+
+Puerto:
+- 5432
+
+Base local de trabajo:
+- prevent_utf8
+
+Usuario:
+- postgres
+
+Password local actual:
+- PreventPg2026Local1
+
+DATABASE_URL local:
+- postgresql+psycopg2://postgres:PreventPg2026Local1@127.0.0.1:5432/prevent_utf8
+
+
+1. Estado actual
+----------------
+- El proyecto PREVENT ya esta preparado para trabajar con PostgreSQL.
+- La aplicacion toma la conexion desde la variable de entorno DATABASE_URL.
+- La aplicacion ya no debe caer a SQLite local.
+- La meta del proyecto es dejar de trabajar con SQLite y usar solo PostgreSQL.
+
+
+2. Hallazgos importantes
+------------------------
+- En este equipo existe evidencia de que PREVENT ya se conecto antes a PostgreSQL.
+- Esa conexion aparece en logs/app.log.
+- Tambien existe un respaldo logico local de PostgreSQL con informacion mas solida que la base SQLite actual.
+
+Backup recomendado:
+- backups/pg_logical_backup_20260325_031434
+
+Archivo principal del backup:
+- backups/pg_logical_backup_20260325_031434/manifest.json
+
+
+3. Base recomendada para arrancar
+---------------------------------
+Tomar como base oficial el backup logico de PostgreSQL del 25/03/2026.
+
+Motivo:
+- Trae mas informacion historica operativa que la SQLite actual.
+- Corresponde a la informacion que estuvo en la nube.
+- La informacion reciente del modulo comercial en SQLite son pruebas y se puede volver a digitar.
+
+
+4. Situacion de los datos
+-------------------------
+La informacion historica mas fuerte esta en el backup de PostgreSQL.
+
+La SQLite actual tiene principalmente:
+- avances nuevos del modulo comercial
+- clientes comerciales
+- atenciones
+- documentos de seguimiento
+- pagos de seguimiento
+
+Recomendacion:
+- Restaurar primero el backup de PostgreSQL
+- Ejecutar las migraciones actuales del proyecto
+- Luego migrar automaticamente desde SQLite las tablas que sigan faltando en PostgreSQL
+- Y solo volver a digitar manualmente aquello que no convenga conservar como prueba
+
+
+5. Conexion a PostgreSQL
+------------------------
+Ejemplo para PostgreSQL local:
+
+postgresql+psycopg2://postgres:TU_PASSWORD@localhost:5432/prevent
+
+Ejemplo para nube:
+
+postgresql+psycopg2://usuario:password@host:puerto/base?sslmode=require
+
+
+6. Variable de entorno
+----------------------
+Antes de arrancar la app, definir DATABASE_URL.
+
+Ejemplo en PowerShell:
+
+$env:DATABASE_URL = "postgresql+psycopg2://postgres:TU_PASSWORD@localhost:5432/prevent"
+
+
+7. Pasos para dejar PREVENT en PostgreSQL
+-----------------------------------------
+Paso 1:
+Crear o escoger la base PostgreSQL destino.
+
+Paso 2:
+Definir DATABASE_URL apuntando a esa base.
+
+Paso 3:
+Ejecutar migraciones del proyecto:
+
+cmd /c .venv\Scripts\python.exe -m flask --app .\run.py db upgrade
+
+Paso 4:
+Restaurar el backup logico solido:
+
+.\.venv\Scripts\python.exe .\restore_postgres_logical.py --backup-dir .\backups\pg_logical_backup_20260325_031434
+
+Si la base destino ya tiene datos y se quiere reemplazar:
+
+.\.venv\Scripts\python.exe .\restore_postgres_logical.py --backup-dir .\backups\pg_logical_backup_20260325_031434 --clean-target
+
+Paso 4.1:
+Migrar desde SQLite lo que siga faltando en PostgreSQL y cuya tabla destino este vacia:
+
+.\.venv\Scripts\python.exe .\migrar_sqlite_restante_a_postgres.py
+
+Paso 5:
+Arrancar la aplicacion:
+
+cmd /c .venv\Scripts\python.exe .\run.py
+
+Paso 6:
+Ver inventario de datos en PostgreSQL:
+
+.\.venv\Scripts\python.exe .\ver_postgres_resumen.py
+
+Ese script deja un archivo:
+
+postgres_resumen.json
+
+Resultado actual del inventario local:
+- empleados: 20
+- quincenas: 5
+- liquidos_quincena: 79
+- pagos: 50
+- servicios: 16
+- vendedores: 3
+- clientes_comerciales: 2
+- clientes_atenciones: 1
+- clientes_seguimiento_documentos: 3
+- clientes_seguimiento_pagos: 2
+
+
+8. Script creado para restauracion
+----------------------------------
+Se creo este archivo para restaurar el backup logico hacia PostgreSQL:
+
+restore_postgres_logical.py
+
+Ese script:
+- toma un backup logico en JSON/CSV
+- revisa tablas compatibles
+- inserta los datos en PostgreSQL
+- reinicia secuencias
+- genera reporte de restauracion
+
+Tambien se creo este archivo para migrar a PostgreSQL las tablas que hoy solo existan en SQLite
+o que sigan vacias en el destino:
+
+migrar_sqlite_restante_a_postgres.py
+
+
+9. Limitacion actual encontrada
+-------------------------------
+En este equipo hay un servidor local PostgreSQL 16 instalado y corriendo.
+Pero la conexion local con el usuario postgres exige password.
+
+Por eso, para terminar la migracion real, hace falta una de estas dos cosas:
+- la DATABASE_URL completa de la base destino
+- o la password del usuario postgres local
+
+
+10. Archivos importantes relacionados
+-------------------------------------
+- app/config.py
+- logs/app.log
+- backups/pg_logical_backup_20260325_031434/manifest.json
+- restore_postgres_logical.py
+- migrar_sqlite_restante_a_postgres.py
+- ver_postgres_resumen.py
+- POSTGRES_TRABAJO_LOCAL.md
+
+
+11. Decision recomendada
+------------------------
+No usar SQLite como base maestra.
+
+Trabajar asi:
+- PostgreSQL como base oficial
+- backup logico del 25/03/2026 como punto de partida
+- migracion complementaria desde SQLite para lo que hoy siga faltando
+- y solo registro manual del modulo comercial si alguna prueba no conviene conservar
