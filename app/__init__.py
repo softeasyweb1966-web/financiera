@@ -1,7 +1,7 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -11,6 +11,13 @@ def _ensure_schema():
     inspector = inspect(db.engine)
     if not inspector.has_table('tipo_tercero'):
         db.create_all()
+        inspector = inspect(db.engine)
+
+    if inspector.has_table('historial_estados'):
+        columnas = {col['name'] for col in inspector.get_columns('historial_estados')}
+        if 'vigencia_desde' not in columnas:
+            db.session.execute(text('ALTER TABLE historial_estados ADD COLUMN vigencia_desde DATE'))
+            db.session.commit()
 
 
 def create_app():
