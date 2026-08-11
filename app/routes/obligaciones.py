@@ -5,7 +5,8 @@ from app.models import (
     Tercero, Concepto, Categoria, MedioPago
 )
 from app.conceptos_estado import cargar_historial_conceptos, concepto_activo_en_periodo
-from datetime import date, datetime
+from calendar import monthrange
+from datetime import date, datetime, timedelta
 from sqlalchemy import func
 import math
 
@@ -47,15 +48,124 @@ def _valor_estimado_obligacion(obligacion, ultimo_pago=None):
     return 0
 
 
-def _fecha_referencia_obligacion(obligacion, anio, mes):
-    if obligacion.modalidad == 'pago_total_pactado' and obligacion.fecha_vencimiento:
-        return obligacion.fecha_vencimiento
+def _rango_mes(anio, mes):
+    ultimo_dia = monthrange(anio, mes)[1]
+    return date(anio, mes, 1), date(anio, mes, ultimo_dia)
+
+
+def _fechas_programadas_obligacion(obligacion, anio, mes):
+    inicio_mes, fin_mes = _rango_mes(anio, mes)
+
+    if obligacion.modalidad == 'pago_total_pactado':
+        if obligacion.fecha_vencimiento and inicio_mes <= obligacion.fecha_vencimiento <= fin_mes:
+            return [obligacion.fecha_vencimiento]
+        return []
+
+    if obligacion.modalidad == 'cadena' and obligacion.fecha_inicio:
+        fecha_inicio = obligacion.fecha_inicio
+        fecha_final = obligacion.fecha_vencimiento
+        if fecha_final and fecha_final < inicio_mes:
+            return []
+        if fecha_inicio > fin_mes:
+            return []
+
+        frecuencia = (obligacion.frecuencia_pago or 'mensual').lower()
+        if frecuencia == 'quincenal':
+            fechas = []
+            actual = fecha_inicio
+            while actual < inicio_mes:
+                actual += timedelta(days=15)
+            while actual <= fin_mes and (not fecha_final or actual <= fecha_final):
+                fechas.append(actual)
+                actual += timedelta(days=15)
+            return fechas
+
+        dia = min(fecha_inicio.day, fin_mes.day)
+        fecha_mes = date(anio, mes, dia)
+        if fecha_mes < fecha_inicio:
+            return []
+        if fecha_final and fecha_mes > fecha_final:
+            return []
+        return [fecha_mes]
+
     if obligacion.dia_limite_pago:
         try:
-            return date(anio, mes, min(obligacion.dia_limite_pago, 28))
+            return [date(anio, mes, min(obligacion.dia_limite_pago, fin_mes.day))]
         except ValueError:
+            return []
+    return []
+
+
+def _siguiente_fecha_programada(obligacion, desde_fecha):
+    if obligacion.modalidad == 'pago_total_pactado':
+        if obligacion.fecha_vencimiento and obligacion.fecha_vencimiento > desde_fecha:
+            return obligacion.fecha_vencimiento
+        return None
+
+    if obligacion.modalidad == 'cadena' and obligacion.fecha_inicio:
+        fecha_final = obligacion.fecha_vencimiento
+        frecuencia = (obligacion.frecuencia_pago or 'mensual').lower()
+
+        if frecuencia == 'quincenal':
+            actual = obligacion.fecha_inicio
+            while actual <= desde_fecha:
+                actual += timedelta(days=15)
+            if fecha_final and actual > fecha_final:
+                return None
+            return actual
+
+        actual = obligacion.fecha_inicio
+        while actual <= desde_fecha:
+            siguiente_mes = actual.month + 1
+            siguiente_anio = actual.year
+            if siguiente_mes > 12:
+                siguiente_mes = 1
+                siguiente_anio += 1
+            actual = date(
+                siguiente_anio,
+                siguiente_mes,
+                min(obligacion.fecha_inicio.day, monthrange(siguiente_anio, siguiente_mes)[1])
+            )
+        if fecha_final and actual > fecha_final:
             return None
+        return actual
+
+    if obligacion.dia_limite_pago:
+        candidato = date(
+            desde_fecha.year,
+            desde_fecha.month,
+            min(obligacion.dia_limite_pago, monthrange(desde_fecha.year, desde_fecha.month)[1])
+        )
+        if candidato <= desde_fecha:
+            siguiente_mes = desde_fecha.month + 1
+            siguiente_anio = desde_fecha.year
+            if siguiente_mes > 12:
+                siguiente_mes = 1
+                siguiente_anio += 1
+            candidato = date(
+                siguiente_anio,
+                siguiente_mes,
+                min(obligacion.dia_limite_pago, monthrange(siguiente_anio, siguiente_mes)[1])
+            )
+        return candidato
     return None
+
+
+def _valor_programado_mes_obligacion(obligacion, anio, mes, ultimo_pago=None):
+    base = _valor_estimado_obligacion(obligacion, ultimo_pago)
+    if base <= 0:
+        return 0
+
+    if obligacion.modalidad == 'pago_total_pactado':
+        return base if _fechas_programadas_obligacion(obligacion, anio, mes) else 0
+
+    if obligacion.modalidad == 'cadena':
+        cuotas_mes = len(_fechas_programadas_obligacion(obligacion, anio, mes))
+        if cuotas_mes <= 0:
+            return 0
+        return base * cuotas_mes
+
+    return base
 
 
 def _cuota_con_tasa(saldo, tasa_mensual, cuotas_pendientes):
@@ -100,7 +210,10 @@ def nueva():
             valor_cuota_fija=request.form.get('valor_cuota_fija') or None,
             fecha_inicio=request.form.get('fecha_inicio') or None,
             fecha_vencimiento=request.form.get('fecha_vencimiento') or None,
+            fecha_recibe=request.form.get('fecha_recibe') or None,
             titular=request.form.get('titular', '').strip(),
+            referencia=request.form.get('referencia', '').strip(),
+            frecuencia_pago=request.form.get('frecuencia_pago', 'mensual'),
             dia_limite_pago=request.form.get('dia_limite_pago') or None,
             estado=request.form.get('estado', 'activo'),
             observaciones=request.form.get('observaciones', '').strip()
@@ -134,7 +247,10 @@ def editar(id):
         obligacion.valor_cuota_fija = request.form.get('valor_cuota_fija') or None
         obligacion.fecha_inicio = request.form.get('fecha_inicio') or None
         obligacion.fecha_vencimiento = request.form.get('fecha_vencimiento') or None
+        obligacion.fecha_recibe = request.form.get('fecha_recibe') or None
         obligacion.titular = request.form.get('titular', '').strip()
+        obligacion.referencia = request.form.get('referencia', '').strip()
+        obligacion.frecuencia_pago = request.form.get('frecuencia_pago', 'mensual')
         obligacion.dia_limite_pago = request.form.get('dia_limite_pago') or None
         obligacion.estado = request.form.get('estado', 'activo')
         obligacion.observaciones = request.form.get('observaciones', '').strip()
@@ -203,7 +319,6 @@ def pagos(anio=None, mes=None):
     pendientes_anteriores = []
     total_deuda_anterior = 0
     for o in obligaciones:
-        cuota_base = _valor_estimado_obligacion(o, ultimos_pagos_dict.get(o.id))
         deudas = PagoObligacion.query.filter(
             PagoObligacion.obligacion_id == o.id,
             PagoObligacion.estado == 'pendiente',
@@ -213,6 +328,7 @@ def pagos(anio=None, mes=None):
             )
         ).order_by(PagoObligacion.anio, PagoObligacion.mes).all()
         for d in deudas:
+            cuota_base = _valor_programado_mes_obligacion(o, d.anio, d.mes, ultimos_pagos_dict.get(o.id))
             valor_deuda = float(d.valor_causado or d.valor_pagado or cuota_base or 0)
             total_deuda_anterior += valor_deuda
             pendientes_anteriores.append({
@@ -284,7 +400,7 @@ def pagos(anio=None, mes=None):
     esperado_mes = 0
     items_mes_actual = []
     for o in obligaciones:
-        cuota_estimado = _valor_estimado_obligacion(o, ultimos_pagos_dict.get(o.id))
+        cuota_estimado = _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
         total_estimado_mes += cuota_estimado
         if cuota_estimado > 0:
             total_estimado_items += 1
@@ -342,7 +458,7 @@ def pagos(anio=None, mes=None):
         if pago and pago.estado in ('pagado', 'parcial'):
             resumen_modalidades[mod]['pagado'] += float(pago.valor_pagado or 0)
 
-        resumen_modalidades[mod]['esperado'] += _valor_estimado_obligacion(o, ultimos_pagos_dict.get(o.id))
+        resumen_modalidades[mod]['esperado'] += _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
 
     resumen_grupos = [v for v in resumen_modalidades.values() if v['cantidad'] > 0]
 
@@ -353,7 +469,7 @@ def pagos(anio=None, mes=None):
         estado = pago.estado if pago else 'sin_causar'
 
         # Valor cuota esperada
-        cuota_esperada = _valor_estimado_obligacion(o, ultimos_pagos_dict.get(o.id))
+        cuota_esperada = _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
         if pago:
             if pago.valor_pagado:
                 valor_mostrar = float(pago.valor_pagado)
@@ -367,14 +483,31 @@ def pagos(anio=None, mes=None):
 
         # Días restantes
         dias_restantes = None
-        fecha_referencia = _fecha_referencia_obligacion(o, anio, mes)
-        if fecha_referencia and estado != 'pagado':
-            dias_restantes = (fecha_referencia - hoy).days
+        fechas_programadas_mes = _fechas_programadas_obligacion(o, anio, mes)
+        fecha_limite_actual = fechas_programadas_mes[0] if fechas_programadas_mes else None
+        esta_vencido = bool(fecha_limite_actual and estado != 'pagado' and fecha_limite_actual < hoy)
+        estado_visual = 'vencido' if esta_vencido else estado
+
+        fecha_referencia = fecha_limite_actual
+        etiqueta_fecha = 'Fecha pactada' if o.modalidad == 'pago_total_pactado' else 'Dia limite'
+
+        if estado == 'pagado':
+            base_referencia = fechas_programadas_mes[-1] if fechas_programadas_mes else (
+                pago.fecha_pago if pago and pago.fecha_pago else hoy
+            )
+            fecha_referencia = _siguiente_fecha_programada(o, base_referencia)
+            etiqueta_fecha = 'Proximo pago'
+        elif not fecha_referencia:
+            fecha_referencia = _siguiente_fecha_programada(o, hoy - timedelta(days=1))
+            if fecha_referencia:
+                etiqueta_fecha = 'Proximo pago'
+
+        dias_restantes = (fecha_referencia - hoy).days if fecha_referencia else None
 
         # Tipo de pago
         tipo_pago = None
-        if pago and pago.estado == 'pagado' and pago.fecha_pago and fecha_referencia:
-            diff = (pago.fecha_pago - fecha_referencia).days
+        if pago and pago.estado == 'pagado' and pago.fecha_pago and fecha_limite_actual:
+            diff = (pago.fecha_pago - fecha_limite_actual).days
             if diff < 0:
                 tipo_pago = 'anticipado'
             elif diff == 0:
@@ -386,13 +519,34 @@ def pagos(anio=None, mes=None):
             'obligacion': o,
             'pago': pago,
             'estado': estado,
+            'estado_visual': estado_visual,
             'valor_mostrar': valor_mostrar,
             'valor_causado': valor_causado,
             'cuota_esperada': cuota_esperada,
             'dias_restantes': dias_restantes,
             'tipo_pago': tipo_pago,
             'fecha_referencia': fecha_referencia,
+            'fecha_limite_actual': fecha_limite_actual,
+            'etiqueta_fecha': etiqueta_fecha,
+            'esta_vencido': esta_vencido,
+            'es_estimado': not pago or not (pago.valor_causado or pago.valor_pagado),
         })
+
+    prioridad_estado = {
+        'vencido': 0,
+        'parcial': 1,
+        'causado': 2,
+        'pendiente': 3,
+        'sin_causar': 4,
+        'pagado': 5,
+    }
+    obligaciones_mes.sort(key=lambda item: (
+        1 if item['estado'] == 'pagado' else 0,
+        prioridad_estado.get(item['estado_visual'], 9),
+        item['fecha_referencia'] or date.max,
+        item['obligacion'].dia_limite_pago or 99,
+        item['obligacion'].tercero.nombre.lower(),
+    ))
 
     total_items_mes = len(obligaciones_mes)
 

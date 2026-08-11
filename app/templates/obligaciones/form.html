@@ -1,21 +1,22 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Editar' if obligacion else 'Nueva' }} Obligación{% endblock %}
+{% block title %}{{ 'Editar' if obligacion else 'Nueva' }} Obligacion{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-10 col-lg-8">
         <div class="card p-4">
-            <h5 class="fw-bold mb-3"><i class="bi bi-bank text-info"></i> {{ 'Editar' if obligacion else 'Nueva' }} Obligación</h5>
+            <h5 class="fw-bold mb-3"><i class="bi bi-bank text-info"></i> {{ 'Editar' if obligacion else 'Nueva' }} Obligacion</h5>
 
-            <!-- Ayuda rápida -->
             <div class="alert alert-light small mb-3 py-2">
                 <i class="bi bi-info-circle text-primary"></i>
                 <strong>Modalidades:</strong>
-                Bancario (cuota fija mensual) · Solo interés (paga interés mensual, devuelve capital al final) ·
-                Cadena (cuota fija entre personas) · Pago total (se paga todo cuando se pacte) ·
-                Corto plazo (préstamo a días: 8, 15, 30 días).
-                <br>¿No encuentra el concepto o tercero? Créelos desde
-                <a href="{{ url_for('catalogos.conceptos') }}">Conceptos</a> o <a href="{{ url_for('terceros.nuevo') }}">Terceros</a>.
+                Bancario (cuota fija mensual) - Solo interes (paga interes mensual, devuelve capital al final) -
+                Cadena (cuota fija entre personas) - Pago total (se paga todo cuando se pacte) -
+                Corto plazo (prestamo a dias: 8, 15, 30 dias).
+                <br><strong>Cadena:</strong> use fecha inicio, fecha final, fecha en que recibe y frecuencia mensual o quincenal.
+                <br>Si no encuentra el concepto o tercero, creelos desde
+                <a href="{{ url_for('catalogos.conceptos') }}">Conceptos</a> o
+                <a href="{{ url_for('terceros.nuevo') }}">Terceros</a>.
             </div>
 
             <form method="POST">
@@ -38,7 +39,7 @@
                             <option value="{{ c.id }}" {{ 'selected' if obligacion and obligacion.concepto_id == c.id else '' }}>{{ c.nombre }}</option>
                             {% endfor %}
                         </select>
-                        <div class="form-text">Tipo de obligación</div>
+                        <div class="form-text">Tipo de obligacion</div>
                     </div>
                 </div>
 
@@ -63,10 +64,9 @@
                     </div>
                 </div>
 
-                <!-- Campos según modalidad -->
                 <div class="row" id="fila_tasa">
                     <div class="col-md-3 mb-3">
-                        <label class="form-label">Tasa interés mensual %</label>
+                        <label class="form-label">Tasa interes mensual %</label>
                         <input type="number" step="0.0001" name="tasa_interes_mensual" class="form-control" value="{{ obligacion.tasa_interes_mensual if obligacion and obligacion.tasa_interes_mensual else '' }}">
                     </div>
                     <div class="col-md-3 mb-3" id="campo_plazo_meses">
@@ -74,7 +74,7 @@
                         <input type="number" name="plazo_meses" class="form-control" value="{{ obligacion.plazo_meses if obligacion and obligacion.plazo_meses else '' }}">
                     </div>
                     <div class="col-md-3 mb-3" id="campo_plazo_dias" style="display:none;">
-                        <label class="form-label">Plazo (días)</label>
+                        <label class="form-label">Plazo (dias)</label>
                         <input type="number" name="plazo_dias" class="form-control" value="{{ obligacion.plazo_dias if obligacion and obligacion.plazo_dias else '' }}" placeholder="Ej: 8, 15, 30">
                     </div>
                     <div class="col-md-3 mb-3" id="campo_cuotas">
@@ -88,24 +88,43 @@
                 </div>
 
                 <div class="row">
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-3 mb-3">
                         <label class="form-label">Fecha inicio</label>
                         <input type="date" name="fecha_inicio" class="form-control" value="{{ obligacion.fecha_inicio if obligacion and obligacion.fecha_inicio else '' }}">
                     </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">Fecha vencimiento</label>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Fecha final / vencimiento</label>
                         <input type="date" name="fecha_vencimiento" class="form-control" value="{{ obligacion.fecha_vencimiento if obligacion and obligacion.fecha_vencimiento else '' }}">
                     </div>
-                    <div class="col-md-2 mb-3">
-                        <label class="form-label">Día límite pago</label>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Fecha en que recibe</label>
+                        <input type="date" name="fecha_recibe" class="form-control" value="{{ obligacion.fecha_recibe if obligacion and obligacion.fecha_recibe else '' }}">
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Dia limite pago</label>
                         <input type="number" name="dia_limite_pago" class="form-control" min="1" max="31" value="{{ obligacion.dia_limite_pago if obligacion and obligacion.dia_limite_pago else '' }}">
                     </div>
                 </div>
 
                 <div class="row">
-                    <div class="col-md-8 mb-3">
+                    <div class="col-md-6 mb-3">
                         <label class="form-label">Titular</label>
                         <input type="text" name="titular" class="form-control" value="{{ obligacion.titular if obligacion else '' }}" placeholder="Persona o empresa responsable del pago">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Referencia</label>
+                        <input type="text" name="referencia" class="form-control" value="{{ obligacion.referencia if obligacion else '' }}" placeholder="Numero, convenio o codigo">
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3" id="campo_frecuencia_pago">
+                        <label class="form-label">Frecuencia de pago</label>
+                        <select name="frecuencia_pago" id="frecuencia_pago" class="form-select">
+                            <option value="mensual" {{ 'selected' if not obligacion or obligacion.frecuencia_pago != 'quincenal' else '' }}>Mensual</option>
+                            <option value="quincenal" {{ 'selected' if obligacion and obligacion.frecuencia_pago == 'quincenal' else '' }}>Quincenal</option>
+                        </select>
+                        <div class="form-text">Para cadena define si opera una o dos veces por mes.</div>
                     </div>
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Estado</label>
@@ -116,10 +135,12 @@
                         </select>
                     </div>
                 </div>
+
                 <div class="mb-3">
                     <label class="form-label">Observaciones</label>
                     <textarea name="observaciones" class="form-control" rows="2">{{ obligacion.observaciones if obligacion else '' }}</textarea>
                 </div>
+
                 <div class="d-flex gap-2">
                     <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Guardar</button>
                     <a href="{{ url_for('obligaciones.lista') }}" class="btn btn-outline-secondary">Cancelar</a>
@@ -138,12 +159,13 @@ function toggleCampos() {
     const plazoMeses = document.getElementById('campo_plazo_meses');
     const cuotas = document.getElementById('campo_cuotas');
     const cuotaFija = document.getElementById('campo_cuota_fija');
+    const frecuenciaPago = document.getElementById('campo_frecuencia_pago');
 
-    // Reset
     plazoDias.style.display = 'none';
     plazoMeses.style.display = 'block';
     cuotas.style.display = 'block';
     cuotaFija.style.display = 'block';
+    frecuenciaPago.style.display = mod === 'cadena' ? 'block' : 'none';
 
     if (mod === 'prestamo_corto_plazo') {
         plazoDias.style.display = 'block';
@@ -160,7 +182,7 @@ function toggleCampos() {
         plazoDias.style.display = 'block';
     }
 }
-// Ejecutar al cargar si hay modalidad seleccionada
+
 document.addEventListener('DOMContentLoaded', toggleCampos);
 </script>
 {% endblock %}

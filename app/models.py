@@ -282,7 +282,10 @@ class Obligacion(db.Model):
     valor_cuota_fija = db.Column(db.Numeric(14, 2))  # Para cadenas o cuota pactada
     fecha_inicio = db.Column(db.Date)
     fecha_vencimiento = db.Column(db.Date)
+    fecha_recibe = db.Column(db.Date)
     titular = db.Column(db.String(150))
+    referencia = db.Column(db.String(50))
+    frecuencia_pago = db.Column(db.String(20), default='mensual')  # mensual, quincenal
     dia_limite_pago = db.Column(db.Integer)
     activo = db.Column(db.Boolean, default=True)
     estado = db.Column(db.String(20), default='activo')  # activo, inactivo, retirado, anulado

@@ -108,13 +108,22 @@
             <tbody>
                 {% for o in obligaciones %}
                 <tr>
-                    <td class="fw-semibold">{{ o.tercero.nombre }}<br><small class="text-muted">{{ o.titular or '' }}</small></td>
+                    <td class="fw-semibold">
+                        {{ o.tercero.nombre }}
+                        <br><small class="text-muted">{{ o.titular or '' }}</small>
+                        {% if o.referencia %}
+                        <br><small class="text-muted">Ref: {{ o.referencia }}</small>
+                        {% endif %}
+                    </td>
                     <td><small class="text-muted">{{ o.concepto.nombre }}</small></td>
                     <td>
                         {% set mod_colors = {'bancario_cuota_fija': 'primary', 'solo_interes': 'warning', 'cadena': 'purple', 'pago_total_pactado': 'success', 'prestamo_corto_plazo': 'danger'} %}
                         <span class="badge bg-{{ mod_colors.get(o.modalidad, 'secondary') }}" style="font-size:0.65rem;">
                             {{ o.modalidad.replace('_', ' ')|title }}
                         </span>
+                        {% if o.modalidad == 'cadena' %}
+                        <br><small class="text-muted">{{ (o.frecuencia_pago or 'mensual')|title }}</small>
+                        {% endif %}
                     </td>
                     <td>${{ "{:,.0f}".format(o.capital_inicial) if o.capital_inicial else '-' }}</td>
                     <td class="fw-bold text-danger">${{ "{:,.0f}".format(o.saldo_actual) if o.saldo_actual else '-' }}</td>

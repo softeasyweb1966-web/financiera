@@ -40,6 +40,9 @@
     .summary-inline-label { font-size: 0.78rem; color: #475569; }
     .summary-inline-value { font-size: 1rem; font-weight: 700; line-height: 1; white-space: nowrap; }
     .title-meta { font-size: 0.78rem; color: #7c3aed; font-weight: 700; }
+    .valor-estimado  { font-style: italic; color: #9ca3af; }
+    .valor-real      { color: #1e293b; font-weight: 700; }
+    .card-meta-line { font-size: 0.75rem; line-height: 1.35; }
     @media (max-width: 991px) {
         .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
@@ -128,7 +131,7 @@
             <small class="text-muted d-block">{{ meses[mes-1] }}: resumen detallado <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
             <div class="metric-grid text-start mt-2">
                 <div class="metric-item">
-                    <span class="metric-label">Estimado del mes</span>
+                    <span class="metric-label">Estimado segun ultimo pago</span>
                     <span class="metric-value text-dark">
                         ${{ "{:,.0f}".format(total_estimado_mes) }}
                         <small class="text-muted">({{ total_estimado_items }})</small>
@@ -149,7 +152,7 @@
                     </span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Total esperado</span>
+                    <span class="metric-label">Total del mes a cubrir</span>
                     <span class="metric-value text-primary">
                         ${{ "{:,.0f}".format(esperado_mes) }}
                         <small class="text-muted">({{ total_esperado_items }})</small>
@@ -238,9 +241,12 @@
 {% endif %}
 
 <div class="d-flex flex-wrap gap-3 mb-3" style="font-size:0.72rem;">
+    <span><span class="indicador ind-sin_causar"></span> Sin causar</span>
+    <span><span class="indicador ind-causado"></span> Causado</span>
     <span><span class="indicador ind-pendiente"></span> Pendiente</span>
     <span><span class="indicador ind-pagado"></span> Pagado</span>
     <span><span class="indicador ind-vencido"></span> Vencido</span>
+    <span><span class="indicador ind-parcial"></span> Parcial</span>
 </div>
 
 <div class="row g-2">
@@ -248,14 +254,14 @@
     {% set o = item.obligacion %}
     {% set pago = item.pago %}
     <div class="col-12 col-md-6 col-lg-4">
-        <div class="card card-servicio estado-{{ item.estado }} p-3 h-100">
+        <div class="card card-servicio estado-{{ item.estado_visual }} p-3 h-100">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <div class="fw-bold" style="font-size:0.9rem;">{{ o.tercero.nombre }}</div>
+                    <div class="fw-bold" style="font-size:0.9rem;">{{ o.tercero.nombre }}{{ ' - ' + o.referencia if o.referencia else '' }}</div>
                     <small class="text-muted">{{ o.modalidad.replace('_',' ')|title }}</small>
                 </div>
                 <div class="text-end">
-                    <span class="indicador ind-{{ item.estado }}"></span>
+                    <span class="indicador ind-{{ item.estado_visual }}"></span>
                     {% if item.dias_restantes is not none %}
                         {% if item.dias_restantes > 5 %}
                             <br><span class="dias-badge dias-ok">{{ item.dias_restantes }}d</span>
@@ -264,12 +270,15 @@
                         {% else %}
                             <br><span class="dias-badge dias-vencido">{{ item.dias_restantes }}d</span>
                         {% endif %}
+                        {% if item.fecha_referencia %}
+                        <small class="text-muted d-block">{{ item.fecha_referencia.strftime('%d/%m') }}</small>
+                        {% endif %}
                     {% endif %}
                 </div>
             </div>
 
             <div class="mt-2">
-                <span class="fs-5 fw-bold">
+                <span class="fs-5 {{ 'valor-estimado' if item.es_estimado else 'valor-real' }}">
                     ${{ "{:,.0f}".format(item.valor_mostrar) if item.valor_mostrar else '-' }}
                 </span>
                 {% if item.estado == 'pagado' %}
@@ -283,41 +292,48 @@
                             <span class="tipo-tarde"> - pago tarde</span>
                         {% endif %}
                     </small>
+                {% elif item.esta_vencido %}
+                    <small class="text-danger d-block">vencido - pago pendiente</small>
+                {% elif item.es_estimado %}
+                    <small class="text-muted d-block">estimado segun ultimo pago</small>
                 {% elif item.estado == 'causado' %}
                     <small class="text-warning d-block">cuota causada - pendiente de pago</small>
                 {% elif item.estado == 'parcial' %}
                     <small style="color:#8b5cf6" class="d-block">pago parcial</small>
-                {% elif item.estado == 'vencido' %}
-                    <small class="text-danger d-block">vencido - sin pagar</small>
-                {% else %}
-                    <small class="text-muted d-block">cuota esperada (sin causar)</small>
                 {% endif %}
             </div>
 
-            <div class="mt-1" style="font-size:0.75rem;">
-                <span class="text-muted">Saldo: <strong>${{ "{:,.0f}".format(o.saldo_actual) if o.saldo_actual else '-' }}</strong></span>
+            <div class="mt-1 card-meta-line">
+                <small class="text-muted d-block">
+                    Dia base: {{ o.dia_limite_pago or '-' }}
+                    {% if o.modalidad == 'cadena' %}
+                    - {{ (o.frecuencia_pago or 'mensual')|title }}
+                    {% endif %}
+                </small>
+                <small class="text-muted d-block">
+                    {{ item.etiqueta_fecha }}: {{ item.fecha_referencia.strftime('%d/%m/%Y') if item.fecha_referencia else '-' }}
+                </small>
+                <small class="text-muted d-block">Saldo actual: <strong>${{ "{:,.0f}".format(o.saldo_actual) if o.saldo_actual else '-' }}</strong></small>
                 {% if o.cuotas_pendientes is not none %}
-                - <span class="text-muted">Cuotas pend: <strong>{{ o.cuotas_pendientes }}</strong></span>
+                <small class="text-muted d-block">Cuotas pendientes: <strong>{{ o.cuotas_pendientes }}</strong></small>
                 {% endif %}
-                {% if item.fecha_referencia and o.modalidad == 'pago_total_pactado' %}
-                <br><span class="text-muted">Fecha pactada: {{ item.fecha_referencia.strftime('%d/%m/%Y') }}</span>
-                {% else %}
-                <br><span class="text-muted">Dia limite: {{ o.dia_limite_pago or '-' }}</span>
+                {% if o.fecha_recibe %}
+                <small class="text-muted d-block">Recibe: {{ o.fecha_recibe.strftime('%d/%m/%Y') }}</small>
                 {% endif %}
                 {% if o.tasa_interes_mensual %}
-                - <span class="text-muted">Tasa: {{ o.tasa_interes_mensual }}%</span>
+                <small class="text-muted d-block">Tasa: {{ o.tasa_interes_mensual }}%</small>
                 {% endif %}
             </div>
 
             <div class="mt-2 d-flex gap-1 flex-wrap">
                 {% if item.estado != 'pagado' %}
                 <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick="prepararPago({{ o.id }}, '{{ o.tercero.nombre }}', {{ mes }}, {{ item.valor_mostrar or 0 }})">
+                        onclick='prepararPago({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }})'>
                     <i class="bi bi-check-lg"></i> Pagar
                 </button>
                 {% if item.estado == 'sin_causar' or item.estado == 'pendiente' %}
                 <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick="prepararCausar({{ o.id }}, '{{ o.tercero.nombre }}', {{ mes }}, {{ item.valor_mostrar or 0 }})">
+                        onclick='prepararCausar({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }})'>
                     <i class="bi bi-pencil"></i> Causar
                 </button>
                 {% endif %}
