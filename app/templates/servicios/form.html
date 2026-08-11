@@ -52,10 +52,24 @@
                     </div>
                     <div class="col-8 mb-3">
                         <label class="form-label">Estado del servicio</label>
-                        <div class="form-control bg-light">
-                            {{ servicio.estado|capitalize if servicio else 'Activo al crear' }}
+                        <div class="d-flex gap-2 align-items-start flex-wrap">
+                            <div class="form-control bg-light flex-grow-1">
+                                {{ servicio.estado_operativo|capitalize if servicio else 'Activo al crear' }}
+                            </div>
+                            {% if servicio %}
+                            <button type="button" class="btn btn-outline-warning"
+                                    data-bs-toggle="modal" data-bs-target="#modalEstadoServicio"
+                                    onclick="prepararCambioEstadoServicio({{ servicio.id }}, {{ servicio.tercero.nombre|tojson }}, {{ servicio.estado_operativo|tojson }})">
+                                <i class="bi bi-arrow-repeat"></i> Cambiar estado
+                            </button>
+                            {% endif %}
                         </div>
-                        <div class="form-text">Los cambios de estado se manejan desde la lista de Servicios para guardar motivo, fecha y mes de vigencia.</div>
+                        {% if servicio and servicio.cambio_vigente and servicio.cambio_vigente.vigencia_desde %}
+                        <div class="form-text">Opera así desde {{ servicio.cambio_vigente.vigencia_desde.strftime('%m/%Y') }}.</div>
+                        {% endif %}
+                        {% if servicio and servicio.proximo_cambio and servicio.proximo_cambio.vigencia_desde %}
+                        <div class="form-text text-warning">Cambio programado: {{ servicio.proximo_cambio.estado_nuevo|capitalize }} desde {{ servicio.proximo_cambio.vigencia_desde.strftime('%m/%Y') }}.</div>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="row">
@@ -108,6 +122,44 @@
         </div>
     </div>
 </div>
+
+{% if servicio %}
+<div class="modal fade" id="modalEstadoServicio" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form method="POST" id="formCambioEstadoServicio">
+                <input type="hidden" name="next_url" value="{{ url_for('servicios.editar', id=servicio.id) }}">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold" id="estado_servicio_titulo">Cambiar estado</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label">Nuevo estado</label>
+                        <select name="estado" id="estado_servicio_select" class="form-select form-select-sm" required>
+                            <option value="activo">Activo</option>
+                            <option value="inactivo">Inactivo</option>
+                            <option value="retirado">Retirado</option>
+                            <option value="anulado">Anulado</option>
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Motivo</label>
+                        <input type="text" name="motivo" id="estado_servicio_motivo" class="form-control form-control-sm" required placeholder="Explique el cambio">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Empieza a operar desde</label>
+                        <input type="month" name="vigencia_desde" id="estado_servicio_vigencia" class="form-control form-control-sm" min="{{ mes_actual }}" value="{{ mes_actual }}" required>
+                    </div>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="submit" class="btn btn-primary btn-sm">Guardar cambio</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -148,6 +200,16 @@ function calcularProvision() {
     if (!provisionInput.value && valorEstimado > 0) {
         provisionInput.value = (valorEstimado / 12).toFixed(2);
     }
+}
+
+function prepararCambioEstadoServicio(id, nombre, estadoActual) {
+    const form = document.getElementById('formCambioEstadoServicio');
+    if (!form) return;
+    form.action = '/servicios/' + id + '/cambiar-estado';
+    document.getElementById('estado_servicio_titulo').textContent = 'Estado - ' + nombre;
+    document.getElementById('estado_servicio_select').value = estadoActual === 'activo' ? 'inactivo' : 'activo';
+    document.getElementById('estado_servicio_motivo').value = '';
+    document.getElementById('estado_servicio_vigencia').value = '{{ mes_actual if servicio else "" }}';
 }
 </script>
 {% endblock %}
