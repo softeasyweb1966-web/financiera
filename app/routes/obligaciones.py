@@ -168,6 +168,32 @@ def _valor_programado_mes_obligacion(obligacion, anio, mes, ultimo_pago=None):
     return base
 
 
+def _saldo_pendiente_total_obligacion(obligacion, capital_pagado=0):
+    if obligacion.saldo_actual is not None:
+        return float(obligacion.saldo_actual)
+    if obligacion.capital_inicial is not None:
+        return max(float(obligacion.capital_inicial) - float(capital_pagado or 0), 0)
+    if obligacion.valor_cuota_fija is not None and obligacion.cuotas_pendientes is not None:
+        return max(float(obligacion.valor_cuota_fija) * max(obligacion.cuotas_pendientes, 0), 0)
+    return 0
+
+
+def _fecha_ultimo_pago_estimada(obligacion, fecha_base):
+    if obligacion.fecha_vencimiento:
+        return obligacion.fecha_vencimiento
+
+    cuotas_pendientes = obligacion.cuotas_pendientes
+    if not fecha_base or cuotas_pendientes is None or cuotas_pendientes <= 0:
+        return None
+
+    fecha_estimada = fecha_base
+    for _ in range(max(cuotas_pendientes - 1, 0)):
+        fecha_estimada = _siguiente_fecha_programada(obligacion, fecha_estimada)
+        if not fecha_estimada:
+            break
+    return fecha_estimada
+
+
 def _cuota_con_tasa(saldo, tasa_mensual, cuotas_pendientes):
     if saldo <= 0 or tasa_mensual <= 0 or cuotas_pendientes <= 0:
         return 0
@@ -325,6 +351,25 @@ def pagos(anio=None, mes=None):
         for pago_historico in pagos_historicos:
             if pago_historico.obligacion_id not in ultimos_pagos_dict:
                 ultimos_pagos_dict[pago_historico.obligacion_id] = pago_historico
+
+    totales_pago_dict = {}
+    if obligacion_ids:
+        totales_pago_rows = db.session.query(
+            PagoObligacion.obligacion_id,
+            func.coalesce(func.sum(PagoObligacion.componente_capital), 0).label('capital_pagado'),
+            func.coalesce(func.sum(PagoObligacion.componente_interes), 0).label('interes_pagado')
+        ).filter(
+            PagoObligacion.obligacion_id.in_(obligacion_ids),
+            PagoObligacion.estado.in_(['pagado', 'parcial'])
+        ).group_by(PagoObligacion.obligacion_id).all()
+
+        totales_pago_dict = {
+            obligacion_id: {
+                'capital_pagado': float(capital_pagado or 0),
+                'interes_pagado': float(interes_pagado or 0),
+            }
+            for obligacion_id, capital_pagado, interes_pagado in totales_pago_rows
+        }
 
     # Pendientes de meses anteriores
     pendientes_anteriores = []
@@ -526,6 +571,13 @@ def pagos(anio=None, mes=None):
             else:
                 tipo_pago = 'tarde'
 
+        totales_pago = totales_pago_dict.get(o.id, {})
+        capital_pagado_total = float(totales_pago.get('capital_pagado', 0))
+        interes_pagado_total = float(totales_pago.get('interes_pagado', 0))
+        pendiente_total = _saldo_pendiente_total_obligacion(o, capital_pagado_total)
+        fecha_ultimo_pago = _fecha_ultimo_pago_estimada(o, fecha_referencia)
+        dias_ultimo_pago = (fecha_ultimo_pago - hoy).days if fecha_ultimo_pago else None
+
         obligaciones_mes.append({
             'obligacion': o,
             'pago': pago,
@@ -541,6 +593,11 @@ def pagos(anio=None, mes=None):
             'etiqueta_fecha': etiqueta_fecha,
             'esta_vencido': esta_vencido,
             'es_estimado': not pago or not (pago.valor_causado or pago.valor_pagado),
+            'capital_pagado_total': capital_pagado_total,
+            'interes_pagado_total': interes_pagado_total,
+            'pendiente_total': pendiente_total,
+            'fecha_ultimo_pago': fecha_ultimo_pago,
+            'dias_ultimo_pago': dias_ultimo_pago,
         })
 
     prioridad_estado = {

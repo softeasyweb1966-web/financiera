@@ -317,6 +317,16 @@
                 {% if o.cuotas_pendientes is not none %}
                 <small class="text-muted d-block">Cuotas pendientes: <strong>{{ o.cuotas_pendientes }}</strong></small>
                 {% endif %}
+                <small class="text-muted d-block">Capital pagado: <strong>${{ "{:,.0f}".format(item.capital_pagado_total) }}</strong></small>
+                <small class="text-muted d-block">Intereses pagados: <strong>${{ "{:,.0f}".format(item.interes_pagado_total) }}</strong></small>
+                <small class="text-danger d-block">Falta total por pagar: ${{ "{:,.0f}".format(item.pendiente_total) }}</small>
+                <small class="text-muted d-block">
+                    Ultimo pago{% if not o.fecha_vencimiento %} estimado{% endif %}:
+                    {{ item.fecha_ultimo_pago.strftime('%d/%m/%Y') if item.fecha_ultimo_pago else '-' }}
+                    {% if item.dias_ultimo_pago is not none %}
+                    ({{ item.dias_ultimo_pago }}d)
+                    {% endif %}
+                </small>
                 {% if o.requiere_desglose_pago %}
                 <small class="text-primary d-block">Esta obligacion pide cuota con capital e interes.</small>
                 {% endif %}
