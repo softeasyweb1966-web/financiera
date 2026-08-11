@@ -32,8 +32,10 @@
                 <tr>
                     <th>Mes</th>
                     <th class="celda-quincena">Q1 Conceptos</th>
+                    <th class="celda-quincena">Q1 Fecha</th>
                     <th>Q1 Total</th>
                     <th class="celda-quincena">Q2 Conceptos</th>
+                    <th class="celda-quincena">Q2 Fecha</th>
                     <th>Q2 Total</th>
                     <th>Total Mes</th>
                 </tr>
@@ -66,6 +68,18 @@
                             <span class="text-muted">-</span>
                         {% endif %}
                     </td>
+                    <td class="celda-quincena">
+                        {% if registros_q1 %}
+                            {% if causaciones.get((i, 1)) %}
+                            <small class="text-muted d-block">Causado: {{ causaciones[(i, 1)].strftime('%d/%m/%Y') }}</small>
+                            {% endif %}
+                            {% if registros_q1[0].fecha_pago %}
+                            <small class="text-muted d-block">Pagado: {{ registros_q1[0].fecha_pago.strftime('%d/%m/%Y') }}</small>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
                     <td class="fw-bold {{ 'text-success' if total_q1 > 0 else 'text-muted' }}">
                         {{ "${:,.0f}".format(total_q1) if total_q1 > 0 else '-' }}
                     </td>
@@ -86,6 +100,18 @@
                             <span class="text-muted">-</span>
                         {% endif %}
                     </td>
+                    <td class="celda-quincena">
+                        {% if registros_q2 %}
+                            {% if causaciones.get((i, 2)) %}
+                            <small class="text-muted d-block">Causado: {{ causaciones[(i, 2)].strftime('%d/%m/%Y') }}</small>
+                            {% endif %}
+                            {% if registros_q2[0].fecha_pago %}
+                            <small class="text-muted d-block">Pagado: {{ registros_q2[0].fecha_pago.strftime('%d/%m/%Y') }}</small>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
                     <td class="fw-bold {{ 'text-success' if total_q2 > 0 else 'text-muted' }}">
                         {{ "${:,.0f}".format(total_q2) if total_q2 > 0 else '-' }}
                     </td>
@@ -98,6 +124,8 @@
             <tfoot class="table-light">
                 <tr class="fw-bold">
                     <td>TOTAL {{ anio }}</td>
+                    <td></td>
+                    <td></td>
                     <td></td>
                     <td></td>
                     <td></td>

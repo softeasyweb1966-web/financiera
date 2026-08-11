@@ -31,10 +31,10 @@
                 <tr>
                     <th>Mes</th>
                     <th>Estado</th>
-                    <th>Valor causado</th>
                     <th>Fecha causacion</th>
-                    <th>Valor pagado</th>
+                    <th>Valor causado</th>
                     <th>Fecha pago</th>
+                    <th>Valor pagado</th>
                     <th>Medio</th>
                     <th>Observaciones</th>
                 </tr>
@@ -53,10 +53,10 @@
                             <span class="text-muted">Sin registro</span>
                         {% endif %}
                     </td>
-                    <td>{{ "${:,.0f}".format(pago.valor_causado) if pago and pago.valor_causado else '-' }}</td>
                     <td>{{ pago.fecha_causacion.strftime('%d/%m/%Y') if pago and pago.fecha_causacion else '-' }}</td>
-                    <td class="fw-bold">{{ "${:,.0f}".format(pago.valor_pagado) if pago and pago.valor_pagado else '-' }}</td>
+                    <td>{{ "${:,.0f}".format(pago.valor_causado) if pago and pago.valor_causado else '-' }}</td>
                     <td>{{ pago.fecha_pago.strftime('%d/%m/%Y') if pago and pago.fecha_pago else '-' }}</td>
+                    <td class="fw-bold">{{ "${:,.0f}".format(pago.valor_pagado) if pago and pago.valor_pagado else '-' }}</td>
                     <td>{{ pago.medio_pago.nombre if pago and pago.medio_pago else '-' }}</td>
                     <td><small>{{ pago.observaciones if pago and pago.observaciones else '' }}</small></td>
                 </tr>
@@ -65,6 +65,7 @@
             <tfoot class="table-light">
                 <tr class="fw-bold">
                     <td>TOTAL</td>
+                    <td></td>
                     <td></td>
                     <td>${{ "{:,.0f}".format(pagos.values()|selectattr('valor_causado')|map(attribute='valor_causado')|map('float')|sum) }}</td>
                     <td></td>
