@@ -14,13 +14,18 @@
     <div class="table-responsive">
         <table class="table table-hover table-sm mb-0">
             <thead class="table-light">
-                <tr><th>Empresa</th><th>Concepto</th><th>Referencia</th><th>Día pago</th><th>Valor est.</th><th></th></tr>
+                <tr><th>Empresa</th><th>Concepto</th><th>Estado concepto</th><th>Referencia</th><th>Día pago</th><th>Valor est.</th><th></th></tr>
             </thead>
             <tbody>
                 {% for s in servicios %}
-                <tr>
+                <tr class="{{ 'table-secondary text-muted' if s.estado_concepto != 'activo' else '' }}">
                     <td class="fw-semibold">{{ s.tercero.nombre }}</td>
                     <td><small class="text-muted">{{ s.concepto.nombre }}</small></td>
+                    <td>
+                        <span class="badge {{ 'bg-success' if s.estado_concepto == 'activo' else 'bg-secondary' }}">
+                            {{ 'Activo' if s.estado_concepto == 'activo' else 'Inactivo' }}
+                        </span>
+                    </td>
                     <td><small>{{ s.referencia or '-' }}</small></td>
                     <td>{{ s.dia_limite_pago or '-' }}</td>
                     <td>{{ "${:,.0f}".format(s.valor_estimado) if s.valor_estimado else '-' }}</td>

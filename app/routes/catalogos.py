@@ -3,8 +3,13 @@ from app import db
 from app.models import (
     MedioPago, Categoria, Concepto, ConceptoNomina,
     ConceptoCompra, ConceptoGasto, ProductoCompra, ItemGasto,
-    GrupoServicio, GrupoServicioConcepto
+    GrupoServicio, GrupoServicioConcepto, HistorialEstado
 )
+from app.conceptos_estado import (
+    ESTADOS_CONCEPTO, cargar_historial_conceptos, concepto_activo_en_periodo,
+    estado_concepto_en_periodo, periodo_anterior, siguiente_cambio_concepto
+)
+from datetime import date, datetime
 
 catalogos_bp = Blueprint('catalogos', __name__, url_prefix='/catalogos')
 
@@ -53,8 +58,17 @@ def medios_pago_toggle(id):
 def conceptos():
     categorias = Categoria.query.order_by(Categoria.nombre).all()
     conceptos = Concepto.query.order_by(Concepto.categoria_id, Concepto.nombre).all()
+    hoy = date.today()
+    historiales = cargar_historial_conceptos([c.id for c in conceptos])
+    for concepto in conceptos:
+        rows = historiales.get(concepto.id, [])
+        estado_operativo, cambio_vigente = estado_concepto_en_periodo(concepto, hoy.year, hoy.month, rows)
+        concepto.estado_operativo = estado_operativo
+        concepto.cambio_vigente = cambio_vigente
+        concepto.proximo_cambio = siguiente_cambio_concepto(concepto, hoy.year, hoy.month, rows)
     return render_template('catalogos/conceptos.html',
-                           categorias=categorias, conceptos=conceptos)
+                           categorias=categorias, conceptos=conceptos,
+                           mes_actual=hoy.strftime('%Y-%m'))
 
 
 @catalogos_bp.route('/conceptos/guardar', methods=['POST'])
@@ -79,11 +93,60 @@ def conceptos_guardar():
     return redirect(url_for('catalogos.conceptos'))
 
 
-@catalogos_bp.route('/conceptos/<int:id>/toggle', methods=['POST'])
-def conceptos_toggle(id):
+@catalogos_bp.route('/conceptos/<int:id>/cambiar-estado', methods=['POST'])
+def conceptos_cambiar_estado(id):
     concepto = Concepto.query.get_or_404(id)
-    concepto.activo = not concepto.activo
+    nuevo_estado = request.form.get('estado', '').strip().lower()
+    motivo = request.form.get('motivo', '').strip()
+    vigencia_str = request.form.get('vigencia_desde', '').strip()
+
+    if nuevo_estado not in ESTADOS_CONCEPTO:
+        flash('Seleccione un estado valido para el concepto.', 'danger')
+        return redirect(url_for('catalogos.conceptos'))
+    if not motivo:
+        flash('Debe indicar el motivo del cambio de estado.', 'danger')
+        return redirect(url_for('catalogos.conceptos'))
+    if not vigencia_str:
+        flash('Debe indicar desde que mes empieza a operar el nuevo estado.', 'danger')
+        return redirect(url_for('catalogos.conceptos'))
+
+    try:
+        vigencia_desde = datetime.strptime(vigencia_str, '%Y-%m').date().replace(day=1)
+    except ValueError:
+        flash('El mes de vigencia no es valido.', 'danger')
+        return redirect(url_for('catalogos.conceptos'))
+
+    mes_actual = date.today().replace(day=1)
+    if vigencia_desde < mes_actual:
+        flash('El nuevo estado no puede operar hacia atras.', 'danger')
+        return redirect(url_for('catalogos.conceptos'))
+
+    historiales = cargar_historial_conceptos([concepto.id]).get(concepto.id, [])
+    anio_prev, mes_prev = periodo_anterior(vigencia_desde.year, vigencia_desde.month)
+    estado_anterior, _ = estado_concepto_en_periodo(concepto, anio_prev, mes_prev, historiales)
+    estado_objetivo, _ = estado_concepto_en_periodo(concepto, vigencia_desde.year, vigencia_desde.month, historiales)
+
+    if estado_objetivo == nuevo_estado:
+        flash('Ese concepto ya queda en ese estado para el mes indicado.', 'warning')
+        return redirect(url_for('catalogos.conceptos'))
+
+    db.session.add(HistorialEstado(
+        entidad='concepto',
+        entidad_id=concepto.id,
+        estado_anterior=estado_anterior,
+        estado_nuevo=nuevo_estado,
+        fecha_cambio=datetime.utcnow(),
+        vigencia_desde=vigencia_desde,
+        motivo=motivo
+    ))
+
+    if vigencia_desde <= mes_actual:
+        concepto.activo = (nuevo_estado == 'activo')
     db.session.commit()
+    flash(
+        f'Concepto "{concepto.nombre}" programado como {nuevo_estado} desde {vigencia_desde.strftime("%m/%Y")}.',
+        'info'
+    )
     return redirect(url_for('catalogos.conceptos'))
 
 
@@ -300,10 +363,17 @@ def api_medios_pago():
 @catalogos_bp.route('/api/conceptos')
 def api_conceptos():
     categoria_id = request.args.get('categoria_id', type=int)
-    query = Concepto.query.filter_by(activo=True)
+    anio = request.args.get('anio', date.today().year, type=int)
+    mes = request.args.get('mes', date.today().month, type=int)
+    query = Concepto.query
     if categoria_id:
         query = query.filter_by(categoria_id=categoria_id)
     conceptos = query.order_by(Concepto.nombre).all()
+    historiales = cargar_historial_conceptos([c.id for c in conceptos])
+    conceptos = [
+        c for c in conceptos
+        if concepto_activo_en_periodo(c, anio, mes, historiales.get(c.id, []))
+    ]
     return jsonify([{'id': c.id, 'nombre': c.nombre} for c in conceptos])
 
 
@@ -363,7 +433,13 @@ def api_items_gastos():
 def grupos_servicios():
     grupos = GrupoServicio.query.order_by(GrupoServicio.orden, GrupoServicio.nombre).all()
     cat = Categoria.query.filter_by(nombre='Servicios Públicos').first()
-    conceptos = Concepto.query.filter_by(categoria_id=cat.id, activo=True).order_by(Concepto.nombre).all() if cat else []
+    conceptos = Concepto.query.filter_by(categoria_id=cat.id).order_by(Concepto.nombre).all() if cat else []
+    hoy = date.today()
+    historiales = cargar_historial_conceptos([c.id for c in conceptos])
+    conceptos = [
+        c for c in conceptos
+        if concepto_activo_en_periodo(c, hoy.year, hoy.month, historiales.get(c.id, []))
+    ]
     return render_template('catalogos/grupos_servicios.html', grupos=grupos, conceptos=conceptos)
 
 

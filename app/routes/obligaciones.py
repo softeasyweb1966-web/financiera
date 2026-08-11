@@ -4,6 +4,7 @@ from app.models import (
     Obligacion, PagoObligacion, Refinanciacion, AbonoCapitalObligacion,
     Tercero, Concepto, Categoria, MedioPago
 )
+from app.conceptos_estado import cargar_historial_conceptos, concepto_activo_en_periodo
 from datetime import date, datetime
 from sqlalchemy import func
 import math
@@ -22,6 +23,16 @@ MODALIDADES = [
 ]
 
 MODALIDAD_LABELS = dict(MODALIDADES)
+
+
+def _conceptos_activos_categoria(nombre_categoria, anio, mes):
+    cat = Categoria.query.filter_by(nombre=nombre_categoria).first()
+    conceptos = Concepto.query.filter_by(categoria_id=cat.id).order_by(Concepto.nombre).all() if cat else []
+    historiales = cargar_historial_conceptos([c.id for c in conceptos])
+    return [
+        c for c in conceptos
+        if concepto_activo_en_periodo(c, anio, mes, historiales.get(c.id, []))
+    ]
 
 
 def _valor_estimado_obligacion(obligacion, ultimo_pago=None):
@@ -99,8 +110,7 @@ def nueva():
         flash('Obligación creada correctamente.', 'success')
         return redirect(url_for('obligaciones.lista'))
 
-    cat = Categoria.query.filter_by(nombre='Obligaciones Bancarias').first()
-    conceptos = Concepto.query.filter_by(categoria_id=cat.id, activo=True).all() if cat else []
+    conceptos = _conceptos_activos_categoria('Obligaciones Bancarias', date.today().year, date.today().month)
     terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.nombre).all()
     medios = MedioPago.query.filter_by(activo=True).all()
     return render_template('obligaciones/form.html', obligacion=None,
@@ -132,8 +142,9 @@ def editar(id):
         flash('Obligación actualizada.', 'success')
         return redirect(url_for('obligaciones.lista'))
 
-    cat = Categoria.query.filter_by(nombre='Obligaciones Bancarias').first()
-    conceptos = Concepto.query.filter_by(categoria_id=cat.id, activo=True).all() if cat else []
+    conceptos = _conceptos_activos_categoria('Obligaciones Bancarias', date.today().year, date.today().month)
+    if obligacion.concepto and not any(c.id == obligacion.concepto_id for c in conceptos):
+        conceptos = sorted(conceptos + [obligacion.concepto], key=lambda item: item.nombre.lower())
     terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.nombre).all()
     medios = MedioPago.query.filter_by(activo=True).all()
     return render_template('obligaciones/form.html', obligacion=obligacion,
@@ -152,11 +163,20 @@ def pagos(anio=None, mes=None):
 
     hoy = date.today()
     obligaciones = Obligacion.query.filter_by(activo=True).order_by(Obligacion.dia_limite_pago).all()
+    historiales = cargar_historial_conceptos([o.concepto_id for o in obligaciones])
+    obligaciones = [
+        o for o in obligaciones
+        if concepto_activo_en_periodo(o.concepto, anio, mes, historiales.get(o.concepto_id, []))
+    ]
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
     obligacion_ids = [o.id for o in obligaciones]
 
     # Pagos del mes seleccionado
-    pagos_mes = PagoObligacion.query.filter_by(anio=anio, mes=mes).all()
+    pagos_mes = PagoObligacion.query.filter(
+        PagoObligacion.anio == anio,
+        PagoObligacion.mes == mes,
+        PagoObligacion.obligacion_id.in_(obligacion_ids)
+    ).all() if obligacion_ids else []
     pagos_dict = {p.obligacion_id: p for p in pagos_mes}
 
     ultimos_pagos_dict = {}
@@ -207,18 +227,21 @@ def pagos(anio=None, mes=None):
     acum_pagado_anterior = db.session.query(
         func.coalesce(func.sum(PagoObligacion.valor_pagado), 0)
     ).filter(
-        PagoObligacion.anio == anio, PagoObligacion.mes < mes,
+        PagoObligacion.obligacion_id.in_(obligacion_ids),
+        PagoObligacion.anio == anio,
+        PagoObligacion.mes < mes,
         PagoObligacion.estado.in_(['pagado', 'parcial'])
-    ).scalar()
+    ).scalar() if obligacion_ids else 0
 
     acum_por_obligacion_rows = db.session.query(
         PagoObligacion.obligacion_id,
         func.coalesce(func.sum(PagoObligacion.valor_pagado), 0).label('total')
     ).filter(
+        PagoObligacion.obligacion_id.in_(obligacion_ids),
         PagoObligacion.anio == anio,
         PagoObligacion.mes < mes,
         PagoObligacion.estado.in_(['pagado', 'parcial'])
-    ).group_by(PagoObligacion.obligacion_id).all()
+    ).group_by(PagoObligacion.obligacion_id).all() if obligacion_ids else []
 
     acum_obligaciones_detalle = []
     for obligacion_id, total in acum_por_obligacion_rows:
@@ -235,16 +258,20 @@ def pagos(anio=None, mes=None):
     pagado_mes_actual = db.session.query(
         func.coalesce(func.sum(PagoObligacion.valor_pagado), 0)
     ).filter(
-        PagoObligacion.anio == anio, PagoObligacion.mes == mes,
+        PagoObligacion.obligacion_id.in_(obligacion_ids),
+        PagoObligacion.anio == anio,
+        PagoObligacion.mes == mes,
         PagoObligacion.estado.in_(['pagado', 'parcial'])
-    ).scalar()
+    ).scalar() if obligacion_ids else 0
 
     # Total causado del mes actual
     causado_mes_actual = db.session.query(
         func.coalesce(func.sum(PagoObligacion.valor_causado), 0)
     ).filter(
-        PagoObligacion.anio == anio, PagoObligacion.mes == mes
-    ).scalar()
+        PagoObligacion.obligacion_id.in_(obligacion_ids),
+        PagoObligacion.anio == anio,
+        PagoObligacion.mes == mes
+    ).scalar() if obligacion_ids else 0
 
     # Totales del mes para el resumen detallado
     total_estimado_mes = 0

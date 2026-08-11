@@ -4,6 +4,9 @@ from app.models import (
     Servicio, PagoServicio, Tercero, Concepto, Categoria, MedioPago,
     GrupoServicio, GrupoServicioConcepto, PagoTC
 )
+from app.conceptos_estado import (
+    cargar_historial_conceptos, concepto_activo_en_periodo, estado_concepto_en_periodo
+)
 from calendar import monthrange
 from datetime import date
 
@@ -13,11 +16,28 @@ MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
          'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 
 
+def _conceptos_activos_categoria(nombre_categoria, anio, mes):
+    cat = Categoria.query.filter_by(nombre=nombre_categoria).first()
+    conceptos = Concepto.query.filter_by(categoria_id=cat.id).order_by(Concepto.nombre).all() if cat else []
+    historiales = cargar_historial_conceptos([c.id for c in conceptos])
+    return [
+        c for c in conceptos
+        if concepto_activo_en_periodo(c, anio, mes, historiales.get(c.id, []))
+    ]
+
+
 @servicios_bp.route('/')
 def lista():
     servicios = Servicio.query.filter_by(activo=True).order_by(Servicio.dia_limite_pago).all()
     anio = request.args.get('anio', date.today().year, type=int)
-    return render_template('servicios/lista.html', servicios=servicios, anio=anio, meses=MESES)
+    mes = request.args.get('mes', date.today().month, type=int)
+    historiales = cargar_historial_conceptos([s.concepto_id for s in servicios])
+    for servicio in servicios:
+        estado_concepto, _ = estado_concepto_en_periodo(
+            servicio.concepto, anio, mes, historiales.get(servicio.concepto_id, [])
+        )
+        servicio.estado_concepto = estado_concepto
+    return render_template('servicios/lista.html', servicios=servicios, anio=anio, mes=mes, meses=MESES)
 
 
 @servicios_bp.route('/nuevo', methods=['GET', 'POST'])
@@ -45,8 +65,7 @@ def nuevo():
         flash('Servicio creado correctamente.', 'success')
         return redirect(url_for('servicios.lista'))
 
-    cat = Categoria.query.filter_by(nombre='Servicios Públicos').first()
-    conceptos = Concepto.query.filter_by(categoria_id=cat.id, activo=True).all() if cat else []
+    conceptos = _conceptos_activos_categoria('Servicios Públicos', date.today().year, date.today().month)
     terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.nombre).all()
     return render_template('servicios/form.html', servicio=None,
                            conceptos=conceptos, terceros=terceros)
@@ -74,8 +93,9 @@ def editar(id):
         flash('Servicio actualizado.', 'success')
         return redirect(url_for('servicios.lista'))
 
-    cat = Categoria.query.filter_by(nombre='Servicios Públicos').first()
-    conceptos = Concepto.query.filter_by(categoria_id=cat.id, activo=True).all() if cat else []
+    conceptos = _conceptos_activos_categoria('Servicios Públicos', date.today().year, date.today().month)
+    if servicio.concepto and not any(c.id == servicio.concepto_id for c in conceptos):
+        conceptos = sorted(conceptos + [servicio.concepto], key=lambda item: item.nombre.lower())
     terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.nombre).all()
     return render_template('servicios/form.html', servicio=servicio,
                            conceptos=conceptos, terceros=terceros)
@@ -92,6 +112,11 @@ def pagos(anio=None, mes=None):
 
     hoy = date.today()
     servicios = Servicio.query.filter_by(activo=True).order_by(Servicio.dia_limite_pago).all()
+    historiales = cargar_historial_conceptos([s.concepto_id for s in servicios])
+    servicios = [
+        s for s in servicios
+        if concepto_activo_en_periodo(s.concepto, anio, mes, historiales.get(s.concepto_id, []))
+    ]
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
     servicio_ids = [s.id for s in servicios]
 
@@ -126,7 +151,11 @@ def pagos(anio=None, mes=None):
         return None, None
 
     # Pagos del mes seleccionado
-    pagos_mes = PagoServicio.query.filter_by(anio=anio, mes=mes).all()
+    pagos_mes = PagoServicio.query.filter(
+        PagoServicio.anio == anio,
+        PagoServicio.mes == mes,
+        PagoServicio.servicio_id.in_(servicio_ids)
+    ).all() if servicio_ids else []
     pagos_dict = {p.servicio_id: p for p in pagos_mes}
 
     ultimos_pagos = []
@@ -192,27 +221,32 @@ def pagos(anio=None, mes=None):
     acum_pagado_anterior = db.session.query(
         func.coalesce(func.sum(PagoServicio.valor_pagado), 0)
     ).filter(
-        PagoServicio.anio == anio, PagoServicio.mes < mes,
+        PagoServicio.servicio_id.in_(servicio_ids),
+        PagoServicio.anio == anio,
+        PagoServicio.mes < mes,
         PagoServicio.estado.in_(['pagado', 'parcial'])
-    ).scalar()
+    ).scalar() if servicio_ids else 0
 
     # Pagado en el mes actual
     pagado_mes_actual = db.session.query(
         func.coalesce(func.sum(PagoServicio.valor_pagado), 0)
     ).filter(
-        PagoServicio.anio == anio, PagoServicio.mes == mes,
+        PagoServicio.servicio_id.in_(servicio_ids),
+        PagoServicio.anio == anio,
+        PagoServicio.mes == mes,
         PagoServicio.estado.in_(['pagado', 'parcial'])
-    ).scalar()
+    ).scalar() if servicio_ids else 0
 
     # Acumulado pagado por servicio hasta el mes anterior
     acum_por_servicio_rows = db.session.query(
         PagoServicio.servicio_id,
         func.coalesce(func.sum(PagoServicio.valor_pagado), 0).label('total')
     ).filter(
+        PagoServicio.servicio_id.in_(servicio_ids),
         PagoServicio.anio == anio,
         PagoServicio.mes < mes,
         PagoServicio.estado.in_(['pagado', 'parcial'])
-    ).group_by(PagoServicio.servicio_id).all()
+    ).group_by(PagoServicio.servicio_id).all() if servicio_ids else []
 
     acum_servicios_detalle = []
     for servicio_id, total in acum_por_servicio_rows:

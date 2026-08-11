@@ -203,6 +203,7 @@ class HistorialEstado(db.Model):
     estado_anterior = db.Column(db.String(20))
     estado_nuevo = db.Column(db.String(20), nullable=False)
     fecha_cambio = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    vigencia_desde = db.Column(db.Date)
     motivo = db.Column(db.Text)
     registrado_por = db.Column(db.String(100))
 
