@@ -534,6 +534,62 @@ def pagos(anio=None, mes=None):
             except ValueError:
                 pass
 
+        resumen_estado = 'Por causar'
+        resumen_fecha_label = 'Fecha estimada'
+        resumen_fecha = fecha_limite_actual or fecha_referencia
+        resumen_valor_label = 'Valor estimado'
+        resumen_valor = valor_estimado_servicio(s)
+        resumen_dias_texto = '-'
+        resumen_dias_clase = 'text-muted'
+
+        if estado == 'pagado':
+            resumen_estado = 'Pagado'
+            resumen_fecha_label = 'Fecha pago'
+            resumen_fecha = pago.fecha_pago if pago else None
+            resumen_valor_label = 'Valor pagado'
+            resumen_valor = float(pago.valor_pagado or 0) if pago else 0
+            if dias_restantes is not None:
+                resumen_dias_texto = f'Siguiente pago en {dias_restantes}d'
+                resumen_dias_clase = 'text-success' if dias_restantes >= 0 else 'text-danger'
+        elif estado == 'causado':
+            resumen_estado = 'Causado'
+            resumen_fecha_label = 'Fecha causacion'
+            resumen_fecha = pago.fecha_causacion if pago else None
+            resumen_valor_label = 'Valor causado'
+            resumen_valor = float(pago.valor_causado or 0) if pago else 0
+            if dias_restantes is not None:
+                if dias_restantes < 0:
+                    resumen_dias_texto = f'Vencido {abs(dias_restantes)}d'
+                    resumen_dias_clase = 'text-danger'
+                else:
+                    resumen_dias_texto = f'Por vencer en {dias_restantes}d'
+                    resumen_dias_clase = 'text-warning'
+        elif esta_vencido:
+            resumen_estado = 'Vencido'
+            resumen_fecha_label = 'Fecha estimada'
+            resumen_fecha = fecha_limite_actual or fecha_referencia
+            resumen_valor_label = 'Valor causado' if pago and pago.valor_causado else 'Valor estimado'
+            resumen_valor = float(pago.valor_causado or 0) if pago and pago.valor_causado else valor_estimado_servicio(s)
+            if dias_restantes is not None:
+                resumen_dias_texto = f'Vencido {abs(dias_restantes)}d'
+                resumen_dias_clase = 'text-danger'
+        elif estado == 'parcial':
+            resumen_estado = 'Parcial'
+            resumen_fecha_label = 'Fecha pago'
+            resumen_fecha = pago.fecha_pago if pago else None
+            resumen_valor_label = 'Valor pagado'
+            resumen_valor = float(pago.valor_pagado or 0) if pago else 0
+            if dias_restantes is not None:
+                if dias_restantes < 0:
+                    resumen_dias_texto = f'Vencido {abs(dias_restantes)}d'
+                    resumen_dias_clase = 'text-danger'
+                else:
+                    resumen_dias_texto = f'Por vencer en {dias_restantes}d'
+                    resumen_dias_clase = 'text-warning'
+        elif dias_restantes is not None:
+            resumen_dias_texto = f'Por vencer en {dias_restantes}d' if dias_restantes >= 0 else f'Vencido {abs(dias_restantes)}d'
+            resumen_dias_clase = 'text-warning' if dias_restantes >= 0 else 'text-danger'
+
         servicios_mes.append({
             'servicio': s,
             'pago': pago,
@@ -548,6 +604,13 @@ def pagos(anio=None, mes=None):
             'fecha_referencia': fecha_referencia,
             'etiqueta_fecha': etiqueta_fecha,
             'es_proximo_pago': es_proximo_pago,
+            'resumen_estado': resumen_estado,
+            'resumen_fecha_label': resumen_fecha_label,
+            'resumen_fecha': resumen_fecha,
+            'resumen_valor_label': resumen_valor_label,
+            'resumen_valor': resumen_valor,
+            'resumen_dias_texto': resumen_dias_texto,
+            'resumen_dias_clase': resumen_dias_clase,
         })
 
     prioridad_estado = {
@@ -680,11 +743,13 @@ def registrar_pago():
     medio_pago_id = request.form.get('medio_pago_id') or None
     fecha_pago = request.form.get('fecha_pago') or None
     dia_pago_reportado, error_dia = _resolver_dia_pago(
-        request.form.get('dia_pago_reportado'),
-        fecha_pago
+        request.form.get('dia_pago_reportado')
     )
-    if accion == 'pagar' and error_dia:
+    if accion == 'causar' and error_dia:
         flash(error_dia, 'danger')
+        return redirect(url_for('servicios.pagos', anio=anio, mes=mes))
+    if accion == 'causar' and dia_pago_reportado is None:
+        flash('Al causar debe registrar el dia de pago.', 'danger')
         return redirect(url_for('servicios.pagos', anio=anio, mes=mes))
 
     comprobante_nombre, comprobante_mime, comprobante_archivo, error_comprobante = _leer_comprobante(
@@ -703,6 +768,7 @@ def registrar_pago():
     if pago:
         if accion == 'causar':
             pago.valor_causado = valor_causado
+            pago.dia_pago_reportado = dia_pago_reportado
             # Fecha de causación automática (server-side)
             pago.fecha_causacion = date.today()
             if pago.estado == 'sin_causar':
@@ -712,7 +778,6 @@ def registrar_pago():
             pago.estado = estado
             pago.medio_pago_id = medio_pago_id
             pago.fecha_pago = fecha_pago
-            pago.dia_pago_reportado = dia_pago_reportado
             if valor_causado:
                 pago.valor_causado = valor_causado
             if comprobante_archivo:
@@ -725,6 +790,7 @@ def registrar_pago():
             pago = PagoServicio(
                 servicio_id=servicio_id, anio=anio, mes=mes,
                 valor_causado=valor_causado, estado='causado',
+                dia_pago_reportado=dia_pago_reportado,
                 # Fecha de causación automática (server-side)
                 fecha_causacion=date.today(),
                 observaciones=observaciones
@@ -735,14 +801,13 @@ def registrar_pago():
                 valor_causado=valor_causado, valor_pagado=valor_pagado,
                 estado=estado, medio_pago_id=medio_pago_id,
                 fecha_pago=fecha_pago, observaciones=observaciones,
-                dia_pago_reportado=dia_pago_reportado,
                 comprobante_nombre=comprobante_nombre,
                 comprobante_mime=comprobante_mime,
                 comprobante_archivo=comprobante_archivo
             )
         db.session.add(pago)
 
-    if accion == 'pagar' and dia_pago_reportado:
+    if accion == 'causar' and dia_pago_reportado:
         _aplicar_dia_pago_servicio(servicio, dia_pago_reportado)
 
     db.session.commit()

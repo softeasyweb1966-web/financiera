@@ -43,6 +43,19 @@
     .valor-estimado  { font-style: italic; color: #9ca3af; }
     .valor-real      { color: #1e293b; font-weight: 700; }
     .card-meta-line { font-size: 0.75rem; line-height: 1.35; }
+    .tab-pane-box { border: 1px solid #e2e8f0; border-top: 0; border-radius: 0 0 14px 14px; background: #fff; padding: 14px; }
+    .summary-row { border-bottom: 1px solid #e2e8f0; padding: 10px 0; }
+    .summary-row:last-child { border-bottom: 0; }
+    .summary-title { font-size: 0.92rem; font-weight: 700; color: #0f172a; }
+    .summary-subtitle { font-size: 0.76rem; color: #64748b; }
+    .summary-meta { font-size: 0.78rem; color: #475569; }
+    .summary-value { font-size: 1rem; font-weight: 700; color: #0f172a; }
+    .summary-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 0.74rem; font-weight: 700; }
+    .summary-badge-pagado { background: #dcfce7; color: #166534; }
+    .summary-badge-causado { background: #fef3c7; color: #92400e; }
+    .summary-badge-vencido { background: #fee2e2; color: #991b1b; }
+    .summary-badge-parcial { background: #ede9fe; color: #6d28d9; }
+    .summary-badge-por_causar { background: #e2e8f0; color: #475569; }
     @media (max-width: 991px) {
         .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
@@ -50,6 +63,7 @@
         .metric-grid { grid-template-columns: 1fr; }
         .metric-item { align-items: flex-start; flex-direction: column; }
         .summary-inline { flex-direction: column; align-items: flex-start; }
+        .tab-pane-box { padding: 10px; }
     }
 </style>
 
@@ -249,6 +263,16 @@
     <span><span class="indicador ind-parcial"></span> Parcial</span>
 </div>
 
+<ul class="nav nav-tabs mb-0" id="obligacionesTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="obligaciones-tarjetas-tab" data-bs-toggle="tab" data-bs-target="#obligaciones-tarjetas" type="button" role="tab">Tarjetas</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="obligaciones-resumen-tab" data-bs-toggle="tab" data-bs-target="#obligaciones-resumen" type="button" role="tab">Resumen</button>
+    </li>
+</ul>
+<div class="tab-content mb-3">
+<div class="tab-pane fade show active tab-pane-box" id="obligaciones-tarjetas" role="tabpanel" aria-labelledby="obligaciones-tarjetas-tab">
 <div class="row g-2">
     {% for item in obligaciones_mes %}
     {% set o = item.obligacion %}
@@ -337,19 +361,19 @@
                 <small class="text-muted d-block">Tasa: {{ o.tasa_interes_mensual }}%</small>
                 {% endif %}
                 {% if pago and pago.dia_pago_reportado %}
-                <small class="text-muted d-block">Dia registrado al pagar: {{ pago.dia_pago_reportado }}</small>
+                <small class="text-muted d-block">Dia registrado al causar: {{ pago.dia_pago_reportado }}</small>
                 {% endif %}
             </div>
 
             <div class="mt-2 d-flex gap-1 flex-wrap">
                 {% if item.estado != 'pagado' %}
                 <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick='prepararPago({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }}, {{ o.dia_limite_pago if o.dia_limite_pago is not none else (item.fecha_limite_actual.day if item.fecha_limite_actual else "null") }})'>
+                        onclick='prepararPago({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }})'>
                     <i class="bi bi-check-lg"></i> Pagar
                 </button>
                 {% if item.estado == 'sin_causar' or item.estado == 'pendiente' %}
                 <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick='prepararCausar({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }})'>
+                        onclick='prepararCausar({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }}, {{ o.dia_limite_pago if o.dia_limite_pago is not none else (item.fecha_limite_actual.day if item.fecha_limite_actual else "null") }})'>
                     <i class="bi bi-pencil"></i> Causar
                 </button>
                 {% endif %}
@@ -369,6 +393,50 @@
         </div>
     </div>
     {% endfor %}
+</div>
+</div>
+
+<div class="tab-pane fade tab-pane-box" id="obligaciones-resumen" role="tabpanel" aria-labelledby="obligaciones-resumen-tab">
+    {% for item in obligaciones_mes %}
+    {% set o = item.obligacion %}
+    <div class="summary-row">
+        <div class="row g-2 align-items-center">
+            <div class="col-lg-4">
+                <div class="summary-title">{{ o.concepto.nombre }}</div>
+                <div class="summary-subtitle">{{ o.tercero.nombre }}{% if o.referencia %} - {{ o.referencia }}{% endif %}</div>
+            </div>
+            <div class="col-lg-2">
+                {% set badge_class = 'summary-badge-por_causar' %}
+                {% if item.resumen_estado == 'Pagado' %}
+                    {% set badge_class = 'summary-badge-pagado' %}
+                {% elif item.resumen_estado == 'Causado' %}
+                    {% set badge_class = 'summary-badge-causado' %}
+                {% elif item.resumen_estado == 'Vencido' %}
+                    {% set badge_class = 'summary-badge-vencido' %}
+                {% elif item.resumen_estado == 'Parcial' %}
+                    {% set badge_class = 'summary-badge-parcial' %}
+                {% endif %}
+                <span class="summary-badge {{ badge_class }}">{{ item.resumen_estado }}</span>
+            </div>
+            <div class="col-lg-2">
+                <div class="summary-meta">{{ item.resumen_fecha_label }}</div>
+                <div class="summary-value">{{ item.resumen_fecha.strftime('%d/%m/%Y') if item.resumen_fecha else '-' }}</div>
+            </div>
+            <div class="col-lg-2">
+                <div class="summary-meta">{{ item.resumen_valor_label }}</div>
+                <div class="summary-value">${{ "{:,.0f}".format(item.resumen_valor or 0) if item.resumen_valor else '-' }}</div>
+            </div>
+            <div class="col-lg-2">
+                <div class="summary-meta">Dias para pago</div>
+                <div class="summary-value {{ item.resumen_dias_clase }}">{{ item.resumen_dias_texto }}</div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% if not obligaciones_mes %}
+    <div class="text-center text-muted py-4">No hay obligaciones activas.</div>
+    {% endif %}
+</div>
 </div>
 
 {% if not obligaciones_mes %}
@@ -390,10 +458,17 @@
                 <div class="modal-body">
                     <div id="seccion-causar" style="display:none">
                         <p class="small text-muted mb-2">Confirme el valor de la cuota para este mes. La fecha de causacion se asigna automaticamente.</p>
-                        <div class="mb-2">
-                            <label class="form-label">Valor a causar (cuota)</label>
-                            <input type="text" name="valor_causado" id="pago_valor_causado" class="form-control js-money">
-                            <div class="form-text">Valor de la cuota o interes del mes</div>
+                        <div class="row">
+                            <div class="col-md-7 mb-2">
+                                <label class="form-label">Valor a causar (cuota)</label>
+                                <input type="text" name="valor_causado" id="pago_valor_causado" class="form-control js-money">
+                                <div class="form-text">Valor de la cuota o interes del mes</div>
+                            </div>
+                            <div class="col-md-5 mb-2">
+                                <label class="form-label">Dia de pago</label>
+                                <input type="number" name="dia_pago_reportado" id="causar_dia_reportado" class="form-control" min="1" max="31" placeholder="1-31">
+                                <div class="form-text">Dia que aplicara como referencia para el siguiente mes</div>
+                            </div>
                         </div>
                     </div>
                     <div id="seccion-pagar">
@@ -420,13 +495,9 @@
                         </div>
                         <small id="texto_desglose" class="text-muted d-block mb-2" style="display:none;">Ingrese la cuota pagada y discrimine cuanto corresponde a capital y cuanto a interes.</small>
                         <div class="row">
-                            <div class="col-4 mb-2">
+                            <div class="col-6 mb-2">
                                 <label class="form-label">Fecha pago</label>
                                 <input type="date" name="fecha_pago" id="pago_fecha_pago" class="form-control form-control-sm">
-                            </div>
-                            <div class="col-4 mb-2">
-                                <label class="form-label">Dia pago nuevo</label>
-                                <input type="number" name="dia_pago_reportado" id="pago_dia_reportado" class="form-control form-control-sm" min="1" max="31" placeholder="1-31">
                             </div>
                         </div>
                         <div class="row">
@@ -481,15 +552,15 @@ function toggleDesglose(requiereDesglose) {
     }
 }
 
-function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres, diaBase) {
+function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres) {
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
     window.FinancieraMoney.setValue(document.getElementById('pago_valor_causado2'), valorEsperado || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_valor'), valorEsperado || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_capital'), valorCapital || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
-    document.getElementById('pago_dia_reportado').value = diaBase || '';
     document.getElementById('pago_fecha_pago').value = '';
+    document.getElementById('causar_dia_reportado').value = '';
     document.getElementById('pago_accion').value = 'pagar';
     document.getElementById('pago_estado').value = 'pagado';
     document.getElementById('pago_titulo').textContent = 'Pagar - ' + nombre;
@@ -498,27 +569,18 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
     toggleDesglose(requiereDesglose);
 }
 
-function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres) {
+function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres, diaBase) {
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
     window.FinancieraMoney.setValue(document.getElementById('pago_valor_causado'), valorEsperado || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_capital'), valorCapital || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
+    document.getElementById('causar_dia_reportado').value = diaBase || '';
     document.getElementById('pago_accion').value = 'causar';
     document.getElementById('pago_titulo').textContent = 'Causar - ' + nombre;
     document.getElementById('seccion-causar').style.display = 'block';
     document.getElementById('seccion-pagar').style.display = 'none';
     toggleDesglose(false);
 }
-
-document.getElementById('pago_fecha_pago').addEventListener('change', function() {
-    if (!this.value) {
-        return;
-    }
-    const partes = this.value.split('-');
-    if (partes.length === 3) {
-        document.getElementById('pago_dia_reportado').value = parseInt(partes[2], 10) || '';
-    }
-});
 </script>
 {% endblock %}
