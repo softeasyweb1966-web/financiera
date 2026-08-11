@@ -849,3 +849,24 @@ def descargar_comprobante(pago_id):
         download_name=pago.comprobante_nombre or f'comprobante_servicio_{pago.id}',
         as_attachment=False
     )
+
+
+@servicios_bp.route('/pago/<int:pago_id>/comprobante', methods=['POST'])
+def actualizar_comprobante(pago_id):
+    pago = PagoServicio.query.get_or_404(pago_id)
+    comprobante_nombre, comprobante_mime, comprobante_archivo, error_comprobante = _leer_comprobante(
+        request.files.get('comprobante')
+    )
+    if error_comprobante:
+        flash(error_comprobante, 'danger')
+        return redirect(url_for('servicios.pagos', anio=pago.anio, mes=pago.mes))
+    if not comprobante_archivo:
+        flash('Debe seleccionar un recibo para adjuntar.', 'danger')
+        return redirect(url_for('servicios.pagos', anio=pago.anio, mes=pago.mes))
+
+    pago.comprobante_nombre = comprobante_nombre
+    pago.comprobante_mime = comprobante_mime
+    pago.comprobante_archivo = comprobante_archivo
+    db.session.commit()
+    flash('Recibo adjuntado correctamente.', 'success')
+    return redirect(url_for('servicios.pagos', anio=pago.anio, mes=pago.mes))
