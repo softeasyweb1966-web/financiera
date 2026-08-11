@@ -24,6 +24,7 @@
         .form-text { font-size: 0.75rem; }
         .nav-link { font-size: 0.85rem; }
         .dropdown-menu { font-size: 0.85rem; }
+        .money-input { text-align: right; }
         @media (max-width: 768px) {
             .table-responsive { font-size: 0.75rem; }
             .container-fluid { padding: 0.5rem; }
@@ -98,14 +99,100 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-    // Formato de moneda colombiana en campos numéricos
-    document.querySelectorAll('input[type="number"]').forEach(function(el) {
-        el.addEventListener('blur', function() {
-            if (this.value && !isNaN(this.value)) {
-                this.title = '$' + parseInt(this.value).toLocaleString('es-CO');
+    (function() {
+        function splitMoneyValue(value, scale) {
+            const cleaned = String(value || '').trim().replace(/\s+/g, '');
+            if (!cleaned) return { raw: '', formatted: '' };
+
+            const negative = cleaned.startsWith('-');
+            const unsigned = cleaned.replace(/[^0-9.,]/g, '');
+            if (!unsigned) return { raw: '', formatted: '' };
+
+            const lastDot = unsigned.lastIndexOf('.');
+            const lastComma = unsigned.lastIndexOf(',');
+            const separatorIndex = Math.max(lastDot, lastComma);
+
+            let integerDigits = unsigned.replace(/\D/g, '');
+            let decimalDigits = '';
+
+            if (separatorIndex >= 0) {
+                const tail = unsigned.slice(separatorIndex + 1).replace(/\D/g, '');
+                const head = unsigned.slice(0, separatorIndex).replace(/\D/g, '');
+                if (scale > 0 && tail.length > 0 && tail.length <= scale) {
+                    integerDigits = head || '0';
+                    decimalDigits = tail.slice(0, scale);
+                } else if (scale === 0 && tail.length > 0 && /^0+$/.test(tail)) {
+                    integerDigits = head || '0';
+                }
             }
+
+            integerDigits = integerDigits.replace(/^0+(?=\d)/, '') || '0';
+            const formattedInteger = Number(integerDigits).toLocaleString('es-CO');
+            const raw = (negative ? '-' : '') + integerDigits + (decimalDigits ? '.' + decimalDigits : '');
+            const formatted = (negative ? '-' : '') + formattedInteger + (decimalDigits ? ',' + decimalDigits : '');
+            return { raw, formatted };
+        }
+
+        function getScale(input) {
+            return Number(input.dataset.moneyScale || '0');
+        }
+
+        function normalizeInput(input) {
+            return splitMoneyValue(input.value, getScale(input)).raw;
+        }
+
+        function formatInput(input) {
+            const parts = splitMoneyValue(input.value, getScale(input));
+            input.value = parts.formatted;
+            input.title = parts.formatted ? '$' + parts.formatted : '';
+        }
+
+        function bindInput(input) {
+            if (input.dataset.moneyBound === '1') return;
+            input.dataset.moneyBound = '1';
+            input.classList.add('money-input');
+            input.setAttribute('inputmode', 'numeric');
+
+            input.addEventListener('input', function() {
+                formatInput(input);
+            });
+
+            input.addEventListener('blur', function() {
+                formatInput(input);
+            });
+
+            formatInput(input);
+        }
+
+        function init(context) {
+            (context || document).querySelectorAll('input.js-money').forEach(bindInput);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            init(document);
+            document.querySelectorAll('form').forEach(function(form) {
+                form.addEventListener('submit', function() {
+                    form.querySelectorAll('input.js-money').forEach(function(input) {
+                        input.value = normalizeInput(input);
+                    });
+                });
+            });
         });
-    });
+
+        window.FinancieraMoney = {
+            init: init,
+            parse: function(value, scale) {
+                const raw = splitMoneyValue(value, Number(scale || 0)).raw;
+                return raw ? Number(raw) : 0;
+            },
+            formatInput: formatInput,
+            normalizeInput: normalizeInput,
+            setValue: function(input, value) {
+                input.value = value == null ? '' : String(value);
+                formatInput(input);
+            }
+        };
+    })();
     </script>
     {% block scripts %}{% endblock %}
 </body>

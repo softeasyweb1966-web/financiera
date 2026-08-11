@@ -55,11 +55,11 @@
                     </div>
                     <div class="col-md-3 mb-3">
                         <label class="form-label">Capital inicial</label>
-                        <input type="number" name="capital_inicial" class="form-control" value="{{ obligacion.capital_inicial if obligacion and obligacion.capital_inicial else '' }}">
+                        <input type="text" name="capital_inicial" class="form-control js-money" value="{{ obligacion.capital_inicial if obligacion and obligacion.capital_inicial else '' }}">
                     </div>
                     <div class="col-md-3 mb-3">
                         <label class="form-label">Saldo actual</label>
-                        <input type="number" name="saldo_actual" class="form-control" value="{{ obligacion.saldo_actual if obligacion and obligacion.saldo_actual else '' }}">
+                        <input type="text" name="saldo_actual" class="form-control js-money" value="{{ obligacion.saldo_actual if obligacion and obligacion.saldo_actual else '' }}">
                         <div class="form-text">Si es nuevo = capital</div>
                     </div>
                 </div>
@@ -83,18 +83,18 @@
                     </div>
                     <div class="col-md-3 mb-3" id="campo_cuota_fija">
                         <label class="form-label">Valor cuota fija</label>
-                        <input type="number" name="valor_cuota_fija" class="form-control" value="{{ obligacion.valor_cuota_fija if obligacion and obligacion.valor_cuota_fija else '' }}">
+                        <input type="text" name="valor_cuota_fija" class="form-control js-money" value="{{ obligacion.valor_cuota_fija if obligacion and obligacion.valor_cuota_fija else '' }}">
                     </div>
                 </div>
 
                 <div class="row" id="fila_desglose_cuota" style="display:none;">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Valor cuota a capital</label>
-                        <input type="number" name="valor_cuota_capital" id="valor_cuota_capital" class="form-control" value="{{ obligacion.valor_cuota_capital if obligacion and obligacion.valor_cuota_capital else '' }}">
+                        <input type="text" name="valor_cuota_capital" id="valor_cuota_capital" class="form-control js-money" value="{{ obligacion.valor_cuota_capital if obligacion and obligacion.valor_cuota_capital else '' }}">
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Valor cuota a interes</label>
-                        <input type="number" name="valor_cuota_interes" id="valor_cuota_interes" class="form-control" value="{{ obligacion.valor_cuota_interes if obligacion and obligacion.valor_cuota_interes else '' }}">
+                        <input type="text" name="valor_cuota_interes" id="valor_cuota_interes" class="form-control js-money" value="{{ obligacion.valor_cuota_interes if obligacion and obligacion.valor_cuota_interes else '' }}">
                         <div class="form-text">Si aplica, estos dos valores deben sumar la cuota total.</div>
                     </div>
                 </div>

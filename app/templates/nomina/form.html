@@ -72,7 +72,7 @@
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
                             <label class="form-label">Salario base</label>
-                            <input type="number" name="salario_base" class="form-control" value="{{ empleado.salario_base if empleado and empleado.salario_base else '' }}">
+                            <input type="text" name="salario_base" class="form-control js-money" value="{{ empleado.salario_base if empleado and empleado.salario_base else '' }}">
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
                             <label class="form-label">Tipo de contrato</label>

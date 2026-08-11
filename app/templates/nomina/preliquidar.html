@@ -150,7 +150,7 @@
                     </div>
                     <div class="col-12 col-md-6">
                         <label class="form-label">Valor base preliquidado</label>
-                        <input type="number" step="0.01" name="valor_{{ e.id }}" id="valor_{{ e.id }}" class="form-control valor-preliq" value="{{ item.valor_preliquidado }}">
+                        <input type="text" name="valor_{{ e.id }}" id="valor_{{ e.id }}" class="form-control valor-preliq js-money" value="{{ item.valor_preliquidado }}">
                     </div>
                     <div class="col-12 col-md-6">
                         <label class="form-label">Pendiente anterior</label>
@@ -280,7 +280,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     </div>
                     <div class="col-12 col-lg-3">
                         <label class="form-label small mb-1">Valor</label>
-                        <input type="number" step="0.01" class="form-control form-control-sm novedad-valor" value="${valor}" required>
+                        <input type="text" class="form-control form-control-sm novedad-valor js-money" value="${valor}" required>
                     </div>
                     <div class="col-12 col-lg-4">
                         <label class="form-label small mb-1">Justificación</label>
@@ -297,7 +297,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function collectRows(card) {
         return Array.from(card.querySelectorAll('.novedad-row')).map(function(row) {
             const select = row.querySelector('.novedad-concepto');
-            const valor = Number(row.querySelector('.novedad-valor').value || 0);
+            const valor = window.FinancieraMoney.parse(row.querySelector('.novedad-valor').value) || 0;
             const justificacion = row.querySelector('.novedad-justificacion').value.trim();
             const conceptoId = select.value;
             const conceptoData = conceptosData[conceptoId];
@@ -330,7 +330,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
         const neto = totalDev - totalDed;
-        const base = Number(document.getElementById('valor_' + empleadoId).value || 0);
+        const base = window.FinancieraMoney.parse(document.getElementById('valor_' + empleadoId).value) || 0;
         const pendiente = Number(card.querySelector(`input[name="pendiente_${empleadoId}"]`).value || 0);
 
         document.getElementById('devengados-' + empleadoId).textContent = formatear(totalDev);
@@ -351,6 +351,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const empleadoId = event.target.closest('.add-novedad').dataset.empleadoId;
                 const container = document.getElementById('novedades-list-' + empleadoId);
                 container.insertAdjacentHTML('beforeend', createRowHtml(empleadoId));
+                window.FinancieraMoney.init(container);
             }
         });
 
@@ -359,7 +360,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const empleadoId = event.target.dataset.target;
                 const salario = Number(card.dataset.salario || 0);
                 const inputValor = document.getElementById('valor_' + empleadoId);
-                inputValor.value = Math.round(calcularBase(salario, event.target.value));
+                window.FinancieraMoney.setValue(inputValor, Math.round(calcularBase(salario, event.target.value)));
                 refreshCard(card);
             }
             if (event.target.closest('.novedad-row')) {
@@ -390,6 +391,7 @@ document.addEventListener('DOMContentLoaded', function () {
             container.insertAdjacentHTML('beforeend', createRowHtml(empleadoId, item));
         });
 
+        window.FinancieraMoney.init(container);
         mountEvents(card);
         refreshCard(card);
     });

@@ -384,7 +384,7 @@
                         <p class="small text-muted mb-2">Confirme el valor de la cuota para este mes. La fecha de causacion se asigna automaticamente.</p>
                         <div class="mb-2">
                             <label class="form-label">Valor a causar (cuota)</label>
-                            <input type="number" name="valor_causado" id="pago_valor_causado" class="form-control">
+                            <input type="text" name="valor_causado" id="pago_valor_causado" class="form-control js-money">
                             <div class="form-text">Valor de la cuota o interes del mes</div>
                         </div>
                     </div>
@@ -392,21 +392,21 @@
                         <div class="row">
                             <div class="col-6 mb-2">
                                 <label class="form-label">Valor cuota (causado)</label>
-                                <input type="number" name="valor_causado" id="pago_valor_causado2" class="form-control form-control-sm">
+                                <input type="text" name="valor_causado" id="pago_valor_causado2" class="form-control form-control-sm js-money">
                             </div>
                             <div class="col-6 mb-2">
                                 <label class="form-label">Valor pagado</label>
-                                <input type="number" name="valor_pagado" id="pago_valor" class="form-control form-control-sm">
+                                <input type="text" name="valor_pagado" id="pago_valor" class="form-control form-control-sm js-money">
                             </div>
                         </div>
                         <div class="row" id="seccion-desglose" style="display:none;">
                             <div class="col-4 mb-2">
                                 <label class="form-label">Capital</label>
-                                <input type="number" name="componente_capital" id="pago_capital" class="form-control form-control-sm">
+                                <input type="text" name="componente_capital" id="pago_capital" class="form-control form-control-sm js-money">
                             </div>
                             <div class="col-4 mb-2">
                                 <label class="form-label">Interes</label>
-                                <input type="number" name="componente_interes" id="pago_interes" class="form-control form-control-sm">
+                                <input type="text" name="componente_interes" id="pago_interes" class="form-control form-control-sm js-money">
                             </div>
                             <div class="col-4 mb-2"></div>
                         </div>
@@ -459,18 +459,18 @@ function toggleDesglose(requiereDesglose) {
     document.getElementById('pago_capital').required = visible;
     document.getElementById('pago_interes').required = visible;
     if (!visible) {
-        document.getElementById('pago_capital').value = '';
-        document.getElementById('pago_interes').value = '';
+        window.FinancieraMoney.setValue(document.getElementById('pago_capital'), '');
+        window.FinancieraMoney.setValue(document.getElementById('pago_interes'), '');
     }
 }
 
 function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres) {
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
-    document.getElementById('pago_valor_causado2').value = valorEsperado || '';
-    document.getElementById('pago_valor').value = valorEsperado || '';
-    document.getElementById('pago_capital').value = valorCapital || '';
-    document.getElementById('pago_interes').value = valorInteres || '';
+    window.FinancieraMoney.setValue(document.getElementById('pago_valor_causado2'), valorEsperado || '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_valor'), valorEsperado || '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_capital'), valorCapital || '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
     document.getElementById('pago_accion').value = 'pagar';
     document.getElementById('pago_estado').value = 'pagado';
     document.getElementById('pago_titulo').textContent = 'Pagar - ' + nombre;
@@ -482,9 +482,9 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
 function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres) {
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
-    document.getElementById('pago_valor_causado').value = valorEsperado || '';
-    document.getElementById('pago_capital').value = valorCapital || '';
-    document.getElementById('pago_interes').value = valorInteres || '';
+    window.FinancieraMoney.setValue(document.getElementById('pago_valor_causado'), valorEsperado || '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_capital'), valorCapital || '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
     document.getElementById('pago_accion').value = 'causar';
     document.getElementById('pago_titulo').textContent = 'Causar - ' + nombre;
     document.getElementById('seccion-causar').style.display = 'block';

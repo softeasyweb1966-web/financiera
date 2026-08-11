@@ -122,7 +122,7 @@
                     </div>
                     <div class="col-12 col-md-6">
                         <label class="form-label">Valor del abono *</label>
-                        <input type="number" step="0.01" min="0.01" max="{{ resumen_costos.saldo_actual }}" name="valor_abono" class="form-control form-control-sm" required>
+                        <input type="text" name="valor_abono" class="form-control form-control-sm js-money" required value="">
                     </div>
                     <div class="col-12">
                         <label class="form-label">Efecto del abono *</label>
@@ -149,7 +149,7 @@
                 </div>
                 <div class="mb-2">
                     <label class="form-label">Valor a refinanciar *</label>
-                    <input type="number" name="valor_refinanciado" class="form-control form-control-sm" required value="{{ obligacion.saldo_actual or '' }}">
+                    <input type="text" name="valor_refinanciado" class="form-control form-control-sm js-money" required value="{{ obligacion.saldo_actual or '' }}">
                 </div>
                 <div class="row g-2">
                     <div class="col-12 col-md-6">
@@ -162,7 +162,7 @@
                     </div>
                     <div class="col-12 col-md-6">
                         <label class="form-label">Nuevo valor cuota</label>
-                        <input type="number" name="nuevo_valor_cuota" class="form-control form-control-sm">
+                        <input type="text" name="nuevo_valor_cuota" class="form-control form-control-sm js-money">
                     </div>
                     <div class="col-12 col-md-6">
                         <label class="form-label">Nueva fecha vencimiento</label>
@@ -170,11 +170,11 @@
                     </div>
                     <div class="col-12 col-md-6">
                         <label class="form-label">Nueva cuota a capital</label>
-                        <input type="number" name="nuevo_valor_cuota_capital" class="form-control form-control-sm" value="{{ obligacion.valor_cuota_capital or '' }}">
+                        <input type="text" name="nuevo_valor_cuota_capital" class="form-control form-control-sm js-money" value="{{ obligacion.valor_cuota_capital or '' }}">
                     </div>
                     <div class="col-12 col-md-6">
                         <label class="form-label">Nueva cuota a interes</label>
-                        <input type="number" name="nuevo_valor_cuota_interes" class="form-control form-control-sm" value="{{ obligacion.valor_cuota_interes or '' }}">
+                        <input type="text" name="nuevo_valor_cuota_interes" class="form-control form-control-sm js-money" value="{{ obligacion.valor_cuota_interes or '' }}">
                         <div class="form-text">Si los diligencia, deben sumar la nueva cuota total.</div>
                     </div>
                 </div>

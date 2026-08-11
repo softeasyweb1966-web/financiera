@@ -398,7 +398,7 @@
                         <div class="row">
                             <div class="col-12 mb-2">
                                 <label class="form-label">Valor a causar</label>
-                                <input type="number" name="valor_causado" id="pago_valor_causado" class="form-control">
+                                <input type="text" name="valor_causado" id="pago_valor_causado" class="form-control js-money">
                                 <div class="form-text">Valor exacto de la factura</div>
                             </div>
                         </div>
@@ -407,11 +407,11 @@
                         <div class="row">
                             <div class="col-6 mb-2">
                                 <label class="form-label">Valor factura</label>
-                                <input type="number" name="valor_causado" id="pago_valor_causado2" class="form-control form-control-sm">
+                                <input type="text" name="valor_causado" id="pago_valor_causado2" class="form-control form-control-sm js-money">
                             </div>
                             <div class="col-6 mb-2">
                                 <label class="form-label">Valor pagado</label>
-                                <input type="number" name="valor_pagado" id="pago_valor_pagado" class="form-control form-control-sm">
+                                <input type="text" name="valor_pagado" id="pago_valor_pagado" class="form-control form-control-sm js-money">
                             </div>
                         </div>
                         <div class="row">
@@ -474,8 +474,8 @@
 function prepararPago(id, nombre, mes, valor) {
     document.getElementById('pago_servicio_id').value = id;
     document.getElementById('pago_mes').value = mes;
-    document.getElementById('pago_valor_causado2').value = valor || '';
-    document.getElementById('pago_valor_pagado').value = valor || '';
+    window.FinancieraMoney.setValue(document.getElementById('pago_valor_causado2'), valor || '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_valor_pagado'), valor || '');
     document.getElementById('pago_estado').value = 'pagado';
     document.getElementById('pago_accion').value = 'pagar';
     document.getElementById('pago_titulo').textContent = 'Pagar - ' + nombre;
@@ -487,7 +487,7 @@ function prepararPago(id, nombre, mes, valor) {
 function prepararCausar(id, nombre, mes, valor) {
     document.getElementById('pago_servicio_id').value = id;
     document.getElementById('pago_mes').value = mes;
-    document.getElementById('pago_valor_causado').value = valor || '';
+    window.FinancieraMoney.setValue(document.getElementById('pago_valor_causado'), valor || '');
     document.getElementById('pago_accion').value = 'causar';
     document.getElementById('pago_titulo').textContent = 'Causar - ' + nombre;
     document.getElementById('seccion-causar').style.display = 'block';
