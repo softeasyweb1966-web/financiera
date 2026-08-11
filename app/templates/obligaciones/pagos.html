@@ -341,12 +341,12 @@
             <div class="mt-2 d-flex gap-1 flex-wrap">
                 {% if item.estado != 'pagado' %}
                 <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick='prepararPago({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }})'>
+                        onclick='prepararPago({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }})'>
                     <i class="bi bi-check-lg"></i> Pagar
                 </button>
                 {% if item.estado == 'sin_causar' or item.estado == 'pendiente' %}
                 <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick='prepararCausar({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }})'>
+                        onclick='prepararCausar({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }})'>
                     <i class="bi bi-pencil"></i> Causar
                 </button>
                 {% endif %}
@@ -464,11 +464,13 @@ function toggleDesglose(requiereDesglose) {
     }
 }
 
-function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose) {
+function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres) {
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
     document.getElementById('pago_valor_causado2').value = valorEsperado || '';
     document.getElementById('pago_valor').value = valorEsperado || '';
+    document.getElementById('pago_capital').value = valorCapital || '';
+    document.getElementById('pago_interes').value = valorInteres || '';
     document.getElementById('pago_accion').value = 'pagar';
     document.getElementById('pago_estado').value = 'pagado';
     document.getElementById('pago_titulo').textContent = 'Pagar - ' + nombre;
@@ -477,10 +479,12 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose) {
     toggleDesglose(requiereDesglose);
 }
 
-function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose) {
+function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres) {
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
     document.getElementById('pago_valor_causado').value = valorEsperado || '';
+    document.getElementById('pago_capital').value = valorCapital || '';
+    document.getElementById('pago_interes').value = valorInteres || '';
     document.getElementById('pago_accion').value = 'causar';
     document.getElementById('pago_titulo').textContent = 'Causar - ' + nombre;
     document.getElementById('seccion-causar').style.display = 'block';

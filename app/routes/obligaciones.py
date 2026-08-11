@@ -39,6 +39,8 @@ def _conceptos_activos_categoria(nombre_categoria, anio, mes):
 def _valor_estimado_obligacion(obligacion, ultimo_pago=None):
     if obligacion.valor_cuota_fija:
         return float(obligacion.valor_cuota_fija)
+    if obligacion.valor_cuota_capital is not None or obligacion.valor_cuota_interes is not None:
+        return float(obligacion.valor_cuota_capital or 0) + float(obligacion.valor_cuota_interes or 0)
     if obligacion.interes_mensual_calculado:
         return obligacion.interes_mensual_calculado
     if obligacion.cuota_francesa_calculada:
@@ -221,6 +223,27 @@ def _float_or_none(valor):
         return None
 
 
+def _validar_desglose_cuota_form(requiere_desglose, valor_cuota_fija, valor_cuota_capital, valor_cuota_interes):
+    total = _float_or_none(valor_cuota_fija)
+    capital = _float_or_none(valor_cuota_capital)
+    interes = _float_or_none(valor_cuota_interes)
+
+    if not requiere_desglose and capital is None and interes is None:
+        return None
+
+    if capital is None or interes is None:
+        return 'Si discrimina la cuota, debe diligenciar tanto capital como interes.'
+
+    suma_componentes = (capital or 0) + (interes or 0)
+    if total is None:
+        return 'Para discriminar la cuota, primero debe registrar el valor total de la cuota.'
+
+    if abs(suma_componentes - total) > 1:
+        return 'La suma de capital e interes debe coincidir con el valor de la cuota.'
+
+    return None
+
+
 @obligaciones_bp.route('/')
 def lista():
     obligaciones = Obligacion.query.filter_by(activo=True).order_by(Obligacion.dia_limite_pago).all()
@@ -232,6 +255,17 @@ def lista():
 @obligaciones_bp.route('/nueva', methods=['GET', 'POST'])
 def nueva():
     if request.method == 'POST':
+        requiere_desglose_pago = request.form.get('requiere_desglose_pago') == 'on'
+        error_desglose = _validar_desglose_cuota_form(
+            requiere_desglose_pago,
+            request.form.get('valor_cuota_fija'),
+            request.form.get('valor_cuota_capital'),
+            request.form.get('valor_cuota_interes'),
+        )
+        if error_desglose:
+            flash(error_desglose, 'danger')
+            return redirect(request.url)
+
         obligacion = Obligacion(
             tercero_id=request.form['tercero_id'],
             concepto_id=request.form['concepto_id'],
@@ -243,13 +277,15 @@ def nueva():
             plazo_dias=request.form.get('plazo_dias') or None,
             cuotas_totales=request.form.get('cuotas_totales') or None,
             valor_cuota_fija=request.form.get('valor_cuota_fija') or None,
+            valor_cuota_capital=request.form.get('valor_cuota_capital') or None,
+            valor_cuota_interes=request.form.get('valor_cuota_interes') or None,
             fecha_inicio=request.form.get('fecha_inicio') or None,
             fecha_vencimiento=request.form.get('fecha_vencimiento') or None,
             fecha_recibe=request.form.get('fecha_recibe') or None,
             titular=request.form.get('titular', '').strip(),
             referencia=request.form.get('referencia', '').strip(),
             frecuencia_pago=request.form.get('frecuencia_pago', 'mensual'),
-            requiere_desglose_pago=request.form.get('requiere_desglose_pago') == 'on',
+            requiere_desglose_pago=requiere_desglose_pago,
             dia_limite_pago=request.form.get('dia_limite_pago') or None,
             estado=request.form.get('estado', 'activo'),
             observaciones=request.form.get('observaciones', '').strip()
@@ -271,6 +307,17 @@ def nueva():
 def editar(id):
     obligacion = Obligacion.query.get_or_404(id)
     if request.method == 'POST':
+        requiere_desglose_pago = request.form.get('requiere_desglose_pago') == 'on'
+        error_desglose = _validar_desglose_cuota_form(
+            requiere_desglose_pago,
+            request.form.get('valor_cuota_fija'),
+            request.form.get('valor_cuota_capital'),
+            request.form.get('valor_cuota_interes'),
+        )
+        if error_desglose:
+            flash(error_desglose, 'danger')
+            return redirect(request.url)
+
         obligacion.tercero_id = request.form['tercero_id']
         obligacion.concepto_id = request.form['concepto_id']
         obligacion.modalidad = request.form['modalidad']
@@ -281,13 +328,15 @@ def editar(id):
         obligacion.plazo_dias = request.form.get('plazo_dias') or None
         obligacion.cuotas_totales = request.form.get('cuotas_totales') or None
         obligacion.valor_cuota_fija = request.form.get('valor_cuota_fija') or None
+        obligacion.valor_cuota_capital = request.form.get('valor_cuota_capital') or None
+        obligacion.valor_cuota_interes = request.form.get('valor_cuota_interes') or None
         obligacion.fecha_inicio = request.form.get('fecha_inicio') or None
         obligacion.fecha_vencimiento = request.form.get('fecha_vencimiento') or None
         obligacion.fecha_recibe = request.form.get('fecha_recibe') or None
         obligacion.titular = request.form.get('titular', '').strip()
         obligacion.referencia = request.form.get('referencia', '').strip()
         obligacion.frecuencia_pago = request.form.get('frecuencia_pago', 'mensual')
-        obligacion.requiere_desglose_pago = request.form.get('requiere_desglose_pago') == 'on'
+        obligacion.requiere_desglose_pago = requiere_desglose_pago
         obligacion.dia_limite_pago = request.form.get('dia_limite_pago') or None
         obligacion.estado = request.form.get('estado', 'activo')
         obligacion.observaciones = request.form.get('observaciones', '').strip()

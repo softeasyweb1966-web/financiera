@@ -87,6 +87,18 @@
                     </div>
                 </div>
 
+                <div class="row" id="fila_desglose_cuota" style="display:none;">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Valor cuota a capital</label>
+                        <input type="number" name="valor_cuota_capital" id="valor_cuota_capital" class="form-control" value="{{ obligacion.valor_cuota_capital if obligacion and obligacion.valor_cuota_capital else '' }}">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Valor cuota a interes</label>
+                        <input type="number" name="valor_cuota_interes" id="valor_cuota_interes" class="form-control" value="{{ obligacion.valor_cuota_interes if obligacion and obligacion.valor_cuota_interes else '' }}">
+                        <div class="form-text">Si aplica, estos dos valores deben sumar la cuota total.</div>
+                    </div>
+                </div>
+
                 <div class="row">
                     <div class="col-md-3 mb-3">
                         <label class="form-label">Fecha inicio</label>
@@ -167,12 +179,15 @@ function toggleCampos() {
     const cuotas = document.getElementById('campo_cuotas');
     const cuotaFija = document.getElementById('campo_cuota_fija');
     const frecuenciaPago = document.getElementById('campo_frecuencia_pago');
+    const filaDesgloseCuota = document.getElementById('fila_desglose_cuota');
+    const requiereDesglose = document.getElementById('requiere_desglose_pago');
 
     plazoDias.style.display = 'none';
     plazoMeses.style.display = 'block';
     cuotas.style.display = 'block';
     cuotaFija.style.display = 'block';
     frecuenciaPago.style.display = mod === 'cadena' ? 'block' : 'none';
+    filaDesgloseCuota.style.display = requiereDesglose.checked ? 'flex' : 'none';
 
     if (mod === 'prestamo_corto_plazo') {
         plazoDias.style.display = 'block';
@@ -190,6 +205,9 @@ function toggleCampos() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', toggleCampos);
+document.addEventListener('DOMContentLoaded', function () {
+    toggleCampos();
+    document.getElementById('requiere_desglose_pago').addEventListener('change', toggleCampos);
+});
 </script>
 {% endblock %}

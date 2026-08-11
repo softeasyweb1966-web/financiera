@@ -29,6 +29,10 @@ def _ensure_schema():
             db.session.execute(text("ALTER TABLE obligaciones ADD COLUMN IF NOT EXISTS frecuencia_pago VARCHAR(20) DEFAULT 'mensual'"))
         if 'requiere_desglose_pago' not in columnas_obligaciones:
             db.session.execute(text('ALTER TABLE obligaciones ADD COLUMN IF NOT EXISTS requiere_desglose_pago BOOLEAN DEFAULT FALSE'))
+        if 'valor_cuota_capital' not in columnas_obligaciones:
+            db.session.execute(text('ALTER TABLE obligaciones ADD COLUMN IF NOT EXISTS valor_cuota_capital NUMERIC(14, 2)'))
+        if 'valor_cuota_interes' not in columnas_obligaciones:
+            db.session.execute(text('ALTER TABLE obligaciones ADD COLUMN IF NOT EXISTS valor_cuota_interes NUMERIC(14, 2)'))
         db.session.commit()
 
 

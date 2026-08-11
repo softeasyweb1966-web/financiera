@@ -130,7 +130,12 @@
                     </td>
                     <td>${{ "{:,.0f}".format(o.capital_inicial) if o.capital_inicial else '-' }}</td>
                     <td class="fw-bold text-danger">${{ "{:,.0f}".format(o.saldo_actual) if o.saldo_actual else '-' }}</td>
-                    <td>${{ "{:,.0f}".format(o.valor_cuota_fija) if o.valor_cuota_fija else '-' }}</td>
+                    <td>
+                        ${{ "{:,.0f}".format(o.valor_cuota_fija) if o.valor_cuota_fija else '-' }}
+                        {% if o.valor_cuota_capital or o.valor_cuota_interes %}
+                        <br><small class="text-muted">Cap: ${{ "{:,.0f}".format(o.valor_cuota_capital or 0) }} · Int: ${{ "{:,.0f}".format(o.valor_cuota_interes or 0) }}</small>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if o.plazo_dias %}{{ o.plazo_dias }} días
                         {% elif o.plazo_meses %}{{ o.plazo_meses }} meses

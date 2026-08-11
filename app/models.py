@@ -280,6 +280,8 @@ class Obligacion(db.Model):
     cuotas_totales = db.Column(db.Integer)
     cuotas_pagadas = db.Column(db.Integer, default=0)
     valor_cuota_fija = db.Column(db.Numeric(14, 2))  # Para cadenas o cuota pactada
+    valor_cuota_capital = db.Column(db.Numeric(14, 2))
+    valor_cuota_interes = db.Column(db.Numeric(14, 2))
     fecha_inicio = db.Column(db.Date)
     fecha_vencimiento = db.Column(db.Date)
     fecha_recibe = db.Column(db.Date)

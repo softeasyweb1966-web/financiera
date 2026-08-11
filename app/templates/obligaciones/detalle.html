@@ -19,6 +19,10 @@
             {{ obligacion.modalidad.replace('_', ' ')|title }} ·
             Dia pago: {{ obligacion.dia_limite_pago or '-' }} ·
             Cuota: ${{ "{:,.0f}".format(obligacion.valor_cuota_fija) if obligacion.valor_cuota_fija else '-' }} ·
+            {% if obligacion.valor_cuota_capital or obligacion.valor_cuota_interes %}
+            Cap: ${{ "{:,.0f}".format(obligacion.valor_cuota_capital or 0) }} Â·
+            Int: ${{ "{:,.0f}".format(obligacion.valor_cuota_interes or 0) }} Â·
+            {% endif %}
             Saldo: ${{ "{:,.0f}".format(obligacion.saldo_actual) if obligacion.saldo_actual else '-' }}
         </small>
     </div>
