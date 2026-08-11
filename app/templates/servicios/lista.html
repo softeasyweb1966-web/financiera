@@ -14,29 +14,104 @@
     <div class="table-responsive">
         <table class="table table-hover table-sm mb-0">
             <thead class="table-light">
-                <tr><th>Empresa</th><th>Concepto</th><th>Estado concepto</th><th>Referencia</th><th>Día pago</th><th>Valor est.</th><th></th></tr>
+                <tr>
+                    <th>Empresa</th>
+                    <th>Concepto</th>
+                    <th>Estado servicio</th>
+                    <th>Referencia</th>
+                    <th>Día pago</th>
+                    <th>Valor est.</th>
+                    <th></th>
+                </tr>
             </thead>
             <tbody>
                 {% for s in servicios %}
-                <tr class="{{ 'table-secondary text-muted' if s.estado_concepto != 'activo' else '' }}">
+                <tr class="{{ 'table-secondary text-muted' if s.estado_operativo != 'activo' else '' }}">
                     <td class="fw-semibold">{{ s.tercero.nombre }}</td>
-                    <td><small class="text-muted">{{ s.concepto.nombre }}</small></td>
                     <td>
-                        <span class="badge {{ 'bg-success' if s.estado_concepto == 'activo' else 'bg-secondary' }}">
-                            {{ 'Activo' if s.estado_concepto == 'activo' else 'Inactivo' }}
+                        <small class="text-muted d-block">{{ s.concepto.nombre }}</small>
+                        {% if s.proximo_cambio and s.proximo_cambio.vigencia_desde %}
+                        <small class="text-warning d-block">Cambio programado: {{ s.proximo_cambio.estado_nuevo|capitalize }} desde {{ s.proximo_cambio.vigencia_desde.strftime('%m/%Y') }}</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge {{ 'bg-success' if s.estado_operativo == 'activo' else 'bg-secondary' }}">
+                            {{ s.estado_operativo|capitalize }}
                         </span>
+                        {% if s.cambio_vigente and s.cambio_vigente.vigencia_desde %}
+                        <div><small>Opera así desde {{ s.cambio_vigente.vigencia_desde.strftime('%m/%Y') }}</small></div>
+                        {% endif %}
+                        {% if s.cambio_vigente and s.cambio_vigente.motivo %}
+                        <div><small>Motivo: {{ s.cambio_vigente.motivo }}</small></div>
+                        {% endif %}
                     </td>
                     <td><small>{{ s.referencia or '-' }}</small></td>
                     <td>{{ s.dia_limite_pago or '-' }}</td>
                     <td>{{ "${:,.0f}".format(s.valor_estimado) if s.valor_estimado else '-' }}</td>
-                    <td><a href="{{ url_for('servicios.editar', id=s.id) }}" class="btn btn-sm btn-outline-secondary py-0"><i class="bi bi-pencil"></i></a></td>
+                    <td class="text-nowrap">
+                        <a href="{{ url_for('servicios.editar', id=s.id) }}" class="btn btn-sm btn-outline-secondary py-0" title="Editar"><i class="bi bi-pencil"></i></a>
+                        <button class="btn btn-sm btn-outline-warning py-0" title="Cambiar estado"
+                                data-bs-toggle="modal" data-bs-target="#modalEstadoServicio"
+                                onclick="prepararCambioEstadoServicio({{ s.id }}, {{ s.tercero.nombre|tojson }}, {{ s.estado_operativo|tojson }})">
+                            <i class="bi bi-arrow-repeat"></i>
+                        </button>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
+
 {% if not servicios %}
 <div class="text-center text-muted mt-4"><i class="bi bi-inbox fs-1"></i><p>No hay servicios. <a href="{{ url_for('servicios.nuevo') }}">Crear el primero</a></p></div>
 {% endif %}
+
+<div class="modal fade" id="modalEstadoServicio" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form method="POST" id="formCambioEstadoServicio">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold" id="estado_servicio_titulo">Cambiar estado</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label">Nuevo estado</label>
+                        <select name="estado" id="estado_servicio_select" class="form-select form-select-sm" required>
+                            <option value="activo">Activo</option>
+                            <option value="inactivo">Inactivo</option>
+                            <option value="retirado">Retirado</option>
+                            <option value="anulado">Anulado</option>
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Motivo</label>
+                        <input type="text" name="motivo" id="estado_servicio_motivo" class="form-control form-control-sm" required placeholder="Explique el cambio">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Empieza a operar desde</label>
+                        <input type="month" name="vigencia_desde" id="estado_servicio_vigencia" class="form-control form-control-sm" min="{{ mes_actual }}" value="{{ mes_actual }}" required>
+                        <div class="form-text">No se permiten meses anteriores a {{ mes_actual }}.</div>
+                    </div>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="submit" class="btn btn-primary btn-sm">Guardar cambio</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function prepararCambioEstadoServicio(id, nombre, estadoActual) {
+    document.getElementById('formCambioEstadoServicio').action = '/servicios/' + id + '/cambiar-estado';
+    document.getElementById('estado_servicio_titulo').textContent = 'Estado - ' + nombre;
+    document.getElementById('estado_servicio_select').value = estadoActual === 'activo' ? 'inactivo' : 'activo';
+    document.getElementById('estado_servicio_motivo').value = '';
+    document.getElementById('estado_servicio_vigencia').value = '{{ mes_actual }}';
+}
+</script>
 {% endblock %}

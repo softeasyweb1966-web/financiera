@@ -16,7 +16,7 @@ def _ensure_schema():
     if inspector.has_table('historial_estados'):
         columnas = {col['name'] for col in inspector.get_columns('historial_estados')}
         if 'vigencia_desde' not in columnas:
-            db.session.execute(text('ALTER TABLE historial_estados ADD COLUMN vigencia_desde DATE'))
+            db.session.execute(text('ALTER TABLE historial_estados ADD COLUMN IF NOT EXISTS vigencia_desde DATE'))
             db.session.commit()
 
 

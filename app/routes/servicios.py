@@ -2,13 +2,17 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from app import db
 from app.models import (
     Servicio, PagoServicio, Tercero, Concepto, Categoria, MedioPago,
+    HistorialEstado,
     GrupoServicio, GrupoServicioConcepto, PagoTC
 )
 from app.conceptos_estado import (
-    cargar_historial_conceptos, concepto_activo_en_periodo, estado_concepto_en_periodo
+    ESTADOS_SERVICIO,
+    cargar_historial_conceptos, cargar_historial_servicios,
+    concepto_activo_en_periodo, servicio_activo_en_periodo,
+    estado_servicio_en_periodo, periodo_anterior, siguiente_cambio_servicio
 )
 from calendar import monthrange
-from datetime import date
+from datetime import date, datetime
 
 servicios_bp = Blueprint('servicios', __name__, url_prefix='/servicios')
 
@@ -31,13 +35,23 @@ def lista():
     servicios = Servicio.query.filter_by(activo=True).order_by(Servicio.dia_limite_pago).all()
     anio = request.args.get('anio', date.today().year, type=int)
     mes = request.args.get('mes', date.today().month, type=int)
-    historiales = cargar_historial_conceptos([s.concepto_id for s in servicios])
+    historiales = cargar_historial_servicios([s.id for s in servicios])
     for servicio in servicios:
-        estado_concepto, _ = estado_concepto_en_periodo(
-            servicio.concepto, anio, mes, historiales.get(servicio.concepto_id, [])
+        rows = historiales.get(servicio.id, [])
+        estado_operativo, cambio_vigente = estado_servicio_en_periodo(
+            servicio, anio, mes, rows
         )
-        servicio.estado_concepto = estado_concepto
-    return render_template('servicios/lista.html', servicios=servicios, anio=anio, mes=mes, meses=MESES)
+        servicio.estado_operativo = estado_operativo
+        servicio.cambio_vigente = cambio_vigente
+        servicio.proximo_cambio = siguiente_cambio_servicio(servicio, anio, mes, rows)
+    return render_template(
+        'servicios/lista.html',
+        servicios=servicios,
+        anio=anio,
+        mes=mes,
+        meses=MESES,
+        mes_actual=date.today().strftime('%Y-%m')
+    )
 
 
 @servicios_bp.route('/nuevo', methods=['GET', 'POST'])
@@ -57,7 +71,7 @@ def nuevo():
             mes_inicio_bimestral=request.form.get('mes_inicio_bimestral') or 1,
             direccion_inmueble=request.form.get('direccion_inmueble', '').strip(),
             estrato=request.form.get('estrato') or None,
-            estado=request.form.get('estado', 'activo'),
+            estado='activo',
             observaciones=request.form.get('observaciones', '').strip()
         )
         db.session.add(servicio)
@@ -87,7 +101,6 @@ def editar(id):
         servicio.mes_inicio_bimestral = request.form.get('mes_inicio_bimestral') or 1
         servicio.direccion_inmueble = request.form.get('direccion_inmueble', '').strip()
         servicio.estrato = request.form.get('estrato') or None
-        servicio.estado = request.form.get('estado', 'activo')
         servicio.observaciones = request.form.get('observaciones', '').strip()
         db.session.commit()
         flash('Servicio actualizado.', 'success')
@@ -112,10 +125,10 @@ def pagos(anio=None, mes=None):
 
     hoy = date.today()
     servicios = Servicio.query.filter_by(activo=True).order_by(Servicio.dia_limite_pago).all()
-    historiales = cargar_historial_conceptos([s.concepto_id for s in servicios])
+    historiales = cargar_historial_servicios([s.id for s in servicios])
     servicios = [
         s for s in servicios
-        if concepto_activo_en_periodo(s.concepto, anio, mes, historiales.get(s.concepto_id, []))
+        if servicio_activo_en_periodo(s, anio, mes, historiales.get(s.id, []))
     ]
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
     servicio_ids = [s.id for s in servicios]
@@ -539,6 +552,63 @@ def detalle(id):
     return render_template('servicios/detalle.html',
                            servicio=servicio, anio=anio,
                            meses=MESES, pagos=pagos_dict)
+
+
+@servicios_bp.route('/<int:id>/cambiar-estado', methods=['POST'])
+def cambiar_estado(id):
+    servicio = Servicio.query.get_or_404(id)
+    nuevo_estado = request.form.get('estado', '').strip().lower()
+    motivo = request.form.get('motivo', '').strip()
+    vigencia_str = request.form.get('vigencia_desde', '').strip()
+
+    if nuevo_estado not in ESTADOS_SERVICIO:
+        flash('Seleccione un estado válido para el servicio.', 'danger')
+        return redirect(url_for('servicios.lista'))
+    if not motivo:
+        flash('Debe indicar el motivo del cambio de estado.', 'danger')
+        return redirect(url_for('servicios.lista'))
+    if not vigencia_str:
+        flash('Debe indicar desde qué mes empieza a operar el nuevo estado.', 'danger')
+        return redirect(url_for('servicios.lista'))
+
+    try:
+        vigencia_desde = datetime.strptime(vigencia_str, '%Y-%m').date().replace(day=1)
+    except ValueError:
+        flash('El mes de vigencia no es válido.', 'danger')
+        return redirect(url_for('servicios.lista'))
+
+    mes_actual = date.today().replace(day=1)
+    if vigencia_desde < mes_actual:
+        flash('El nuevo estado no puede operar hacia atrás.', 'danger')
+        return redirect(url_for('servicios.lista'))
+
+    historiales = cargar_historial_servicios([servicio.id]).get(servicio.id, [])
+    anio_prev, mes_prev = periodo_anterior(vigencia_desde.year, vigencia_desde.month)
+    estado_anterior, _ = estado_servicio_en_periodo(servicio, anio_prev, mes_prev, historiales)
+    estado_objetivo, _ = estado_servicio_en_periodo(servicio, vigencia_desde.year, vigencia_desde.month, historiales)
+
+    if estado_objetivo == nuevo_estado:
+        flash('Ese servicio ya queda en ese estado para el mes indicado.', 'warning')
+        return redirect(url_for('servicios.lista'))
+
+    db.session.add(HistorialEstado(
+        entidad='servicio',
+        entidad_id=servicio.id,
+        estado_anterior=estado_anterior,
+        estado_nuevo=nuevo_estado,
+        fecha_cambio=datetime.utcnow(),
+        vigencia_desde=vigencia_desde,
+        motivo=motivo
+    ))
+
+    if vigencia_desde <= mes_actual:
+        servicio.estado = nuevo_estado
+    db.session.commit()
+    flash(
+        f'Servicio "{servicio.tercero.nombre}" programado como {nuevo_estado} desde {vigencia_desde.strftime("%m/%Y")}.',
+        'info'
+    )
+    return redirect(url_for('servicios.lista', anio=date.today().year, mes=date.today().month))
 
 
 @servicios_bp.route('/pago', methods=['POST'])
