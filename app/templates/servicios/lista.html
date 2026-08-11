@@ -52,7 +52,7 @@
                         <a href="{{ url_for('servicios.editar', id=s.id) }}" class="btn btn-sm btn-outline-secondary py-0" title="Editar"><i class="bi bi-pencil"></i></a>
                         <button class="btn btn-sm btn-outline-warning py-0" title="Cambiar estado"
                                 data-bs-toggle="modal" data-bs-target="#modalEstadoServicio"
-                                onclick="prepararCambioEstadoServicio({{ s.id }}, {{ s.tercero.nombre|tojson }}, {{ s.estado_operativo|tojson }})">
+                                onclick='prepararCambioEstadoServicio({{ s.id }}, {{ s.tercero.nombre|tojson }}, {{ s.estado_operativo|tojson }})'>
                             <i class="bi bi-arrow-repeat"></i>
                         </button>
                     </td>

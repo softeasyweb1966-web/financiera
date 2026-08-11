@@ -59,7 +59,7 @@
                             {% if servicio %}
                             <button type="button" class="btn btn-outline-warning"
                                     data-bs-toggle="modal" data-bs-target="#modalEstadoServicio"
-                                    onclick="prepararCambioEstadoServicio({{ servicio.id }}, {{ servicio.tercero.nombre|tojson }}, {{ servicio.estado_operativo|tojson }})">
+                                    onclick='prepararCambioEstadoServicio({{ servicio.id }}, {{ servicio.tercero.nombre|tojson }}, {{ servicio.estado_operativo|tojson }})'>
                                 <i class="bi bi-arrow-repeat"></i> Cambiar estado
                             </button>
                             {% endif %}
