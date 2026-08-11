@@ -92,6 +92,7 @@ def pagos(anio=None, mes=None):
     hoy = date.today()
     servicios = Servicio.query.filter_by(activo=True).order_by(Servicio.dia_limite_pago).all()
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
+    servicio_ids = [s.id for s in servicios]
 
     def servicio_aplica_mes(s, m):
         """Verifica si un servicio aplica para el mes dado según su periodicidad"""
@@ -108,6 +109,31 @@ def pagos(anio=None, mes=None):
     # Pagos del mes seleccionado
     pagos_mes = PagoServicio.query.filter_by(anio=anio, mes=mes).all()
     pagos_dict = {p.servicio_id: p for p in pagos_mes}
+
+    ultimos_pagos = []
+    if servicio_ids:
+        ultimos_pagos = PagoServicio.query.filter(
+            PagoServicio.servicio_id.in_(servicio_ids),
+            PagoServicio.valor_pagado.isnot(None),
+            PagoServicio.valor_pagado > 0
+        ).order_by(
+            PagoServicio.servicio_id,
+            PagoServicio.anio.desc(),
+            PagoServicio.mes.desc(),
+            PagoServicio.fecha_pago.desc(),
+            PagoServicio.id.desc()
+        ).all()
+
+    ultimo_pago_por_servicio = {}
+    for pago_hist in ultimos_pagos:
+        if pago_hist.servicio_id not in ultimo_pago_por_servicio:
+            ultimo_pago_por_servicio[pago_hist.servicio_id] = float(pago_hist.valor_pagado or 0)
+
+    def valor_estimado_servicio(servicio):
+        valor_ultimo_pago = ultimo_pago_por_servicio.get(servicio.id)
+        if valor_ultimo_pago and valor_ultimo_pago > 0:
+            return valor_ultimo_pago
+        return float(servicio.valor_estimado or 0)
 
     # Pendientes de meses anteriores (causado, vencido, parcial)
     pendientes_anteriores = []
@@ -174,12 +200,8 @@ def pagos(anio=None, mes=None):
 
     acum_servicios_detalle.sort(key=lambda item: item['total'], reverse=True)
 
-    # Total causado del mes actual
-    causado_mes_actual = db.session.query(
-        func.coalesce(func.sum(PagoServicio.valor_causado), 0)
-    ).filter(PagoServicio.anio == anio, PagoServicio.mes == mes).scalar()
-
     # Enhanced month card: calculate sin_causar, total_esperado, pendiente, saldo
+    causado_mes_actual = 0
     total_estimado_mes = 0
     total_estimado_items = 0
     total_causado_items = 0
@@ -192,19 +214,20 @@ def pagos(anio=None, mes=None):
         if not servicio_aplica_mes(s, mes):
             continue
         pago = pagos_dict.get(s.id)
-        valor_estimado = float(s.valor_estimado or 0)
+        valor_estimado = valor_estimado_servicio(s)
         total_estimado_mes += valor_estimado
         if valor_estimado > 0:
             total_estimado_items += 1
-        valor_causado = float(pago.valor_causado or 0) if pago else 0
+        valor_causado = float((pago.valor_causado or pago.valor_pagado) or 0) if pago else 0
         valor_pagado = float(pago.valor_pagado or 0) if pago else 0
         estado_item = pago.estado if pago else 'sin_causar'
 
         if valor_causado > 0:
             total_causado_items += 1
+            causado_mes_actual += valor_causado
         if valor_pagado > 0:
             total_pagado_items += 1
-        if not pago or estado_item == 'sin_causar':
+        if valor_causado <= 0 and estado_item != 'n/a':
             sin_causar_mes += valor_estimado
             if valor_estimado > 0:
                 sin_causar_items += 1
@@ -223,10 +246,14 @@ def pagos(anio=None, mes=None):
     total_esperado_mes = float(causado_mes_actual) + sin_causar_mes
     total_esperado_items = len({
         item['id'] for item in items_mes_actual
-        if item['valor_causado'] > 0 or (item['estado'] == 'sin_causar' and item['valor_estimado'] > 0)
+        if item['valor_causado'] > 0 or (item['estado'] != 'n/a' and item['valor_estimado'] > 0)
     })
     pendiente_mes = float(causado_mes_actual) - float(pagado_mes_actual)
     saldo_mes = total_esperado_mes - float(pagado_mes_actual)
+    por_pagar_mes = max(saldo_mes, 0)
+    saldo_favor_mes = abs(saldo_mes) if saldo_mes < 0 else 0
+    total_por_cubrir_hoy = total_deuda_anterior + por_pagar_mes
+    items_por_cubrir_mes = total_pendiente_items + sin_causar_items
     total_items_mes = len(items_mes_actual)
 
     # Resumen agrupado del mes (usa grupos personalizados si existen, sino agrupa por concepto)
@@ -250,7 +277,10 @@ def pagos(anio=None, mes=None):
                 continue
             pago = pagos_dict.get(s.id)
             grupo = concepto_a_grupo.get(s.concepto_id)
-            valor_causado = float(pago.valor_causado or 0) if pago else float(s.valor_estimado or 0)
+            valor_estimado_item = valor_estimado_servicio(s)
+            valor_causado = float((pago.valor_causado or pago.valor_pagado) or 0) if pago else valor_estimado_item
+            if valor_causado <= 0 and (not pago or pago.estado != 'n/a'):
+                valor_causado = valor_estimado_item
             valor_pagado = float(pago.valor_pagado or 0) if pago else 0
 
             item_data = {
@@ -290,15 +320,18 @@ def pagos(anio=None, mes=None):
             valor_causado_item = 0
             valor_pagado_item = 0
             estado_item = 'sin_causar'
+            valor_estimado_item = valor_estimado_servicio(s)
             if pago:
-                resumen_conceptos[concepto_nombre]['causado'] += float(pago.valor_causado or 0)
+                valor_causado_item = float((pago.valor_causado or pago.valor_pagado) or 0)
+                if valor_causado_item <= 0 and pago.estado != 'n/a':
+                    valor_causado_item = valor_estimado_item
+                resumen_conceptos[concepto_nombre]['causado'] += valor_causado_item
                 resumen_conceptos[concepto_nombre]['pagado'] += float(pago.valor_pagado or 0)
-                valor_causado_item = float(pago.valor_causado or 0)
                 valor_pagado_item = float(pago.valor_pagado or 0)
                 estado_item = pago.estado
-            elif s.valor_estimado:
-                resumen_conceptos[concepto_nombre]['causado'] += float(s.valor_estimado)
-                valor_causado_item = float(s.valor_estimado)
+            elif valor_estimado_item:
+                resumen_conceptos[concepto_nombre]['causado'] += valor_estimado_item
+                valor_causado_item = valor_estimado_item
 
             resumen_conceptos[concepto_nombre]['detalle'].append({
                 'id': s.id,
@@ -329,10 +362,10 @@ def pagos(anio=None, mes=None):
             elif pago.valor_causado:
                 valor_mostrar = float(pago.valor_causado)
             else:
-                valor_mostrar = float(s.valor_estimado) if s.valor_estimado else None
+                valor_mostrar = valor_estimado_servicio(s) or None
                 es_estimado = True
         else:
-            valor_mostrar = float(s.valor_estimado) if s.valor_estimado else None
+            valor_mostrar = valor_estimado_servicio(s) or None
             es_estimado = True
 
         # Calcular días restantes para el pago
@@ -388,6 +421,10 @@ def pagos(anio=None, mes=None):
                             total_esperado_mes=total_esperado_mes,
                             total_esperado_items=total_esperado_items,
                             pendiente_mes=pendiente_mes,
+                            por_pagar_mes=por_pagar_mes,
+                            saldo_favor_mes=saldo_favor_mes,
+                            total_por_cubrir_hoy=total_por_cubrir_hoy,
+                            items_por_cubrir_mes=items_por_cubrir_mes,
                             total_pagado_items=total_pagado_items,
                             total_pendiente_items=total_pendiente_items,
                             saldo_mes=saldo_mes,

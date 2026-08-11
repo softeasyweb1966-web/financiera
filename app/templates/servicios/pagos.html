@@ -74,6 +74,23 @@
 <div class="row g-2 mb-3 align-items-start">
     <div class="col-lg-3 col-md-4">
         <div class="summary-stack">
+            <div class="card summary-side-card" style="background:#eff6ff; border:1px solid #93c5fd;">
+                <div class="summary-inline">
+                    <span class="summary-inline-label">Total por cubrir hoy</span>
+                    <span class="summary-inline-value {{ 'text-danger' if total_por_cubrir_hoy > 0 else 'text-success' }}">
+                        ${{ "{:,.0f}".format(total_por_cubrir_hoy) }}
+                    </span>
+                </div>
+                <small class="text-muted mt-1 d-block">
+                    Mes actual: ${{ "{:,.0f}".format(por_pagar_mes) }}
+                    {% if total_deuda_anterior > 0 %}
+                    · Atrasos: ${{ "{:,.0f}".format(total_deuda_anterior) }}
+                    {% endif %}
+                    {% if items_por_cubrir_mes > 0 %}
+                    · {{ items_por_cubrir_mes }} pendientes del mes
+                    {% endif %}
+                </small>
+            </div>
             <div class="card summary-side-card" style="background:#f0fdf4; border:1px solid #bbf7d0; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-acum-servicios">
                 <div class="summary-inline">
                     <span class="summary-inline-label">Pagado Ene-{{ meses[mes-2][:3] if mes > 1 else '-' }} <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></span>
@@ -124,47 +141,50 @@
     <div class="col-lg-9 col-md-8">
         <div class="card p-3" style="background:#eff6ff; border:1px solid #bfdbfe; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-mes-actual">
             <small class="text-muted d-block">{{ meses[mes-1] }}: resumen detallado <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
+            <small class="text-muted d-block mt-1">Para saber cuanto toca cubrir en el mes, use "Total del mes a cubrir" y "Por pagar del mes".</small>
             <div class="metric-grid text-start mt-2">
                 <div class="metric-item">
-                    <span class="metric-label">Estimado del mes</span>
+                    <span class="metric-label">Estimado segun ultimo pago</span>
                     <span class="metric-value text-dark">
                         ${{ "{:,.0f}".format(total_estimado_mes) }}
                         <small class="text-muted">({{ total_estimado_items }})</small>
                     </span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Total causado</span>
+                    <span class="metric-label">Ya causado</span>
                     <span class="metric-value text-warning">
                         ${{ "{:,.0f}".format(causado_mes_actual) }}
                         <small class="text-muted">({{ total_causado_items }})</small>
                     </span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Total sin causar</span>
+                    <span class="metric-label">Aun por causar</span>
                     <span class="metric-value text-secondary">
                         ${{ "{:,.0f}".format(sin_causar_mes) }}
                         <small class="text-muted">({{ sin_causar_items }})</small>
                     </span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Total esperado</span>
+                    <span class="metric-label">Total del mes a cubrir</span>
                     <span class="metric-value text-primary">
                         ${{ "{:,.0f}".format(total_esperado_mes) }}
                         <small class="text-muted">({{ total_esperado_items }})</small>
                     </span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Total pagado</span>
+                    <span class="metric-label">Ya pagado</span>
                     <span class="metric-value text-success">
                         ${{ "{:,.0f}".format(pagado_mes_actual) }}
                         <small class="text-muted">({{ total_pagado_items }})</small>
                     </span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Total pendiente</span>
-                    <span class="metric-value text-danger">
-                        ${{ "{:,.0f}".format(pendiente_mes) }}
-                        <small class="text-muted">({{ total_pendiente_items }})</small>
+                    <span class="metric-label">{{ 'Saldo a favor del mes' if saldo_favor_mes > 0 else 'Por pagar del mes' }}</span>
+                    <span class="metric-value {{ 'text-success' if saldo_favor_mes > 0 else 'text-danger' }}">
+                        ${{ "{:,.0f}".format(saldo_favor_mes if saldo_favor_mes > 0 else por_pagar_mes) }}
+                        {% if saldo_favor_mes == 0 %}
+                        <small class="text-muted">({{ items_por_cubrir_mes }})</small>
+                        {% endif %}
                     </span>
                 </div>
             </div>
@@ -215,7 +235,7 @@
 {% if resumen_grupos %}
 <div class="card p-3 mb-3">
     <h6 class="fw-bold mb-2"><i class="bi bi-pie-chart text-primary"></i> Resumen {{ meses[mes-1] }}</h6>
-    <p class="small text-muted mb-2">Pagado ($verde) vs esperado ($total) por grupo. Haga clic en un grupo para ver el detalle.</p>
+    <p class="small text-muted mb-2">Pagado ($verde) vs total a cubrir ($total) por grupo. Haga clic en un grupo para ver el detalle.</p>
     <div class="row g-2">
         {% for g in resumen_grupos %}
         <div class="col-6 col-md-4 col-lg-3">
@@ -292,7 +312,7 @@
                     ${{ "{:,.0f}".format(item.valor_mostrar) if item.valor_mostrar else '-' }}
                 </span>
                 {% if item.es_estimado %}
-                    <small class="text-muted d-block">valor estimado</small>
+                    <small class="text-muted d-block">estimado segun ultimo pago</small>
                 {% elif item.estado == 'causado' %}
                     <small class="text-warning d-block">factura confirmada - sin pagar</small>
                 {% elif item.estado == 'parcial' %}
