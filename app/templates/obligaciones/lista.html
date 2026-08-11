@@ -121,6 +121,12 @@
                         <span class="badge bg-{{ mod_colors.get(o.modalidad, 'secondary') }}" style="font-size:0.65rem;">
                             {{ o.modalidad.replace('_', ' ')|title }}
                         </span>
+                        <br>
+                        {% if o.estado == 'finalizado' %}
+                        <small class="text-success">Finalizada{% if o.fecha_finalizacion %} {{ o.fecha_finalizacion.strftime('%d/%m/%Y') }}{% endif %}</small>
+                        {% else %}
+                        <small class="text-muted">{{ o.estado|capitalize }}</small>
+                        {% endif %}
                         {% if o.requiere_desglose_pago %}
                         <br><small class="text-primary">Pide desglose</small>
                         {% endif %}
@@ -128,8 +134,8 @@
                         <br><small class="text-muted">{{ (o.frecuencia_pago or 'mensual')|title }}</small>
                         {% endif %}
                     </td>
-                    <td>${{ "{:,.0f}".format(o.capital_inicial) if o.capital_inicial else '-' }}</td>
-                    <td class="fw-bold text-danger">${{ "{:,.0f}".format(o.saldo_actual) if o.saldo_actual else '-' }}</td>
+                    <td>${{ "{:,.0f}".format(o.capital_inicial) if o.capital_inicial is not none else '-' }}</td>
+                    <td class="fw-bold text-danger">${{ "{:,.0f}".format(o.saldo_actual) if o.saldo_actual is not none else '-' }}</td>
                     <td>
                         ${{ "{:,.0f}".format(o.valor_cuota_fija) if o.valor_cuota_fija else '-' }}
                         {% if o.valor_cuota_capital or o.valor_cuota_interes %}

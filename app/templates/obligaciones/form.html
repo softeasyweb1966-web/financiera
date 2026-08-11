@@ -140,8 +140,8 @@
                     </div>
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Estado</label>
-                        <select name="estado" class="form-select">
-                            {% for e in ['activo', 'inactivo', 'retirado', 'anulado'] %}
+                        <select name="estado" id="estado_obligacion" class="form-select">
+                            {% for e in ['activo', 'inactivo', 'retirado', 'anulado', 'finalizado'] %}
                             <option value="{{ e }}" {{ 'selected' if obligacion and obligacion.estado == e else '' }}>{{ e|capitalize }}</option>
                             {% endfor %}
                         </select>
@@ -154,6 +154,29 @@
                         </div>
                     </div>
                 </div>
+
+                {% if obligacion %}
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <div class="form-check form-switch mt-2">
+                            <input class="form-check-input" type="checkbox" role="switch" id="finalizar_obligacion" name="finalizar_obligacion" {{ 'checked' if obligacion and obligacion.fecha_finalizacion else '' }}>
+                            <label class="form-check-label fw-semibold" for="finalizar_obligacion">Finalizar obligacion</label>
+                        </div>
+                        <div class="form-text">La deja en saldo cero y evita que salga en liquidaciones de los meses siguientes.</div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Fecha de finalizacion</label>
+                        <input type="date" name="fecha_finalizacion" id="fecha_finalizacion" class="form-control" value="{{ obligacion.fecha_finalizacion if obligacion and obligacion.fecha_finalizacion else hoy }}">
+                        <div class="form-text">Si la deja vacia, se tomara la fecha del sistema al guardar.</div>
+                    </div>
+                    <div class="col-md-4 mb-3 d-flex align-items-end">
+                        <div class="alert alert-light small mb-0 py-2 w-100">
+                            <i class="bi bi-check-circle text-success"></i>
+                            El historial se conserva, pero desde el mes siguiente ya no se liquidara.
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
 
                 <div class="mb-3">
                     <label class="form-label">Observaciones</label>
@@ -206,15 +229,49 @@ function toggleCampos() {
     }
 }
 
+function toggleFinalizacion() {
+    const finalizar = document.getElementById('finalizar_obligacion');
+    const fechaFinal = document.getElementById('fecha_finalizacion');
+    const estado = document.getElementById('estado_obligacion');
+
+    if (!finalizar || !fechaFinal || !estado) {
+        return;
+    }
+
+    if (finalizar.checked) {
+        if (!fechaFinal.value) {
+            fechaFinal.value = '{{ hoy.isoformat() }}';
+        }
+        estado.value = 'finalizado';
+    } else if (estado.value === 'finalizado') {
+        estado.value = 'activo';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     const capitalCuota = document.getElementById('valor_cuota_capital');
     const interesCuota = document.getElementById('valor_cuota_interes');
     const requiereDesglose = document.getElementById('requiere_desglose_pago');
+    const finalizar = document.getElementById('finalizar_obligacion');
+    const estado = document.getElementById('estado_obligacion');
     if ((capitalCuota.value && capitalCuota.value !== '0') || (interesCuota.value && interesCuota.value !== '0')) {
         requiereDesglose.checked = true;
     }
+    if (estado && estado.value === 'finalizado' && finalizar && !finalizar.checked) {
+        finalizar.checked = true;
+    }
     toggleCampos();
     requiereDesglose.addEventListener('change', toggleCampos);
+    if (finalizar) {
+        toggleFinalizacion();
+        finalizar.addEventListener('change', toggleFinalizacion);
+    }
+    if (estado && finalizar) {
+        estado.addEventListener('change', function () {
+            finalizar.checked = estado.value === 'finalizado';
+            toggleFinalizacion();
+        });
+    }
 });
 </script>
 {% endblock %}

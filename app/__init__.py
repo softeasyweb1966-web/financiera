@@ -23,6 +23,8 @@ def _ensure_schema():
         columnas_obligaciones = {col['name'] for col in inspector.get_columns('obligaciones')}
         if 'fecha_recibe' not in columnas_obligaciones:
             db.session.execute(text('ALTER TABLE obligaciones ADD COLUMN IF NOT EXISTS fecha_recibe DATE'))
+        if 'fecha_finalizacion' not in columnas_obligaciones:
+            db.session.execute(text('ALTER TABLE obligaciones ADD COLUMN IF NOT EXISTS fecha_finalizacion DATE'))
         if 'referencia' not in columnas_obligaciones:
             db.session.execute(text('ALTER TABLE obligaciones ADD COLUMN IF NOT EXISTS referencia VARCHAR(50)'))
         if 'frecuencia_pago' not in columnas_obligaciones:

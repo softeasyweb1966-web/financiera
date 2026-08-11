@@ -108,6 +108,15 @@ def _rango_mes(anio, mes):
     return date(anio, mes, 1), date(anio, mes, ultimo_dia)
 
 
+def _obligacion_operativa_en_periodo(obligacion, anio, mes):
+    if not obligacion.fecha_finalizacion:
+        return True
+
+    inicio_periodo, _ = _rango_mes(anio, mes)
+    inicio_finalizacion = obligacion.fecha_finalizacion.replace(day=1)
+    return inicio_periodo <= inicio_finalizacion
+
+
 def _fechas_programadas_obligacion(obligacion, anio, mes):
     inicio_mes, fin_mes = _rango_mes(anio, mes)
 
@@ -278,6 +287,15 @@ def _float_or_none(valor):
         return None
 
 
+def _date_or_none(valor):
+    if not valor:
+        return None
+    try:
+        return datetime.strptime(valor, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
 def _validar_desglose_cuota_form(requiere_desglose, valor_cuota_fija, valor_cuota_capital, valor_cuota_interes):
     total = _float_or_none(valor_cuota_fija)
     capital = _float_or_none(valor_cuota_capital)
@@ -359,7 +377,7 @@ def nueva():
     medios = MedioPago.query.filter_by(activo=True).all()
     return render_template('obligaciones/form.html', obligacion=None,
                            conceptos=conceptos, terceros=terceros,
-                           modalidades=MODALIDADES, medios=medios)
+                           modalidades=MODALIDADES, medios=medios, hoy=date.today())
 
 
 @obligaciones_bp.route('/<int:id>/editar', methods=['GET', 'POST'])
@@ -381,11 +399,22 @@ def editar(id):
             flash(error_desglose, 'danger')
             return redirect(request.url)
 
+        estado_solicitado = request.form.get('estado', 'activo')
+        finalizar_obligacion = (
+            request.form.get('finalizar_obligacion') == 'on'
+            or estado_solicitado == 'finalizado'
+        )
+        fecha_finalizacion_valor = request.form.get('fecha_finalizacion') or None
+        fecha_finalizacion = _date_or_none(fecha_finalizacion_valor)
+        if fecha_finalizacion_valor and fecha_finalizacion is None:
+            flash('La fecha de finalizacion no es valida.', 'danger')
+            return redirect(request.url)
+
         obligacion.tercero_id = request.form['tercero_id']
         obligacion.concepto_id = request.form['concepto_id']
         obligacion.modalidad = request.form['modalidad']
         obligacion.capital_inicial = request.form.get('capital_inicial') or None
-        obligacion.saldo_actual = request.form.get('saldo_actual') or None
+        obligacion.saldo_actual = 0 if finalizar_obligacion else (request.form.get('saldo_actual') or None)
         obligacion.tasa_interes_mensual = request.form.get('tasa_interes_mensual') or None
         obligacion.plazo_meses = request.form.get('plazo_meses') or None
         obligacion.plazo_dias = request.form.get('plazo_dias') or None
@@ -401,8 +430,11 @@ def editar(id):
         obligacion.frecuencia_pago = request.form.get('frecuencia_pago', 'mensual')
         obligacion.requiere_desglose_pago = requiere_desglose_pago
         obligacion.dia_limite_pago = request.form.get('dia_limite_pago') or None
-        obligacion.estado = request.form.get('estado', 'activo')
+        obligacion.estado = 'finalizado' if finalizar_obligacion else estado_solicitado
+        obligacion.fecha_finalizacion = (fecha_finalizacion or date.today()) if finalizar_obligacion else None
         obligacion.observaciones = request.form.get('observaciones', '').strip()
+        if finalizar_obligacion and obligacion.cuotas_totales is not None:
+            obligacion.cuotas_totales = obligacion.cuotas_pagadas or 0
         db.session.commit()
         flash('Obligación actualizada.', 'success')
         return redirect(url_for('obligaciones.lista'))
@@ -414,7 +446,7 @@ def editar(id):
     medios = MedioPago.query.filter_by(activo=True).all()
     return render_template('obligaciones/form.html', obligacion=obligacion,
                            conceptos=conceptos, terceros=terceros,
-                           modalidades=MODALIDADES, medios=medios)
+                           modalidades=MODALIDADES, medios=medios, hoy=date.today())
 
 
 @obligaciones_bp.route('/pagos')
@@ -432,6 +464,7 @@ def pagos(anio=None, mes=None):
     obligaciones = [
         o for o in obligaciones
         if concepto_activo_en_periodo(o.concepto, anio, mes, historiales.get(o.concepto_id, []))
+        and _obligacion_operativa_en_periodo(o, anio, mes)
     ]
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
     obligacion_ids = [o.id for o in obligaciones]

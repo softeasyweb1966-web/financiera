@@ -285,6 +285,7 @@ class Obligacion(db.Model):
     fecha_inicio = db.Column(db.Date)
     fecha_vencimiento = db.Column(db.Date)
     fecha_recibe = db.Column(db.Date)
+    fecha_finalizacion = db.Column(db.Date)
     titular = db.Column(db.String(150))
     referencia = db.Column(db.String(50))
     frecuencia_pago = db.Column(db.String(20), default='mensual')  # mensual, quincenal
