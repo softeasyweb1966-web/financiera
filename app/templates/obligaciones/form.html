@@ -181,33 +181,40 @@ function toggleCampos() {
     const frecuenciaPago = document.getElementById('campo_frecuencia_pago');
     const filaDesgloseCuota = document.getElementById('fila_desglose_cuota');
     const requiereDesglose = document.getElementById('requiere_desglose_pago');
+    const mostrarDesglose = requiereDesglose.checked;
 
     plazoDias.style.display = 'none';
     plazoMeses.style.display = 'block';
     cuotas.style.display = 'block';
     cuotaFija.style.display = 'block';
     frecuenciaPago.style.display = mod === 'cadena' ? 'block' : 'none';
-    filaDesgloseCuota.style.display = requiereDesglose.checked ? 'flex' : 'none';
+    filaDesgloseCuota.style.display = mostrarDesglose ? 'flex' : 'none';
 
     if (mod === 'prestamo_corto_plazo') {
         plazoDias.style.display = 'block';
         plazoMeses.style.display = 'none';
-        cuotas.style.display = 'none';
-        cuotaFija.style.display = 'none';
+        cuotas.style.display = mostrarDesglose ? 'block' : 'none';
+        cuotaFija.style.display = 'block';
     } else if (mod === 'solo_interes') {
         cuotas.style.display = 'none';
-        cuotaFija.style.display = 'none';
+        cuotaFija.style.display = 'block';
     } else if (mod === 'pago_total_pactado') {
         cuotas.style.display = 'none';
-        cuotaFija.style.display = 'none';
+        cuotaFija.style.display = 'block';
         plazoMeses.style.display = 'none';
         plazoDias.style.display = 'block';
     }
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+    const capitalCuota = document.getElementById('valor_cuota_capital');
+    const interesCuota = document.getElementById('valor_cuota_interes');
+    const requiereDesglose = document.getElementById('requiere_desglose_pago');
+    if ((capitalCuota.value && capitalCuota.value !== '0') || (interesCuota.value && interesCuota.value !== '0')) {
+        requiereDesglose.checked = true;
+    }
     toggleCampos();
-    document.getElementById('requiere_desglose_pago').addEventListener('change', toggleCampos);
+    requiereDesglose.addEventListener('change', toggleCampos);
 });
 </script>
 {% endblock %}

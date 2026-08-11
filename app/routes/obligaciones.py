@@ -255,7 +255,11 @@ def lista():
 @obligaciones_bp.route('/nueva', methods=['GET', 'POST'])
 def nueva():
     if request.method == 'POST':
-        requiere_desglose_pago = request.form.get('requiere_desglose_pago') == 'on'
+        tiene_desglose_cuota = any(
+            _float_or_none(request.form.get(campo)) is not None
+            for campo in ('valor_cuota_capital', 'valor_cuota_interes')
+        )
+        requiere_desglose_pago = request.form.get('requiere_desglose_pago') == 'on' or tiene_desglose_cuota
         error_desglose = _validar_desglose_cuota_form(
             requiere_desglose_pago,
             request.form.get('valor_cuota_fija'),
@@ -307,7 +311,11 @@ def nueva():
 def editar(id):
     obligacion = Obligacion.query.get_or_404(id)
     if request.method == 'POST':
-        requiere_desglose_pago = request.form.get('requiere_desglose_pago') == 'on'
+        tiene_desglose_cuota = any(
+            _float_or_none(request.form.get(campo)) is not None
+            for campo in ('valor_cuota_capital', 'valor_cuota_interes')
+        )
+        requiere_desglose_pago = request.form.get('requiere_desglose_pago') == 'on' or tiene_desglose_cuota
         error_desglose = _validar_desglose_cuota_form(
             requiere_desglose_pago,
             request.form.get('valor_cuota_fija'),
