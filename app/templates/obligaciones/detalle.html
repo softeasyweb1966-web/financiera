@@ -43,11 +43,13 @@
                     <th>Estado</th>
                     <th>Fecha causacion</th>
                     <th>Valor causado</th>
+                    <th>Dia pago</th>
                     <th>Fecha pago</th>
                     <th>Valor pagado</th>
                     <th>Capital</th>
                     <th>Interes</th>
                     <th>Medio</th>
+                    <th>Comprobante</th>
                     <th>Observaciones</th>
                 </tr>
             </thead>
@@ -66,11 +68,19 @@
                     </td>
                     <td>{{ pago.fecha_causacion.strftime('%d/%m/%Y') if pago and pago.fecha_causacion else '-' }}</td>
                     <td>{{ "${:,.0f}".format(pago.valor_causado) if pago and pago.valor_causado else '-' }}</td>
+                    <td>{{ pago.dia_pago_reportado if pago and pago.dia_pago_reportado else '-' }}</td>
                     <td>{{ pago.fecha_pago.strftime('%d/%m/%Y') if pago and pago.fecha_pago else '-' }}</td>
                     <td class="fw-bold">{{ "${:,.0f}".format(pago.valor_pagado) if pago and pago.valor_pagado else '-' }}</td>
                     <td>{{ "${:,.0f}".format(pago.componente_capital) if pago and pago.componente_capital else '-' }}</td>
                     <td>{{ "${:,.0f}".format(pago.componente_interes) if pago and pago.componente_interes else '-' }}</td>
                     <td>{{ pago.medio_pago.nombre if pago and pago.medio_pago else '-' }}</td>
+                    <td>
+                        {% if pago and pago.comprobante_archivo %}
+                        <a href="{{ url_for('obligaciones.descargar_comprobante', pago_id=pago.id) }}" class="btn btn-sm btn-outline-info py-0">Ver</a>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
                     <td><small>{{ pago.observaciones if pago and pago.observaciones else '' }}</small></td>
                 </tr>
                 {% endfor %}
@@ -82,10 +92,11 @@
                     <td></td>
                     <td>${{ "{:,.0f}".format(pagos.values()|selectattr('valor_causado')|map(attribute='valor_causado')|map('float')|sum) }}</td>
                     <td></td>
+                    <td></td>
                     <td>${{ "{:,.0f}".format(pagos.values()|selectattr('valor_pagado')|map(attribute='valor_pagado')|map('float')|sum) }}</td>
                     <td>${{ "{:,.0f}".format(pagos.values()|selectattr('componente_capital')|map(attribute='componente_capital')|map('float')|sum) }}</td>
                     <td>${{ "{:,.0f}".format(pagos.values()|selectattr('componente_interes')|map(attribute='componente_interes')|map('float')|sum) }}</td>
-                    <td colspan="2"></td>
+                    <td colspan="3"></td>
                 </tr>
             </tfoot>
         </table>

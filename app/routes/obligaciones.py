@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
 from app import db
 from app.models import (
     Obligacion, PagoObligacion, Refinanciacion, AbonoCapitalObligacion,
@@ -7,6 +7,7 @@ from app.models import (
 from app.conceptos_estado import cargar_historial_conceptos, concepto_activo_en_periodo
 from calendar import monthrange
 from datetime import date, datetime, timedelta
+from io import BytesIO
 from sqlalchemy import func
 import math
 
@@ -14,6 +15,7 @@ obligaciones_bp = Blueprint('obligaciones', __name__, url_prefix='/obligaciones'
 
 MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
          'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+MAX_COMPROBANTE_SIZE = 5 * 1024 * 1024
 
 MODALIDADES = [
     ('bancario_cuota_fija', 'Bancario cuota fija'),
@@ -50,6 +52,57 @@ def _valor_estimado_obligacion(obligacion, ultimo_pago=None):
     return 0
 
 
+def _resolver_dia_pago(dia_valor, fecha_pago_valor=None):
+    valor_fuente = dia_valor
+    if valor_fuente in (None, '') and fecha_pago_valor:
+        try:
+            valor_fuente = datetime.strptime(fecha_pago_valor, '%Y-%m-%d').day
+        except ValueError:
+            valor_fuente = None
+
+    if valor_fuente in (None, ''):
+        return None, None
+
+    try:
+        dia = int(valor_fuente)
+    except (TypeError, ValueError):
+        return None, 'El dia de pago debe ser un numero entre 1 y 31.'
+
+    if dia < 1 or dia > 31:
+        return None, 'El dia de pago debe estar entre 1 y 31.'
+
+    return dia, None
+
+
+def _leer_comprobante(archivo):
+    if not archivo or not archivo.filename:
+        return None, None, None, None
+
+    contenido = archivo.read()
+    if not contenido:
+        return None, None, None, 'El comprobante adjunto esta vacio.'
+
+    if len(contenido) > MAX_COMPROBANTE_SIZE:
+        return None, None, None, 'El comprobante supera el limite de 5 MB.'
+
+    return archivo.filename[:255], (archivo.mimetype or 'application/octet-stream')[:120], contenido, None
+
+
+def _aplicar_dia_pago_obligacion(obligacion, nuevo_dia):
+    if not nuevo_dia:
+        return
+
+    obligacion.dia_limite_pago = nuevo_dia
+
+    if obligacion.modalidad == 'cadena' and obligacion.fecha_inicio and (obligacion.frecuencia_pago or 'mensual').lower() != 'quincenal':
+        ultimo_dia = monthrange(obligacion.fecha_inicio.year, obligacion.fecha_inicio.month)[1]
+        obligacion.fecha_inicio = obligacion.fecha_inicio.replace(day=min(nuevo_dia, ultimo_dia))
+
+    if obligacion.modalidad == 'pago_total_pactado' and obligacion.fecha_vencimiento:
+        ultimo_dia = monthrange(obligacion.fecha_vencimiento.year, obligacion.fecha_vencimiento.month)[1]
+        obligacion.fecha_vencimiento = obligacion.fecha_vencimiento.replace(day=min(nuevo_dia, ultimo_dia))
+
+
 def _rango_mes(anio, mes):
     ultimo_dia = monthrange(anio, mes)[1]
     return date(anio, mes, 1), date(anio, mes, ultimo_dia)
@@ -82,7 +135,8 @@ def _fechas_programadas_obligacion(obligacion, anio, mes):
                 actual += timedelta(days=15)
             return fechas
 
-        dia = min(fecha_inicio.day, fin_mes.day)
+        dia_base = obligacion.dia_limite_pago or fecha_inicio.day
+        dia = min(dia_base, fin_mes.day)
         fecha_mes = date(anio, mes, dia)
         if fecha_mes < fecha_inicio:
             return []
@@ -117,6 +171,7 @@ def _siguiente_fecha_programada(obligacion, desde_fecha):
             return actual
 
         actual = obligacion.fecha_inicio
+        dia_base = obligacion.dia_limite_pago or obligacion.fecha_inicio.day
         while actual <= desde_fecha:
             siguiente_mes = actual.month + 1
             siguiente_anio = actual.year
@@ -126,7 +181,7 @@ def _siguiente_fecha_programada(obligacion, desde_fecha):
             actual = date(
                 siguiente_anio,
                 siguiente_mes,
-                min(obligacion.fecha_inicio.day, monthrange(siguiente_anio, siguiente_mes)[1])
+                min(dia_base, monthrange(siguiente_anio, siguiente_mes)[1])
             )
         if fecha_final and actual > fecha_final:
             return None
@@ -725,6 +780,21 @@ def registrar_pago():
     estado = request.form.get('estado', 'pagado')
     medio_pago_id = request.form.get('medio_pago_id') or None
     fecha_pago = request.form.get('fecha_pago') or None
+    dia_pago_reportado, error_dia = _resolver_dia_pago(
+        request.form.get('dia_pago_reportado'),
+        fecha_pago
+    )
+    if accion == 'pagar' and error_dia:
+        flash(error_dia, 'danger')
+        return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
+
+    comprobante_nombre, comprobante_mime, comprobante_archivo, error_comprobante = _leer_comprobante(
+        request.files.get('comprobante')
+    )
+    if accion == 'pagar' and error_comprobante:
+        flash(error_comprobante, 'danger')
+        return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
+
     observaciones = request.form.get('observaciones', '').strip()
     valor_causado_num = _float_or_none(valor_causado)
     valor_pagado_num = _float_or_none(valor_pagado)
@@ -763,8 +833,13 @@ def registrar_pago():
             pago.estado = estado
             pago.medio_pago_id = medio_pago_id
             pago.fecha_pago = fecha_pago
+            pago.dia_pago_reportado = dia_pago_reportado
             if valor_causado:
                 pago.valor_causado = valor_causado
+            if comprobante_archivo:
+                pago.comprobante_nombre = comprobante_nombre
+                pago.comprobante_mime = comprobante_mime
+                pago.comprobante_archivo = comprobante_archivo
         pago.observaciones = observaciones
     else:
         numero_cuota = (obligacion.cuotas_pagadas or 0) + 1 if obligacion else None
@@ -784,9 +859,16 @@ def registrar_pago():
                 componente_interes=componente_interes,
                 numero_cuota=numero_cuota,
                 estado=estado, medio_pago_id=medio_pago_id,
-                fecha_pago=fecha_pago, observaciones=observaciones
+                fecha_pago=fecha_pago, observaciones=observaciones,
+                dia_pago_reportado=dia_pago_reportado,
+                comprobante_nombre=comprobante_nombre,
+                comprobante_mime=comprobante_mime,
+                comprobante_archivo=comprobante_archivo
             )
         db.session.add(pago)
+
+    if accion == 'pagar' and dia_pago_reportado:
+        _aplicar_dia_pago_obligacion(obligacion, dia_pago_reportado)
 
     # Actualizar saldo y cuotas de la obligación si se pagó
     if accion == 'pagar' and estado == 'pagado' and componente_capital:
@@ -798,6 +880,21 @@ def registrar_pago():
     db.session.commit()
     flash('Registro actualizado.', 'success')
     return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
+
+
+@obligaciones_bp.route('/pago/<int:pago_id>/comprobante')
+def descargar_comprobante(pago_id):
+    pago = PagoObligacion.query.get_or_404(pago_id)
+    if not pago.comprobante_archivo:
+        flash('Este pago no tiene comprobante adjunto.', 'warning')
+        return redirect(request.referrer or url_for('obligaciones.detalle', id=pago.obligacion_id, anio=pago.anio))
+
+    return send_file(
+        BytesIO(pago.comprobante_archivo),
+        mimetype=pago.comprobante_mime or 'application/octet-stream',
+        download_name=pago.comprobante_nombre or f'comprobante_obligacion_{pago.id}',
+        as_attachment=False
+    )
 
 
 @obligaciones_bp.route('/detalle/<int:id>')

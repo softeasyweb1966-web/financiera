@@ -43,6 +43,30 @@ def _ensure_schema():
             db.session.execute(text('ALTER TABLE refinanciaciones ADD COLUMN IF NOT EXISTS nuevo_valor_cuota_interes NUMERIC(14, 2)'))
         db.session.commit()
 
+    if inspector.has_table('pagos_servicios'):
+        columnas_pagos_servicios = {col['name'] for col in inspector.get_columns('pagos_servicios')}
+        if 'dia_pago_reportado' not in columnas_pagos_servicios:
+            db.session.execute(text('ALTER TABLE pagos_servicios ADD COLUMN IF NOT EXISTS dia_pago_reportado INTEGER'))
+        if 'comprobante_nombre' not in columnas_pagos_servicios:
+            db.session.execute(text('ALTER TABLE pagos_servicios ADD COLUMN IF NOT EXISTS comprobante_nombre VARCHAR(255)'))
+        if 'comprobante_mime' not in columnas_pagos_servicios:
+            db.session.execute(text('ALTER TABLE pagos_servicios ADD COLUMN IF NOT EXISTS comprobante_mime VARCHAR(120)'))
+        if 'comprobante_archivo' not in columnas_pagos_servicios:
+            db.session.execute(text('ALTER TABLE pagos_servicios ADD COLUMN IF NOT EXISTS comprobante_archivo BYTEA'))
+        db.session.commit()
+
+    if inspector.has_table('pagos_obligaciones'):
+        columnas_pagos_obligaciones = {col['name'] for col in inspector.get_columns('pagos_obligaciones')}
+        if 'dia_pago_reportado' not in columnas_pagos_obligaciones:
+            db.session.execute(text('ALTER TABLE pagos_obligaciones ADD COLUMN IF NOT EXISTS dia_pago_reportado INTEGER'))
+        if 'comprobante_nombre' not in columnas_pagos_obligaciones:
+            db.session.execute(text('ALTER TABLE pagos_obligaciones ADD COLUMN IF NOT EXISTS comprobante_nombre VARCHAR(255)'))
+        if 'comprobante_mime' not in columnas_pagos_obligaciones:
+            db.session.execute(text('ALTER TABLE pagos_obligaciones ADD COLUMN IF NOT EXISTS comprobante_mime VARCHAR(120)'))
+        if 'comprobante_archivo' not in columnas_pagos_obligaciones:
+            db.session.execute(text('ALTER TABLE pagos_obligaciones ADD COLUMN IF NOT EXISTS comprobante_archivo BYTEA'))
+        db.session.commit()
+
 
 def create_app():
     app = Flask(__name__)

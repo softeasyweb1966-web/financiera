@@ -423,8 +423,12 @@ class PagoServicio(db.Model):
     valor_causado = db.Column(db.Numeric(14, 2))    # Valor que se espera pagar (causación)
     fecha_causacion = db.Column(db.Date)             # Fecha en que se causó (llegó la factura)
     valor_pagado = db.Column(db.Numeric(14, 2))     # Valor efectivamente pagado
+    dia_pago_reportado = db.Column(db.Integer)
     fecha_pago = db.Column(db.Date)
     medio_pago_id = db.Column(db.Integer, db.ForeignKey('medios_pago.id'))
+    comprobante_nombre = db.Column(db.String(255))
+    comprobante_mime = db.Column(db.String(120))
+    comprobante_archivo = db.Column(db.LargeBinary)
     # Estados: sin_causar, causado, pagado, vencido, parcial, n/a
     estado = db.Column(db.String(20), default='sin_causar')
     registrado_por = db.Column(db.String(100))
@@ -453,8 +457,12 @@ class PagoObligacion(db.Model):
     componente_capital = db.Column(db.Numeric(14, 2))
     componente_interes = db.Column(db.Numeric(14, 2))
     numero_cuota = db.Column(db.Integer)
+    dia_pago_reportado = db.Column(db.Integer)
     fecha_pago = db.Column(db.Date)
     medio_pago_id = db.Column(db.Integer, db.ForeignKey('medios_pago.id'))
+    comprobante_nombre = db.Column(db.String(255))
+    comprobante_mime = db.Column(db.String(120))
+    comprobante_archivo = db.Column(db.LargeBinary)
     # Estados: sin_causar, causado, pagado, vencido, parcial
     estado = db.Column(db.String(20), default='sin_causar')
     registrado_por = db.Column(db.String(100))

@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
 from app import db
 from app.models import (
     Servicio, PagoServicio, Tercero, Concepto, Categoria, MedioPago,
@@ -13,11 +13,59 @@ from app.conceptos_estado import (
 )
 from calendar import monthrange
 from datetime import date, datetime
+from io import BytesIO
 
 servicios_bp = Blueprint('servicios', __name__, url_prefix='/servicios')
 
 MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
          'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+MAX_COMPROBANTE_SIZE = 5 * 1024 * 1024
+
+
+def _resolver_dia_pago(dia_valor, fecha_pago_valor=None):
+    valor_fuente = dia_valor
+    if valor_fuente in (None, '') and fecha_pago_valor:
+        try:
+            valor_fuente = datetime.strptime(fecha_pago_valor, '%Y-%m-%d').day
+        except ValueError:
+            valor_fuente = None
+
+    if valor_fuente in (None, ''):
+        return None, None
+
+    try:
+        dia = int(valor_fuente)
+    except (TypeError, ValueError):
+        return None, 'El dia de pago debe ser un numero entre 1 y 31.'
+
+    if dia < 1 or dia > 31:
+        return None, 'El dia de pago debe estar entre 1 y 31.'
+
+    return dia, None
+
+
+def _leer_comprobante(archivo):
+    if not archivo or not archivo.filename:
+        return None, None, None, None
+
+    contenido = archivo.read()
+    if not contenido:
+        return None, None, None, 'El comprobante adjunto esta vacio.'
+
+    if len(contenido) > MAX_COMPROBANTE_SIZE:
+        return None, None, None, 'El comprobante supera el limite de 5 MB.'
+
+    return archivo.filename[:255], (archivo.mimetype or 'application/octet-stream')[:120], contenido, None
+
+
+def _aplicar_dia_pago_servicio(servicio, nuevo_dia):
+    if not nuevo_dia:
+        return
+
+    servicio.dia_limite_pago = nuevo_dia
+    if servicio.periodicidad == 'anual' and servicio.fecha_pago_anual:
+        ultimo_dia = monthrange(servicio.fecha_pago_anual.year, servicio.fecha_pago_anual.month)[1]
+        servicio.fecha_pago_anual = servicio.fecha_pago_anual.replace(day=min(nuevo_dia, ultimo_dia))
 
 
 def _conceptos_activos_categoria(nombre_categoria, anio, mes):
@@ -621,15 +669,31 @@ def cambiar_estado(id):
 
 @servicios_bp.route('/pago', methods=['POST'])
 def registrar_pago():
-    servicio_id = request.form['servicio_id']
+    servicio_id = int(request.form['servicio_id'])
     anio = int(request.form['anio'])
     mes = int(request.form['mes'])
+    servicio = Servicio.query.get_or_404(servicio_id)
     accion = request.form.get('accion', 'pagar')  # causar o pagar
     valor_causado = request.form.get('valor_causado') or None
     valor_pagado = request.form.get('valor_pagado') or None
     estado = request.form.get('estado', 'pagado')
     medio_pago_id = request.form.get('medio_pago_id') or None
     fecha_pago = request.form.get('fecha_pago') or None
+    dia_pago_reportado, error_dia = _resolver_dia_pago(
+        request.form.get('dia_pago_reportado'),
+        fecha_pago
+    )
+    if accion == 'pagar' and error_dia:
+        flash(error_dia, 'danger')
+        return redirect(url_for('servicios.pagos', anio=anio, mes=mes))
+
+    comprobante_nombre, comprobante_mime, comprobante_archivo, error_comprobante = _leer_comprobante(
+        request.files.get('comprobante')
+    )
+    if accion == 'pagar' and error_comprobante:
+        flash(error_comprobante, 'danger')
+        return redirect(url_for('servicios.pagos', anio=anio, mes=mes))
+
     observaciones = request.form.get('observaciones', '').strip()
 
     pago = PagoServicio.query.filter_by(
@@ -648,8 +712,13 @@ def registrar_pago():
             pago.estado = estado
             pago.medio_pago_id = medio_pago_id
             pago.fecha_pago = fecha_pago
+            pago.dia_pago_reportado = dia_pago_reportado
             if valor_causado:
                 pago.valor_causado = valor_causado
+            if comprobante_archivo:
+                pago.comprobante_nombre = comprobante_nombre
+                pago.comprobante_mime = comprobante_mime
+                pago.comprobante_archivo = comprobante_archivo
         pago.observaciones = observaciones
     else:
         if accion == 'causar':
@@ -665,9 +734,16 @@ def registrar_pago():
                 servicio_id=servicio_id, anio=anio, mes=mes,
                 valor_causado=valor_causado, valor_pagado=valor_pagado,
                 estado=estado, medio_pago_id=medio_pago_id,
-                fecha_pago=fecha_pago, observaciones=observaciones
+                fecha_pago=fecha_pago, observaciones=observaciones,
+                dia_pago_reportado=dia_pago_reportado,
+                comprobante_nombre=comprobante_nombre,
+                comprobante_mime=comprobante_mime,
+                comprobante_archivo=comprobante_archivo
             )
         db.session.add(pago)
+
+    if accion == 'pagar' and dia_pago_reportado:
+        _aplicar_dia_pago_servicio(servicio, dia_pago_reportado)
 
     db.session.commit()
 
@@ -693,3 +769,18 @@ def registrar_pago():
 
     flash('Registro actualizado.', 'success')
     return redirect(url_for('servicios.pagos', anio=anio, mes=mes))
+
+
+@servicios_bp.route('/pago/<int:pago_id>/comprobante')
+def descargar_comprobante(pago_id):
+    pago = PagoServicio.query.get_or_404(pago_id)
+    if not pago.comprobante_archivo:
+        flash('Este pago no tiene comprobante adjunto.', 'warning')
+        return redirect(request.referrer or url_for('servicios.detalle', id=pago.servicio_id, anio=pago.anio))
+
+    return send_file(
+        BytesIO(pago.comprobante_archivo),
+        mimetype=pago.comprobante_mime or 'application/octet-stream',
+        download_name=pago.comprobante_nombre or f'comprobante_servicio_{pago.id}',
+        as_attachment=False
+    )

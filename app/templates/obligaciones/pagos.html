@@ -336,12 +336,15 @@
                 {% if o.tasa_interes_mensual %}
                 <small class="text-muted d-block">Tasa: {{ o.tasa_interes_mensual }}%</small>
                 {% endif %}
+                {% if pago and pago.dia_pago_reportado %}
+                <small class="text-muted d-block">Dia registrado al pagar: {{ pago.dia_pago_reportado }}</small>
+                {% endif %}
             </div>
 
             <div class="mt-2 d-flex gap-1 flex-wrap">
                 {% if item.estado != 'pagado' %}
                 <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick='prepararPago({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }})'>
+                        onclick='prepararPago({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }}, {{ o.dia_limite_pago if o.dia_limite_pago is not none else (item.fecha_limite_actual.day if item.fecha_limite_actual else "null") }})'>
                     <i class="bi bi-check-lg"></i> Pagar
                 </button>
                 {% if item.estado == 'sin_causar' or item.estado == 'pendiente' %}
@@ -350,6 +353,11 @@
                     <i class="bi bi-pencil"></i> Causar
                 </button>
                 {% endif %}
+                {% endif %}
+                {% if pago and pago.comprobante_archivo %}
+                <a href="{{ url_for('obligaciones.descargar_comprobante', pago_id=pago.id) }}" class="btn btn-sm btn-outline-info" title="Ver comprobante">
+                    <i class="bi bi-paperclip"></i>
+                </a>
                 {% endif %}
                 <a href="{{ url_for('obligaciones.detalle', id=o.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary" title="Historial mes a mes">
                     <i class="bi bi-clock-history"></i>
@@ -370,7 +378,7 @@
 <div class="modal fade" id="modalPago" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" action="{{ url_for('obligaciones.registrar_pago') }}">
+            <form method="POST" action="{{ url_for('obligaciones.registrar_pago') }}" enctype="multipart/form-data">
                 <input type="hidden" name="obligacion_id" id="pago_oblig_id">
                 <input type="hidden" name="anio" value="{{ anio }}">
                 <input type="hidden" name="mes" id="pago_mes">
@@ -414,7 +422,11 @@
                         <div class="row">
                             <div class="col-4 mb-2">
                                 <label class="form-label">Fecha pago</label>
-                                <input type="date" name="fecha_pago" class="form-control form-control-sm">
+                                <input type="date" name="fecha_pago" id="pago_fecha_pago" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-4 mb-2">
+                                <label class="form-label">Dia pago nuevo</label>
+                                <input type="number" name="dia_pago_reportado" id="pago_dia_reportado" class="form-control form-control-sm" min="1" max="31" placeholder="1-31">
                             </div>
                         </div>
                         <div class="row">
@@ -434,6 +446,11 @@
                                     <option value="causado">Solo causar</option>
                                 </select>
                             </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Comprobante de pago</label>
+                            <input type="file" name="comprobante" class="form-control form-control-sm" accept=".pdf,image/*">
+                            <div class="form-text">Opcional. Puede cargar PDF, imagen o captura del pago.</div>
                         </div>
                     </div>
                     <div class="mb-2">
@@ -464,13 +481,15 @@ function toggleDesglose(requiereDesglose) {
     }
 }
 
-function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres) {
+function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres, diaBase) {
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
     window.FinancieraMoney.setValue(document.getElementById('pago_valor_causado2'), valorEsperado || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_valor'), valorEsperado || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_capital'), valorCapital || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
+    document.getElementById('pago_dia_reportado').value = diaBase || '';
+    document.getElementById('pago_fecha_pago').value = '';
     document.getElementById('pago_accion').value = 'pagar';
     document.getElementById('pago_estado').value = 'pagado';
     document.getElementById('pago_titulo').textContent = 'Pagar - ' + nombre;
@@ -491,5 +510,15 @@ function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorC
     document.getElementById('seccion-pagar').style.display = 'none';
     toggleDesglose(false);
 }
+
+document.getElementById('pago_fecha_pago').addEventListener('change', function() {
+    if (!this.value) {
+        return;
+    }
+    const partes = this.value.split('-');
+    if (partes.length === 3) {
+        document.getElementById('pago_dia_reportado').value = parseInt(partes[2], 10) || '';
+    }
+});
 </script>
 {% endblock %}
