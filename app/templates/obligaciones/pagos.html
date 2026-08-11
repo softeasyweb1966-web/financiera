@@ -89,53 +89,66 @@
 <div class="row g-2 mb-3 align-items-start">
     <div class="col-lg-3 col-md-4">
         <div class="summary-stack">
-            <div>
-                <div class="card summary-side-card" style="background:#f0fdf4; border:1px solid #bbf7d0; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-acum-anterior">
-                    <div class="summary-inline">
-                        <span class="summary-inline-label">Pagado Ene-{{ meses[mes-2][:3] if mes > 1 else '-' }} <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></span>
-                        <span class="summary-inline-value text-success">${{ "{:,.0f}".format(acum_pagado_anterior) }}</span>
-                    </div>
+            <div class="card summary-side-card" style="background:#eff6ff; border:1px solid #93c5fd;">
+                <div class="summary-inline">
+                    <span class="summary-inline-label">Total por cubrir hoy</span>
+                    <span class="summary-inline-value {{ 'text-danger' if total_por_cubrir_hoy > 0 else 'text-success' }}">
+                        ${{ "{:,.0f}".format(total_por_cubrir_hoy) }}
+                    </span>
                 </div>
-                <div class="collapse mt-1" id="detalle-acum-anterior">
-                    <div class="card p-2" style="font-size:0.72rem; max-height:220px; overflow-y:auto;">
-                        {% for item in acum_obligaciones_detalle %}
-                        <div class="d-flex justify-content-between align-items-center border-bottom py-1">
-                            <a href="{{ url_for('obligaciones.detalle', id=item.obligacion.id, anio=anio) }}" class="text-decoration-none">
-                                <span class="indicador ind-pagado"></span>
-                                {{ item.obligacion.tercero.nombre }} <small class="text-muted">- {{ item.obligacion.modalidad.replace('_', ' ')|title }}</small>
-                            </a>
-                            <span class="text-success fw-bold">${{ "{:,.0f}".format(item.total) }}</span>
-                        </div>
-                        {% endfor %}
-                        {% if not acum_obligaciones_detalle %}
-                        <small class="text-muted">Sin pagos acumulados en meses anteriores</small>
-                        {% endif %}
-                    </div>
+                <small class="text-muted mt-1 d-block">
+                    Mes actual: ${{ "{:,.0f}".format(por_pagar_mes) }}
+                    {% if total_deuda_anterior > 0 %}
+                    · Atrasos: ${{ "{:,.0f}".format(total_deuda_anterior) }}
+                    {% endif %}
+                    {% if items_por_cubrir_mes > 0 %}
+                    · {{ items_por_cubrir_mes }} pendientes del mes
+                    {% endif %}
+                </small>
+            </div>
+            <div class="card summary-side-card" style="background:#f0fdf4; border:1px solid #bbf7d0; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-acum-anterior">
+                <div class="summary-inline">
+                    <span class="summary-inline-label">Pagado Ene-{{ meses[mes-2][:3] if mes > 1 else '-' }} <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></span>
+                    <span class="summary-inline-value text-success">${{ "{:,.0f}".format(acum_pagado_anterior) }}</span>
                 </div>
             </div>
-            <div>
-                <div class="card summary-side-card" style="background:#fef2f2; border:1px solid #fecaca; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-deuda-anterior">
-                    <div class="summary-inline">
-                        <span class="summary-inline-label">Deuda meses anteriores <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></span>
-                        <span class="summary-inline-value text-danger">${{ "{:,.0f}".format(total_deuda_anterior) }}</span>
+            <div class="collapse mt-1" id="detalle-acum-anterior">
+                <div class="card p-2" style="font-size:0.72rem; max-height:220px; overflow-y:auto;">
+                    {% for item in acum_obligaciones_detalle %}
+                    <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                        <a href="{{ url_for('obligaciones.detalle', id=item.obligacion.id, anio=anio) }}" class="text-decoration-none">
+                            <span class="indicador ind-pagado"></span>
+                            {{ item.obligacion.tercero.nombre }} <small class="text-muted">- {{ item.obligacion.modalidad.replace('_', ' ')|title }}</small>
+                        </a>
+                        <span class="text-success fw-bold">${{ "{:,.0f}".format(item.total) }}</span>
                     </div>
-                    {% if pendientes_anteriores %}<small class="text-danger mt-1 d-block">{{ pendientes_anteriores|length }} pendientes</small>{% endif %}
+                    {% endfor %}
+                    {% if not acum_obligaciones_detalle %}
+                    <small class="text-muted">Sin pagos acumulados en meses anteriores</small>
+                    {% endif %}
                 </div>
-                <div class="collapse mt-1" id="detalle-deuda-anterior">
-                    <div class="card p-2" style="font-size:0.72rem; max-height:250px; overflow-y:auto;">
-                        {% for item in pendientes_anteriores %}
-                        <div class="d-flex justify-content-between align-items-center border-bottom py-1">
-                            <a href="{{ url_for('obligaciones.detalle', id=item.obligacion.id, anio=item.anio) }}" class="text-decoration-none">
-                                <span class="indicador ind-pendiente"></span>
-                                {{ item.obligacion.tercero.nombre }} <small class="text-muted">- {{ item.mes_nombre }} {{ item.anio }}</small>
-                            </a>
-                            <span class="text-danger fw-bold">${{ "{:,.0f}".format(item.valor_deuda) }}</span>
-                        </div>
-                        {% endfor %}
-                        {% if not pendientes_anteriores %}
-                        <small class="text-muted">Sin deudas pendientes</small>
-                        {% endif %}
+            </div>
+            <div class="card summary-side-card" style="background:#fef2f2; border:1px solid #fecaca; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-deuda-anterior">
+                <div class="summary-inline">
+                    <span class="summary-inline-label">Deuda meses anteriores <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></span>
+                    <span class="summary-inline-value text-danger">${{ "{:,.0f}".format(total_deuda_anterior) }}</span>
+                </div>
+                {% if pendientes_anteriores %}<small class="text-danger mt-1 d-block">{{ pendientes_anteriores|length }} pendientes</small>{% endif %}
+            </div>
+            <div class="collapse mt-1" id="detalle-deuda-anterior">
+                <div class="card p-2" style="font-size:0.72rem; max-height:250px; overflow-y:auto;">
+                    {% for item in pendientes_anteriores %}
+                    <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                        <a href="{{ url_for('obligaciones.detalle', id=item.obligacion.id, anio=item.anio) }}" class="text-decoration-none">
+                            <span class="indicador ind-pendiente"></span>
+                            {{ item.obligacion.tercero.nombre }} <small class="text-muted">- {{ item.mes_nombre }} {{ item.anio }}</small>
+                        </a>
+                        <span class="text-danger fw-bold">${{ "{:,.0f}".format(item.valor_deuda) }}</span>
                     </div>
+                    {% endfor %}
+                    {% if not pendientes_anteriores %}
+                    <small class="text-muted">Sin deudas pendientes</small>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -143,6 +156,7 @@
     <div class="col-lg-9 col-md-8">
         <div class="card p-3" style="background:#eff6ff; border:1px solid #bfdbfe; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-mes-actual">
             <small class="text-muted d-block">{{ meses[mes-1] }}: resumen detallado <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
+            <small class="text-muted d-block mt-1">El estimado usa el ultimo pago anterior al mes; si una obligacion ya esta causada, el total del mes toma ese valor real.</small>
             <div class="metric-grid text-start mt-2">
                 <div class="metric-item">
                     <span class="metric-label">Estimado segun ultimo pago</span>
@@ -152,14 +166,14 @@
                     </span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Total causado</span>
+                    <span class="metric-label">Ya causado</span>
                     <span class="metric-value text-warning">
                         ${{ "{:,.0f}".format(causado_mes_actual) }}
                         <small class="text-muted">({{ total_causado_items }})</small>
                     </span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Total sin causar</span>
+                    <span class="metric-label">Aun por causar</span>
                     <span class="metric-value text-secondary">
                         ${{ "{:,.0f}".format(sin_causar_mes) }}
                         <small class="text-muted">({{ sin_causar_items }})</small>
@@ -173,17 +187,25 @@
                     </span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Total pagado</span>
+                    <span class="metric-label">Diferencia vs estimado</span>
+                    <span class="metric-value {{ 'text-danger' if diferencia_estimado_mes > 0 else 'text-success' if diferencia_estimado_mes < 0 else 'text-muted' }}">
+                        {{ '+' if diferencia_estimado_mes > 0 else '' }}${{ "{:,.0f}".format(diferencia_estimado_mes|abs if diferencia_estimado_mes < 0 else diferencia_estimado_mes) }}
+                    </span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Ya pagado</span>
                     <span class="metric-value text-success">
                         ${{ "{:,.0f}".format(pagado_mes_actual) }}
                         <small class="text-muted">({{ total_pagado_items }})</small>
                     </span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Total pendiente</span>
-                    <span class="metric-value text-danger">
-                        ${{ "{:,.0f}".format(pendiente_mes) }}
-                        <small class="text-muted">({{ total_pendiente_items }})</small>
+                    <span class="metric-label">{{ 'Saldo a favor del mes' if saldo_favor_mes > 0 else 'Por pagar del mes' }}</span>
+                    <span class="metric-value {{ 'text-success' if saldo_favor_mes > 0 else 'text-danger' }}">
+                        ${{ "{:,.0f}".format(saldo_favor_mes if saldo_favor_mes > 0 else por_pagar_mes) }}
+                        {% if saldo_favor_mes == 0 %}
+                        <small class="text-muted">({{ items_por_cubrir_mes }})</small>
+                        {% endif %}
                     </span>
                 </div>
             </div>

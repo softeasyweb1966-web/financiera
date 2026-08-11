@@ -637,6 +637,13 @@ def pagos(anio=None, mes=None):
         item['id'] for item in items_mes_actual
         if item['valor_causado'] > 0 or (item['estado'] in ('sin_causar', 'pendiente') and item['valor_estimado'] > 0)
     })
+    pendiente_mes = float(causado_mes_actual) - float(pagado_mes_actual)
+    saldo_mes = esperado_mes - float(pagado_mes_actual)
+    diferencia_estimado_mes = esperado_mes - total_estimado_mes
+    por_pagar_mes = max(saldo_mes, 0)
+    saldo_favor_mes = abs(saldo_mes) if saldo_mes < 0 else 0
+    total_por_cubrir_hoy = total_deuda_anterior + por_pagar_mes
+    items_por_cubrir_mes = total_pendiente_items + sin_causar_items
 
     # Resumen agrupado por modalidad
     resumen_modalidades = {}
@@ -844,10 +851,15 @@ def pagos(anio=None, mes=None):
                            total_esperado_items=total_esperado_items,
                            total_deuda_anterior=total_deuda_anterior,
                            resumen_grupos=resumen_grupos,
-                           pendiente_mes=float(causado_mes_actual) - float(pagado_mes_actual),
+                           pendiente_mes=pendiente_mes,
                            total_pagado_items=total_pagado_items,
                            total_pendiente_items=total_pendiente_items,
-                           saldo_mes=esperado_mes - float(pagado_mes_actual),
+                           saldo_mes=saldo_mes,
+                           diferencia_estimado_mes=diferencia_estimado_mes,
+                           por_pagar_mes=por_pagar_mes,
+                           saldo_favor_mes=saldo_favor_mes,
+                           total_por_cubrir_hoy=total_por_cubrir_hoy,
+                           items_por_cubrir_mes=items_por_cubrir_mes,
                            total_items_mes=total_items_mes,
                            items_mes_actual=items_mes_actual)
 
