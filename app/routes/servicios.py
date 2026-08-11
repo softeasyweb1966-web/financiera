@@ -503,15 +503,15 @@ def pagos(anio=None, mes=None):
         })
 
     prioridad_estado = {
-        'pagado': 0,
-        'vencido': 1,
-        'parcial': 2,
-        'causado': 3,
-        'sin_causar': 4,
-        'na': 5,
+        'vencido': 0,
+        'parcial': 1,
+        'causado': 2,
+        'sin_causar': 3,
+        'na': 4,
+        'pagado': 5,
     }
     servicios_mes.sort(key=lambda item: (
-        0 if item['estado'] == 'pagado' else 1,
+        1 if item['estado'] == 'pagado' else 0,
         prioridad_estado.get(item['estado_visual'], 9),
         item['fecha_referencia'] or date.max,
         item['servicio'].dia_limite_pago or 99,
