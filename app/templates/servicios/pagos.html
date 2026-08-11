@@ -17,6 +17,7 @@
     .ind-pagado      { background: #10b981; }
     .ind-vencido     { background: #ef4444; }
     .ind-parcial     { background: #8b5cf6; }
+    .ind-na          { background: #94a3b8; }
     .valor-estimado  { font-style: italic; color: #9ca3af; }
     .valor-real      { color: #1e293b; font-weight: 700; }
     .alerta-deuda    { background: #fef2f2; border-left: 3px solid #ef4444; }
@@ -42,6 +43,7 @@
     .summary-inline-label { font-size: 0.78rem; color: #475569; }
     .summary-inline-value { font-size: 1rem; font-weight: 700; line-height: 1; white-space: nowrap; }
     .title-meta { font-size: 0.78rem; color: #7c3aed; font-weight: 700; }
+    .card-meta-line { font-size: 0.75rem; line-height: 1.35; }
     @media (max-width: 991px) {
         .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
@@ -293,14 +295,14 @@
     {% set s = item.servicio %}
     {% set pago = item.pago %}
     <div class="col-12 col-md-6 col-lg-4">
-        <div class="card card-servicio estado-{{ item.estado }} p-3 h-100">
+        <div class="card card-servicio estado-{{ item.estado_visual }} p-3 h-100">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
                     <div class="fw-bold" style="font-size:0.9rem;">{{ s.tercero.nombre }}</div>
                     <small class="text-muted">{{ s.concepto.nombre }}</small>
                 </div>
                 <div class="text-end">
-                    <span class="indicador ind-{{ item.estado }}"></span>
+                    <span class="indicador ind-{{ item.estado_visual }}"></span>
                     {% if item.dias_restantes is not none %}
                         {% if item.dias_restantes > 5 %}
                             <br><span class="dias-badge dias-ok">{{ item.dias_restantes }}d</span>
@@ -308,6 +310,9 @@
                             <br><span class="dias-badge dias-alerta">{{ item.dias_restantes }}d</span>
                         {% else %}
                             <br><span class="dias-badge dias-vencido">{{ item.dias_restantes }}d</span>
+                        {% endif %}
+                        {% if item.fecha_referencia %}
+                        <small class="text-muted d-block">{{ item.fecha_referencia.strftime('%d/%m') }}</small>
                         {% endif %}
                     {% endif %}
                 </div>
@@ -317,13 +322,7 @@
                 <span class="fs-5 {{ 'valor-estimado' if item.es_estimado else 'valor-real' }}">
                     ${{ "{:,.0f}".format(item.valor_mostrar) if item.valor_mostrar else '-' }}
                 </span>
-                {% if item.es_estimado %}
-                    <small class="text-muted d-block">estimado segun ultimo pago</small>
-                {% elif item.estado == 'causado' %}
-                    <small class="text-warning d-block">factura confirmada - sin pagar</small>
-                {% elif item.estado == 'parcial' %}
-                    <small style="color:#8b5cf6" class="d-block">pago parcial</small>
-                {% elif item.estado == 'pagado' %}
+                {% if item.estado == 'pagado' %}
                     <small class="text-success d-block">
                         pagado{{ ' - ' + pago.fecha_pago.strftime('%d/%m') if pago and pago.fecha_pago else '' }}{{ ' - ' + pago.medio_pago.nombre if pago and pago.medio_pago else '' }}
                         {% if item.tipo_pago == 'anticipado' %}
@@ -334,24 +333,36 @@
                             <span class="tipo-tarde"> - pago tarde</span>
                         {% endif %}
                     </small>
-                {% elif item.estado == 'vencido' %}
+                {% elif item.esta_vencido %}
                     <small class="text-danger d-block">vencido - pago pendiente</small>
+                {% elif item.es_estimado %}
+                    <small class="text-muted d-block">estimado segun ultimo pago</small>
+                {% elif item.estado == 'causado' %}
+                    <small class="text-warning d-block">factura confirmada - sin pagar</small>
+                {% elif item.estado == 'parcial' %}
+                    <small style="color:#8b5cf6" class="d-block">pago parcial</small>
                 {% endif %}
             </div>
 
-            <div class="mt-1">
-                <small class="text-muted">Dia limite: {{ s.dia_limite_pago or '-' }} - {{ s.periodicidad|title }}</small>
+            <div class="mt-1 card-meta-line">
+                <small class="text-muted d-block">Dia base: {{ s.dia_limite_pago or '-' }} - {{ s.periodicidad|title }}</small>
+                <small class="text-muted d-block">
+                    {{ item.etiqueta_fecha }}: {{ item.fecha_referencia.strftime('%d/%m/%Y') if item.fecha_referencia else '-' }}
+                </small>
+                {% if item.saldo_anterior > 0 %}
+                <small class="text-danger d-block">Saldo anterior: ${{ "{:,.0f}".format(item.saldo_anterior) }}</small>
+                {% endif %}
             </div>
 
             <div class="mt-2 d-flex gap-1 flex-wrap">
                 {% if item.estado != 'pagado' %}
                 <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick="prepararPago({{ s.id }}, '{{ s.tercero.nombre }}', {{ mes }}, {{ item.valor_mostrar or 0 }}, '{{ item.estado }}')">
+                        onclick='prepararPago({{ s.id }}, {{ s.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }})'>
                     <i class="bi bi-check-lg"></i> Pagar
                 </button>
                 {% if item.estado == 'sin_causar' %}
                 <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick="prepararCausar({{ s.id }}, '{{ s.tercero.nombre }}', {{ mes }}, {{ item.valor_mostrar or 0 }})">
+                        onclick='prepararCausar({{ s.id }}, {{ s.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }})'>
                     <i class="bi bi-pencil"></i> Causar
                 </button>
                 {% endif %}
@@ -460,7 +471,7 @@
 
 {% block scripts %}
 <script>
-function prepararPago(id, nombre, mes, valor, estado) {
+function prepararPago(id, nombre, mes, valor) {
     document.getElementById('pago_servicio_id').value = id;
     document.getElementById('pago_mes').value = mes;
     document.getElementById('pago_valor_causado2').value = valor || '';

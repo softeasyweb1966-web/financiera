@@ -4,6 +4,7 @@ from app.models import (
     Servicio, PagoServicio, Tercero, Concepto, Categoria, MedioPago,
     GrupoServicio, GrupoServicioConcepto, PagoTC
 )
+from calendar import monthrange
 from datetime import date
 
 servicios_bp = Blueprint('servicios', __name__, url_prefix='/servicios')
@@ -106,6 +107,24 @@ def pagos(anio=None, mes=None):
             return False
         return True
 
+    def fecha_limite_periodo(s, periodo_anio, periodo_mes):
+        if not s.dia_limite_pago:
+            return None
+        ultimo_dia = monthrange(periodo_anio, periodo_mes)[1]
+        return date(periodo_anio, periodo_mes, min(s.dia_limite_pago, ultimo_dia))
+
+    def siguiente_periodo_aplicable(s, periodo_anio, periodo_mes):
+        siguiente_anio = periodo_anio
+        siguiente_mes = periodo_mes
+        for _ in range(24):
+            siguiente_mes += 1
+            if siguiente_mes > 12:
+                siguiente_mes = 1
+                siguiente_anio += 1
+            if servicio_aplica_mes(s, siguiente_mes):
+                return siguiente_anio, siguiente_mes
+        return None, None
+
     # Pagos del mes seleccionado
     pagos_mes = PagoServicio.query.filter_by(anio=anio, mes=mes).all()
     pagos_dict = {p.servicio_id: p for p in pagos_mes}
@@ -142,6 +161,7 @@ def pagos(anio=None, mes=None):
     # Pendientes de meses anteriores (causado, vencido, parcial)
     pendientes_anteriores = []
     total_deuda_anterior = 0
+    saldo_anterior_por_servicio = {}
     for s in servicios:
         deudas = PagoServicio.query.filter(
             PagoServicio.servicio_id == s.id,
@@ -156,6 +176,7 @@ def pagos(anio=None, mes=None):
             if d.estado == 'parcial' and d.valor_causado and d.valor_pagado:
                 valor_deuda = float(d.valor_causado) - float(d.valor_pagado)
             total_deuda_anterior += valor_deuda
+            saldo_anterior_por_servicio[s.id] = saldo_anterior_por_servicio.get(s.id, 0) + valor_deuda
             pendientes_anteriores.append({
                 'servicio': s,
                 'pago': d,
@@ -374,19 +395,33 @@ def pagos(anio=None, mes=None):
             es_estimado = True
 
         # Calcular días restantes para el pago
+        fecha_limite_actual = fecha_limite_periodo(s, anio, mes)
+        esta_vencido = bool(
+            fecha_limite_actual and
+            estado not in ('pagado', 'n/a') and
+            fecha_limite_actual < hoy
+        )
+        estado_visual = 'vencido' if esta_vencido else ('na' if estado == 'n/a' else estado)
+
+        fecha_referencia = fecha_limite_actual
+        etiqueta_fecha = 'Dia limite'
+        es_proximo_pago = False
+        if estado == 'pagado':
+            siguiente_anio, siguiente_mes = siguiente_periodo_aplicable(s, anio, mes)
+            if siguiente_anio and siguiente_mes:
+                fecha_referencia = fecha_limite_periodo(s, siguiente_anio, siguiente_mes)
+                etiqueta_fecha = 'Proximo pago'
+                es_proximo_pago = True
+
         dias_restantes = None
-        if s.dia_limite_pago and estado not in ('pagado', 'n/a'):
-            try:
-                fecha_limite = date(anio, mes, min(s.dia_limite_pago, 28))
-                dias_restantes = (fecha_limite - hoy).days
-            except ValueError:
-                pass
+        if fecha_referencia and estado != 'n/a':
+            dias_restantes = (fecha_referencia - hoy).days
 
         # Determinar tipo de pago (anticipado, a tiempo, vencido)
         tipo_pago = None
         if pago and pago.estado == 'pagado' and pago.fecha_pago and s.dia_limite_pago:
             try:
-                fecha_limite = date(anio, mes, min(s.dia_limite_pago, 28))
+                fecha_limite = fecha_limite_actual or fecha_limite_periodo(s, anio, mes)
                 diff = (pago.fecha_pago - fecha_limite).days
                 if diff < 0:
                     tipo_pago = 'anticipado'
@@ -401,11 +436,33 @@ def pagos(anio=None, mes=None):
             'servicio': s,
             'pago': pago,
             'estado': estado,
+            'estado_visual': estado_visual,
+            'esta_vencido': esta_vencido,
             'valor_mostrar': valor_mostrar,
             'es_estimado': es_estimado,
             'dias_restantes': dias_restantes,
             'tipo_pago': tipo_pago,
+            'saldo_anterior': saldo_anterior_por_servicio.get(s.id, 0),
+            'fecha_referencia': fecha_referencia,
+            'etiqueta_fecha': etiqueta_fecha,
+            'es_proximo_pago': es_proximo_pago,
         })
+
+    prioridad_estado = {
+        'pagado': 0,
+        'vencido': 1,
+        'parcial': 2,
+        'causado': 3,
+        'sin_causar': 4,
+        'na': 5,
+    }
+    servicios_mes.sort(key=lambda item: (
+        0 if item['estado'] == 'pagado' else 1,
+        prioridad_estado.get(item['estado_visual'], 9),
+        item['fecha_referencia'] or date.max,
+        item['servicio'].dia_limite_pago or 99,
+        item['servicio'].tercero.nombre.lower(),
+    ))
 
     return render_template('servicios/pagos.html',
                            servicios_mes=servicios_mes,
