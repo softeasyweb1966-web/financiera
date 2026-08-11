@@ -317,6 +317,9 @@
                 {% if o.cuotas_pendientes is not none %}
                 <small class="text-muted d-block">Cuotas pendientes: <strong>{{ o.cuotas_pendientes }}</strong></small>
                 {% endif %}
+                {% if o.requiere_desglose_pago %}
+                <small class="text-primary d-block">Esta obligacion pide cuota con capital e interes.</small>
+                {% endif %}
                 {% if o.fecha_recibe %}
                 <small class="text-muted d-block">Recibe: {{ o.fecha_recibe.strftime('%d/%m/%Y') }}</small>
                 {% endif %}
@@ -328,12 +331,12 @@
             <div class="mt-2 d-flex gap-1 flex-wrap">
                 {% if item.estado != 'pagado' %}
                 <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick='prepararPago({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }})'>
+                        onclick='prepararPago({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }})'>
                     <i class="bi bi-check-lg"></i> Pagar
                 </button>
                 {% if item.estado == 'sin_causar' or item.estado == 'pendiente' %}
                 <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick='prepararCausar({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }})'>
+                        onclick='prepararCausar({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }})'>
                     <i class="bi bi-pencil"></i> Causar
                 </button>
                 {% endif %}
@@ -386,15 +389,19 @@
                                 <input type="number" name="valor_pagado" id="pago_valor" class="form-control form-control-sm">
                             </div>
                         </div>
-                        <div class="row">
+                        <div class="row" id="seccion-desglose" style="display:none;">
                             <div class="col-4 mb-2">
                                 <label class="form-label">Capital</label>
-                                <input type="number" name="componente_capital" class="form-control form-control-sm">
+                                <input type="number" name="componente_capital" id="pago_capital" class="form-control form-control-sm">
                             </div>
                             <div class="col-4 mb-2">
                                 <label class="form-label">Interes</label>
-                                <input type="number" name="componente_interes" class="form-control form-control-sm">
+                                <input type="number" name="componente_interes" id="pago_interes" class="form-control form-control-sm">
                             </div>
+                            <div class="col-4 mb-2"></div>
+                        </div>
+                        <small id="texto_desglose" class="text-muted d-block mb-2" style="display:none;">Ingrese la cuota pagada y discrimine cuanto corresponde a capital y cuanto a interes.</small>
+                        <div class="row">
                             <div class="col-4 mb-2">
                                 <label class="form-label">Fecha pago</label>
                                 <input type="date" name="fecha_pago" class="form-control form-control-sm">
@@ -435,7 +442,19 @@
 
 {% block scripts %}
 <script>
-function prepararPago(id, nombre, mes, valorEsperado) {
+function toggleDesglose(requiereDesglose) {
+    const visible = !!requiereDesglose;
+    document.getElementById('seccion-desglose').style.display = visible ? 'flex' : 'none';
+    document.getElementById('texto_desglose').style.display = visible ? 'block' : 'none';
+    document.getElementById('pago_capital').required = visible;
+    document.getElementById('pago_interes').required = visible;
+    if (!visible) {
+        document.getElementById('pago_capital').value = '';
+        document.getElementById('pago_interes').value = '';
+    }
+}
+
+function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose) {
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
     document.getElementById('pago_valor_causado2').value = valorEsperado || '';
@@ -445,9 +464,10 @@ function prepararPago(id, nombre, mes, valorEsperado) {
     document.getElementById('pago_titulo').textContent = 'Pagar - ' + nombre;
     document.getElementById('seccion-causar').style.display = 'none';
     document.getElementById('seccion-pagar').style.display = 'block';
+    toggleDesglose(requiereDesglose);
 }
 
-function prepararCausar(id, nombre, mes, valorEsperado) {
+function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose) {
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
     document.getElementById('pago_valor_causado').value = valorEsperado || '';
@@ -455,6 +475,7 @@ function prepararCausar(id, nombre, mes, valorEsperado) {
     document.getElementById('pago_titulo').textContent = 'Causar - ' + nombre;
     document.getElementById('seccion-causar').style.display = 'block';
     document.getElementById('seccion-pagar').style.display = 'none';
+    toggleDesglose(false);
 }
 </script>
 {% endblock %}

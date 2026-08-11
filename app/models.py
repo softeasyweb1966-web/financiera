@@ -286,6 +286,7 @@ class Obligacion(db.Model):
     titular = db.Column(db.String(150))
     referencia = db.Column(db.String(50))
     frecuencia_pago = db.Column(db.String(20), default='mensual')  # mensual, quincenal
+    requiere_desglose_pago = db.Column(db.Boolean, default=False)
     dia_limite_pago = db.Column(db.Integer)
     activo = db.Column(db.Boolean, default=True)
     estado = db.Column(db.String(20), default='activo')  # activo, inactivo, retirado, anulado

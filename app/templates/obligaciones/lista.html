@@ -121,6 +121,9 @@
                         <span class="badge bg-{{ mod_colors.get(o.modalidad, 'secondary') }}" style="font-size:0.65rem;">
                             {{ o.modalidad.replace('_', ' ')|title }}
                         </span>
+                        {% if o.requiere_desglose_pago %}
+                        <br><small class="text-primary">Pide desglose</small>
+                        {% endif %}
                         {% if o.modalidad == 'cadena' %}
                         <br><small class="text-muted">{{ (o.frecuencia_pago or 'mensual')|title }}</small>
                         {% endif %}

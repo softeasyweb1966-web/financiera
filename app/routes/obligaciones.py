@@ -186,6 +186,15 @@ def _plazo_con_tasa(saldo, tasa_mensual, cuota_objetivo):
     return max(1, math.ceil(plazo))
 
 
+def _float_or_none(valor):
+    try:
+        if valor in (None, ''):
+            return None
+        return float(valor)
+    except (TypeError, ValueError):
+        return None
+
+
 @obligaciones_bp.route('/')
 def lista():
     obligaciones = Obligacion.query.filter_by(activo=True).order_by(Obligacion.dia_limite_pago).all()
@@ -214,6 +223,7 @@ def nueva():
             titular=request.form.get('titular', '').strip(),
             referencia=request.form.get('referencia', '').strip(),
             frecuencia_pago=request.form.get('frecuencia_pago', 'mensual'),
+            requiere_desglose_pago=request.form.get('requiere_desglose_pago') == 'on',
             dia_limite_pago=request.form.get('dia_limite_pago') or None,
             estado=request.form.get('estado', 'activo'),
             observaciones=request.form.get('observaciones', '').strip()
@@ -251,6 +261,7 @@ def editar(id):
         obligacion.titular = request.form.get('titular', '').strip()
         obligacion.referencia = request.form.get('referencia', '').strip()
         obligacion.frecuencia_pago = request.form.get('frecuencia_pago', 'mensual')
+        obligacion.requiere_desglose_pago = request.form.get('requiere_desglose_pago') == 'on'
         obligacion.dia_limite_pago = request.form.get('dia_limite_pago') or None
         obligacion.estado = request.form.get('estado', 'activo')
         obligacion.observaciones = request.form.get('observaciones', '').strip()
@@ -591,6 +602,7 @@ def registrar_pago():
     obligacion_id = int(request.form['obligacion_id'])
     anio = int(request.form['anio'])
     mes = int(request.form['mes'])
+    obligacion = Obligacion.query.get_or_404(obligacion_id)
     accion = request.form.get('accion', 'pagar')  # causar o pagar
     valor_causado = request.form.get('valor_causado') or None
     valor_pagado = request.form.get('valor_pagado') or None
@@ -600,6 +612,25 @@ def registrar_pago():
     medio_pago_id = request.form.get('medio_pago_id') or None
     fecha_pago = request.form.get('fecha_pago') or None
     observaciones = request.form.get('observaciones', '').strip()
+    valor_causado_num = _float_or_none(valor_causado)
+    valor_pagado_num = _float_or_none(valor_pagado)
+    componente_capital_num = _float_or_none(componente_capital)
+    componente_interes_num = _float_or_none(componente_interes)
+
+    if accion == 'pagar':
+        if obligacion.requiere_desglose_pago and estado in ('pagado', 'parcial'):
+            if componente_capital_num is None or componente_interes_num is None:
+                flash('Esta obligacion requiere registrar la cuota discriminada entre capital e interes.', 'danger')
+                return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
+
+            base_comparacion = valor_pagado_num if valor_pagado_num is not None else valor_causado_num
+            total_componentes = (componente_capital_num or 0) + (componente_interes_num or 0)
+            if base_comparacion is not None and abs(total_componentes - base_comparacion) > 1:
+                flash('La suma de capital e interes debe coincidir con la cuota pagada.', 'danger')
+                return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
+        elif (componente_capital_num is None) ^ (componente_interes_num is None):
+            flash('Si registra capital o interes, debe diligenciar ambos valores.', 'danger')
+            return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
 
     pago = PagoObligacion.query.filter_by(
         obligacion_id=obligacion_id, anio=anio, mes=mes
@@ -622,7 +653,6 @@ def registrar_pago():
                 pago.valor_causado = valor_causado
         pago.observaciones = observaciones
     else:
-        obligacion = Obligacion.query.get(obligacion_id)
         numero_cuota = (obligacion.cuotas_pagadas or 0) + 1 if obligacion else None
         if accion == 'causar':
             pago = PagoObligacion(

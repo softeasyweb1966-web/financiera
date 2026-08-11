@@ -27,6 +27,8 @@ def _ensure_schema():
             db.session.execute(text('ALTER TABLE obligaciones ADD COLUMN IF NOT EXISTS referencia VARCHAR(50)'))
         if 'frecuencia_pago' not in columnas_obligaciones:
             db.session.execute(text("ALTER TABLE obligaciones ADD COLUMN IF NOT EXISTS frecuencia_pago VARCHAR(20) DEFAULT 'mensual'"))
+        if 'requiere_desglose_pago' not in columnas_obligaciones:
+            db.session.execute(text('ALTER TABLE obligaciones ADD COLUMN IF NOT EXISTS requiere_desglose_pago BOOLEAN DEFAULT FALSE'))
         db.session.commit()
 
 

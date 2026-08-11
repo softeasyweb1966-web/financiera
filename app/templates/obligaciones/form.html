@@ -134,6 +134,13 @@
                             {% endfor %}
                         </select>
                     </div>
+                    <div class="col-md-4 mb-3 d-flex align-items-end">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" id="requiere_desglose_pago" name="requiere_desglose_pago" {{ 'checked' if obligacion and obligacion.requiere_desglose_pago else '' }}>
+                            <label class="form-check-label" for="requiere_desglose_pago">Pedir cuota con desglose de capital e interes</label>
+                            <div class="form-text">Activa esta opcion solo en las obligaciones donde necesita registrar la cuota y su reparto.</div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="mb-3">
