@@ -341,6 +341,8 @@ class Refinanciacion(db.Model):
     nueva_tasa_mensual = db.Column(db.Numeric(6, 4))
     nuevo_plazo_meses = db.Column(db.Integer)
     nuevo_valor_cuota = db.Column(db.Numeric(14, 2))
+    nuevo_valor_cuota_capital = db.Column(db.Numeric(14, 2))
+    nuevo_valor_cuota_interes = db.Column(db.Numeric(14, 2))
     nueva_fecha_vencimiento = db.Column(db.Date)
     observaciones = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

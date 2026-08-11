@@ -35,6 +35,14 @@ def _ensure_schema():
             db.session.execute(text('ALTER TABLE obligaciones ADD COLUMN IF NOT EXISTS valor_cuota_interes NUMERIC(14, 2)'))
         db.session.commit()
 
+    if inspector.has_table('refinanciaciones'):
+        columnas_refinanciaciones = {col['name'] for col in inspector.get_columns('refinanciaciones')}
+        if 'nuevo_valor_cuota_capital' not in columnas_refinanciaciones:
+            db.session.execute(text('ALTER TABLE refinanciaciones ADD COLUMN IF NOT EXISTS nuevo_valor_cuota_capital NUMERIC(14, 2)'))
+        if 'nuevo_valor_cuota_interes' not in columnas_refinanciaciones:
+            db.session.execute(text('ALTER TABLE refinanciaciones ADD COLUMN IF NOT EXISTS nuevo_valor_cuota_interes NUMERIC(14, 2)'))
+        db.session.commit()
+
 
 def create_app():
     app = Flask(__name__)

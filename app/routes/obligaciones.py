@@ -939,6 +939,18 @@ def abonar_capital(id):
 @obligaciones_bp.route('/<int:id>/refinanciar', methods=['POST'])
 def refinanciar(id):
     obligacion = Obligacion.query.get_or_404(id)
+    nuevo_valor_cuota = request.form.get('nuevo_valor_cuota')
+    nuevo_valor_cuota_capital = request.form.get('nuevo_valor_cuota_capital')
+    nuevo_valor_cuota_interes = request.form.get('nuevo_valor_cuota_interes')
+    error_desglose = _validar_desglose_cuota_form(
+        bool(_float_or_none(nuevo_valor_cuota_capital) is not None or _float_or_none(nuevo_valor_cuota_interes) is not None),
+        nuevo_valor_cuota,
+        nuevo_valor_cuota_capital,
+        nuevo_valor_cuota_interes,
+    )
+    if error_desglose:
+        flash(error_desglose, 'danger')
+        return redirect(url_for('obligaciones.refinanciaciones', id=id))
 
     refi = Refinanciacion(
         obligacion_id=id,
@@ -946,7 +958,9 @@ def refinanciar(id):
         valor_refinanciado=request.form['valor_refinanciado'],
         nueva_tasa_mensual=request.form.get('nueva_tasa_mensual') or None,
         nuevo_plazo_meses=request.form.get('nuevo_plazo_meses') or None,
-        nuevo_valor_cuota=request.form.get('nuevo_valor_cuota') or None,
+        nuevo_valor_cuota=nuevo_valor_cuota or None,
+        nuevo_valor_cuota_capital=nuevo_valor_cuota_capital or None,
+        nuevo_valor_cuota_interes=nuevo_valor_cuota_interes or None,
         nueva_fecha_vencimiento=request.form.get('nueva_fecha_vencimiento') or None,
         observaciones=request.form.get('observaciones', '').strip()
     )
@@ -960,6 +974,10 @@ def refinanciar(id):
         obligacion.cuotas_totales = refi.nuevo_plazo_meses
     if refi.nuevo_valor_cuota:
         obligacion.valor_cuota_fija = refi.nuevo_valor_cuota
+    if refi.nuevo_valor_cuota_capital is not None or refi.nuevo_valor_cuota_interes is not None:
+        obligacion.valor_cuota_capital = refi.nuevo_valor_cuota_capital
+        obligacion.valor_cuota_interes = refi.nuevo_valor_cuota_interes
+        obligacion.requiere_desglose_pago = True
     if refi.nueva_fecha_vencimiento:
         obligacion.fecha_vencimiento = refi.nueva_fecha_vencimiento
     obligacion.saldo_actual = refi.valor_refinanciado

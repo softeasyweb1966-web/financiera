@@ -168,6 +168,15 @@
                         <label class="form-label">Nueva fecha vencimiento</label>
                         <input type="date" name="nueva_fecha_vencimiento" class="form-control form-control-sm">
                     </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Nueva cuota a capital</label>
+                        <input type="number" name="nuevo_valor_cuota_capital" class="form-control form-control-sm" value="{{ obligacion.valor_cuota_capital or '' }}">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Nueva cuota a interes</label>
+                        <input type="number" name="nuevo_valor_cuota_interes" class="form-control form-control-sm" value="{{ obligacion.valor_cuota_interes or '' }}">
+                        <div class="form-text">Si los diligencia, deben sumar la nueva cuota total.</div>
+                    </div>
                 </div>
                 <div class="mb-2 mt-2">
                     <label class="form-label">Observaciones</label>
@@ -237,6 +246,7 @@
                             <th>Tasa</th>
                             <th>Plazo</th>
                             <th>Cuota</th>
+                            <th>Cap / Int</th>
                             <th>Vencimiento</th>
                             <th>Observaciones</th>
                         </tr>
@@ -249,6 +259,14 @@
                             <td>{{ r.nueva_tasa_mensual or '-' }}{% if r.nueva_tasa_mensual %}%{% endif %}</td>
                             <td>{{ r.nuevo_plazo_meses or '-' }}</td>
                             <td>${{ "{:,.0f}".format(r.nuevo_valor_cuota) if r.nuevo_valor_cuota else '-' }}</td>
+                            <td>
+                                {% if r.nuevo_valor_cuota_capital or r.nuevo_valor_cuota_interes %}
+                                <small class="text-muted d-block">Cap: ${{ "{:,.0f}".format(r.nuevo_valor_cuota_capital or 0) }}</small>
+                                <small class="text-muted d-block">Int: ${{ "{:,.0f}".format(r.nuevo_valor_cuota_interes or 0) }}</small>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
                             <td>{{ r.nueva_fecha_vencimiento.strftime('%d/%m/%Y') if r.nueva_fecha_vencimiento else '-' }}</td>
                             <td><small>{{ r.observaciones or '' }}</small></td>
                         </tr>
