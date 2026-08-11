@@ -346,6 +346,9 @@
 
             <div class="mt-1 card-meta-line">
                 <small class="text-muted d-block">Dia base: {{ s.dia_limite_pago or '-' }} - {{ s.periodicidad|title }}</small>
+                {% if s.referencia %}
+                <small class="text-muted d-block">Referencia: {{ s.referencia }}</small>
+                {% endif %}
                 <small class="text-muted d-block">
                     {{ item.etiqueta_fecha }}: {{ item.fecha_referencia.strftime('%d/%m/%Y') if item.fecha_referencia else '-' }}
                 </small>
