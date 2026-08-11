@@ -115,7 +115,11 @@ def pagos(anio=None, mes=None):
         ultimos_pagos = PagoServicio.query.filter(
             PagoServicio.servicio_id.in_(servicio_ids),
             PagoServicio.valor_pagado.isnot(None),
-            PagoServicio.valor_pagado > 0
+            PagoServicio.valor_pagado > 0,
+            db.or_(
+                PagoServicio.anio < anio,
+                db.and_(PagoServicio.anio == anio, PagoServicio.mes < mes)
+            )
         ).order_by(
             PagoServicio.servicio_id,
             PagoServicio.anio.desc(),
@@ -250,6 +254,7 @@ def pagos(anio=None, mes=None):
     })
     pendiente_mes = float(causado_mes_actual) - float(pagado_mes_actual)
     saldo_mes = total_esperado_mes - float(pagado_mes_actual)
+    diferencia_estimado_mes = total_esperado_mes - total_estimado_mes
     por_pagar_mes = max(saldo_mes, 0)
     saldo_favor_mes = abs(saldo_mes) if saldo_mes < 0 else 0
     total_por_cubrir_hoy = total_deuda_anterior + por_pagar_mes
@@ -420,6 +425,7 @@ def pagos(anio=None, mes=None):
                             sin_causar_items=sin_causar_items,
                             total_esperado_mes=total_esperado_mes,
                             total_esperado_items=total_esperado_items,
+                            diferencia_estimado_mes=diferencia_estimado_mes,
                             pendiente_mes=pendiente_mes,
                             por_pagar_mes=por_pagar_mes,
                             saldo_favor_mes=saldo_favor_mes,

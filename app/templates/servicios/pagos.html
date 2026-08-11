@@ -141,7 +141,7 @@
     <div class="col-lg-9 col-md-8">
         <div class="card p-3" style="background:#eff6ff; border:1px solid #bfdbfe; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-mes-actual">
             <small class="text-muted d-block">{{ meses[mes-1] }}: resumen detallado <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
-            <small class="text-muted d-block mt-1">Para saber cuanto toca cubrir en el mes, use "Total del mes a cubrir" y "Por pagar del mes".</small>
+            <small class="text-muted d-block mt-1">El estimado usa el ultimo pago anterior al mes; si un servicio ya esta causado, el total del mes toma ese valor real.</small>
             <div class="metric-grid text-start mt-2">
                 <div class="metric-item">
                     <span class="metric-label">Estimado segun ultimo pago</span>
@@ -169,6 +169,12 @@
                     <span class="metric-value text-primary">
                         ${{ "{:,.0f}".format(total_esperado_mes) }}
                         <small class="text-muted">({{ total_esperado_items }})</small>
+                    </span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Diferencia vs estimado</span>
+                    <span class="metric-value {{ 'text-danger' if diferencia_estimado_mes > 0 else 'text-success' if diferencia_estimado_mes < 0 else 'text-muted' }}">
+                        {{ '+' if diferencia_estimado_mes > 0 else '' }}${{ "{:,.0f}".format(diferencia_estimado_mes|abs if diferencia_estimado_mes < 0 else diferencia_estimado_mes) }}
                     </span>
                 </div>
                 <div class="metric-item">
