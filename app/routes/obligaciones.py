@@ -212,6 +212,8 @@ def _siguiente_fecha_programada(obligacion, desde_fecha):
         if frecuencia == 'quincenal':
             actual = fecha_inicio
             while actual <= desde_fecha:
+                if actual.year == 9999:
+                    return None
                 actual += timedelta(days=15)
             if fecha_final and actual > fecha_final:
                 return None
@@ -220,6 +222,8 @@ def _siguiente_fecha_programada(obligacion, desde_fecha):
         actual = fecha_inicio
         dia_base = dia_limite_pago or fecha_inicio.day
         while actual <= desde_fecha:
+            if actual.year == 9999 and actual.month == 12:
+                return None
             siguiente_mes = actual.month + 1
             siguiente_anio = actual.year
             if siguiente_mes > 12:
@@ -241,8 +245,11 @@ def _siguiente_fecha_programada(obligacion, desde_fecha):
             min(dia_limite_pago, monthrange(desde_fecha.year, desde_fecha.month)[1])
         )
         while candidato <= desde_fecha or (fecha_inicio and candidato < fecha_inicio):
-            siguiente_mes = desde_fecha.month + 1
-            siguiente_anio = desde_fecha.year
+            if candidato.year == 9999 and candidato.month == 12:
+                return None
+
+            siguiente_mes = candidato.month + 1
+            siguiente_anio = candidato.year
             if siguiente_mes > 12:
                 siguiente_mes = 1
                 siguiente_anio += 1
@@ -251,7 +258,6 @@ def _siguiente_fecha_programada(obligacion, desde_fecha):
                 siguiente_mes,
                 min(dia_limite_pago, monthrange(siguiente_anio, siguiente_mes)[1])
             )
-            desde_fecha = date(siguiente_anio, siguiente_mes, 1)
         if fecha_final and candidato > fecha_final:
             return None
         return candidato
