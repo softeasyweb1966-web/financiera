@@ -154,10 +154,21 @@ def _fechas_programadas_obligacion(obligacion, anio, mes):
         return [fecha_mes]
 
     if obligacion.dia_limite_pago:
+        fecha_inicio = obligacion.fecha_inicio
+        fecha_final = obligacion.fecha_vencimiento
+        if fecha_inicio and fecha_inicio > fin_mes:
+            return []
+        if fecha_final and fecha_final < inicio_mes:
+            return []
         try:
-            return [date(anio, mes, min(obligacion.dia_limite_pago, fin_mes.day))]
+            fecha_mes = date(anio, mes, min(obligacion.dia_limite_pago, fin_mes.day))
         except ValueError:
             return []
+        if fecha_inicio and fecha_mes < fecha_inicio:
+            return []
+        if fecha_final and fecha_mes > fecha_final:
+            return []
+        return [fecha_mes]
     return []
 
 
@@ -197,12 +208,14 @@ def _siguiente_fecha_programada(obligacion, desde_fecha):
         return actual
 
     if obligacion.dia_limite_pago:
+        fecha_inicio = obligacion.fecha_inicio
+        fecha_final = obligacion.fecha_vencimiento
         candidato = date(
             desde_fecha.year,
             desde_fecha.month,
             min(obligacion.dia_limite_pago, monthrange(desde_fecha.year, desde_fecha.month)[1])
         )
-        if candidato <= desde_fecha:
+        while candidato <= desde_fecha or (fecha_inicio and candidato < fecha_inicio):
             siguiente_mes = desde_fecha.month + 1
             siguiente_anio = desde_fecha.year
             if siguiente_mes > 12:
@@ -213,8 +226,17 @@ def _siguiente_fecha_programada(obligacion, desde_fecha):
                 siguiente_mes,
                 min(obligacion.dia_limite_pago, monthrange(siguiente_anio, siguiente_mes)[1])
             )
+            desde_fecha = date(siguiente_anio, siguiente_mes, 1)
+        if fecha_final and candidato > fecha_final:
+            return None
         return candidato
     return None
+
+
+def _obligacion_aplica_mes(obligacion, anio, mes):
+    return _obligacion_operativa_en_periodo(obligacion, anio, mes) and bool(
+        _fechas_programadas_obligacion(obligacion, anio, mes)
+    )
 
 
 def _valor_programado_mes_obligacion(obligacion, anio, mes, ultimo_pago=None):
@@ -464,7 +486,7 @@ def pagos(anio=None, mes=None):
     obligaciones = [
         o for o in obligaciones
         if concepto_activo_en_periodo(o.concepto, anio, mes, historiales.get(o.concepto_id, []))
-        and _obligacion_operativa_en_periodo(o, anio, mes)
+        and _obligacion_aplica_mes(o, anio, mes)
     ]
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
     obligacion_ids = [o.id for o in obligaciones]
@@ -911,6 +933,14 @@ def registrar_pago():
     componente_capital_num = _float_or_none(componente_capital)
     componente_interes_num = _float_or_none(componente_interes)
 
+    pago = PagoObligacion.query.filter_by(
+        obligacion_id=obligacion_id, anio=anio, mes=mes
+    ).first()
+
+    if not pago and not _obligacion_aplica_mes(obligacion, anio, mes):
+        flash('Esta obligacion no aplica en ese mes porque aun no habia iniciado o ya no estaba vigente.', 'danger')
+        return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
+
     if accion == 'pagar':
         if obligacion.requiere_desglose_pago and estado in ('pagado', 'parcial'):
             if componente_capital_num is None or componente_interes_num is None:
@@ -925,10 +955,6 @@ def registrar_pago():
         elif (componente_capital_num is None) ^ (componente_interes_num is None):
             flash('Si registra capital o interes, debe diligenciar ambos valores.', 'danger')
             return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
-
-    pago = PagoObligacion.query.filter_by(
-        obligacion_id=obligacion_id, anio=anio, mes=mes
-    ).first()
 
     if pago:
         if accion == 'causar':
@@ -1036,9 +1062,11 @@ def detalle(id):
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
     pagos = PagoObligacion.query.filter_by(obligacion_id=id, anio=anio).order_by(PagoObligacion.mes).all()
     pagos_dict = {p.mes: p for p in pagos}
+    meses_aplicables = {mes: _obligacion_aplica_mes(obligacion, anio, mes) for mes in range(1, 13)}
     return render_template('obligaciones/detalle.html',
                            obligacion=obligacion, anio=anio,
-                           meses=MESES, pagos=pagos_dict, medios=medios)
+                           meses=MESES, pagos=pagos_dict, medios=medios,
+                           meses_aplicables=meses_aplicables)
 
 
 # ==================== REFINANCIACIONES ====================

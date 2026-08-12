@@ -56,12 +56,14 @@
             <tbody>
                 {% for i in range(1, 13) %}
                 {% set pago = pagos.get(i) %}
-                <tr class="{{ 'table-success' if pago and pago.estado == 'pagado' else 'table-warning' if pago and pago.estado == 'causado' else 'table-danger' if pago and pago.estado == 'vencido' else '' }}">
+                <tr class="{{ 'table-secondary' if not meses_aplicables.get(i) and not pago else 'table-success' if pago and pago.estado == 'pagado' else 'table-warning' if pago and pago.estado == 'causado' else 'table-danger' if pago and pago.estado == 'vencido' else '' }}">
                     <td class="fw-semibold">{{ meses[i-1] }}</td>
                     <td>
                         {% if pago %}
                             <span class="indicador ind-{{ pago.estado }}"></span>
                             {{ pago.estado.replace('_', ' ')|title }}
+                        {% elif not meses_aplicables.get(i) %}
+                            <span class="text-muted">No aplica</span>
                         {% else %}
                             <span class="text-muted">Sin registro</span>
                         {% endif %}
