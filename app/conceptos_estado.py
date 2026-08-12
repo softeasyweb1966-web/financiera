@@ -12,6 +12,16 @@ def inicio_mes(anio, mes):
     return date(anio, mes, 1)
 
 
+def _coerce_historial_date(valor):
+    if not valor:
+        return None
+    if isinstance(valor, date):
+        return valor
+    if hasattr(valor, 'date'):
+        return valor.date()
+    return None
+
+
 def periodo_anterior(anio, mes):
     if mes == 1:
         return anio - 1, 12
@@ -66,7 +76,7 @@ def estado_entidad_en_periodo(entidad, anio, mes, historial_rows=None):
     vigente = None
     ref = inicio_mes(anio, mes)
     for row in rows:
-        vigencia = row.vigencia_desde or row.fecha_cambio.date()
+        vigencia = _coerce_historial_date(row.vigencia_desde) or _coerce_historial_date(row.fecha_cambio)
         if vigencia and vigencia <= ref:
             estado = row.estado_nuevo
             vigente = row
@@ -97,7 +107,7 @@ def siguiente_cambio_entidad(anio, mes, historial_rows=None):
     rows = historial_rows or []
     ref = inicio_mes(anio, mes)
     for row in rows:
-        vigencia = row.vigencia_desde or row.fecha_cambio.date()
+        vigencia = _coerce_historial_date(row.vigencia_desde) or _coerce_historial_date(row.fecha_cambio)
         if vigencia and vigencia > ref:
             return row
     return None
