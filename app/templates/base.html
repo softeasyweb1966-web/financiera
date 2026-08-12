@@ -108,6 +108,15 @@
             const unsigned = cleaned.replace(/[^0-9.,]/g, '');
             if (!unsigned) return { raw: '', formatted: '' };
 
+            if (scale === 0) {
+                let integerDigits = unsigned.replace(/\D/g, '');
+                integerDigits = integerDigits.replace(/^0+(?=\d)/, '') || '0';
+                const formattedInteger = integerDigits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                const raw = (negative ? '-' : '') + integerDigits;
+                const formatted = (negative ? '-' : '') + formattedInteger;
+                return { raw, formatted };
+            }
+
             const lastDot = unsigned.lastIndexOf('.');
             const lastComma = unsigned.lastIndexOf(',');
             const separatorIndex = Math.max(lastDot, lastComma);
