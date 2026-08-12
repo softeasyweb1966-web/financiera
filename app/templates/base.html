@@ -127,7 +127,7 @@
             }
 
             integerDigits = integerDigits.replace(/^0+(?=\d)/, '') || '0';
-            const formattedInteger = Number(integerDigits).toLocaleString('es-CO');
+            const formattedInteger = integerDigits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
             const raw = (negative ? '-' : '') + integerDigits + (decimalDigits ? '.' + decimalDigits : '');
             const formatted = (negative ? '-' : '') + formattedInteger + (decimalDigits ? ',' + decimalDigits : '');
             return { raw, formatted };
