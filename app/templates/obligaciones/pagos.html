@@ -551,7 +551,9 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="small text-muted mb-2" id="pago_periodo">Periodo: -</div>
+                    <div class="alert alert-info py-2 px-3 mb-3 small">
+                        <strong>Periodo:</strong> <span id="pago_periodo">-</span>
+                    </div>
                     <div id="seccion-causar" style="display:none">
                         <p class="small text-muted mb-2">Confirme el valor de la cuota para este mes. La fecha de causacion se asigna automaticamente.</p>
                         <div class="row">
@@ -651,9 +653,10 @@ function toggleDesglose(requiereDesglose) {
 }
 
 function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres) {
+    const periodo = mesesObligaciones[mes - 1] + ' {{ anio }}';
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
-    document.getElementById('pago_periodo').textContent = 'Periodo: ' + mesesObligaciones[mes - 1] + ' {{ anio }}';
+    document.getElementById('pago_periodo').textContent = periodo;
     window.FinancieraMoney.setValue(document.getElementById('pago_valor_causado2'), valorEsperado || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_valor'), valorEsperado || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_capital'), valorCapital || '');
@@ -662,22 +665,23 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
     document.getElementById('causar_dia_reportado').value = '';
     document.getElementById('pago_accion').value = 'pagar';
     document.getElementById('pago_estado').value = 'pagado';
-    document.getElementById('pago_titulo').textContent = 'Pagar - ' + nombre;
+    document.getElementById('pago_titulo').textContent = 'Pagar - ' + nombre + ' - ' + periodo;
     document.getElementById('seccion-causar').style.display = 'none';
     document.getElementById('seccion-pagar').style.display = 'block';
     toggleDesglose(requiereDesglose);
 }
 
 function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres, diaBase) {
+    const periodo = mesesObligaciones[mes - 1] + ' {{ anio }}';
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
-    document.getElementById('pago_periodo').textContent = 'Periodo: ' + mesesObligaciones[mes - 1] + ' {{ anio }}';
+    document.getElementById('pago_periodo').textContent = periodo;
     window.FinancieraMoney.setValue(document.getElementById('pago_valor_causado'), valorEsperado || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_capital'), valorCapital || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
     document.getElementById('causar_dia_reportado').value = diaBase || '';
     document.getElementById('pago_accion').value = 'causar';
-    document.getElementById('pago_titulo').textContent = 'Causar - ' + nombre;
+    document.getElementById('pago_titulo').textContent = 'Causar - ' + nombre + ' - ' + periodo;
     document.getElementById('seccion-causar').style.display = 'block';
     document.getElementById('seccion-pagar').style.display = 'none';
     toggleDesglose(false);
