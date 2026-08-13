@@ -881,6 +881,8 @@ def pagos(anio=None, mes=None):
     pendientes_anteriores = []
     total_deuda_anterior = 0
     saldo_anterior_por_obligacion = {}
+    saldo_anterior_parcial_por_obligacion = {}
+    saldo_anterior_cuotas_por_obligacion = {}
     for o in obligaciones:
         pagos_hasta_mes = pagos_hasta_mes_por_obligacion.get(o.id, {})
         pagos_anteriores = [
@@ -901,6 +903,10 @@ def pagos(anio=None, mes=None):
             valor_abonado_periodo = float(d.valor_pagado or 0)
             total_deuda_anterior += valor_deuda
             saldo_anterior_por_obligacion[o.id] = saldo_anterior_por_obligacion.get(o.id, 0) + valor_deuda
+            if d.estado == 'parcial':
+                saldo_anterior_parcial_por_obligacion[o.id] = saldo_anterior_parcial_por_obligacion.get(o.id, 0) + valor_deuda
+            else:
+                saldo_anterior_cuotas_por_obligacion[o.id] = saldo_anterior_cuotas_por_obligacion.get(o.id, 0) + valor_deuda
             pendientes_anteriores.append({
                 'obligacion': o,
                 'pago': d,
@@ -934,6 +940,7 @@ def pagos(anio=None, mes=None):
 
             total_deuda_anterior += cuota_base
             saldo_anterior_por_obligacion[o.id] = saldo_anterior_por_obligacion.get(o.id, 0) + cuota_base
+            saldo_anterior_cuotas_por_obligacion[o.id] = saldo_anterior_cuotas_por_obligacion.get(o.id, 0) + cuota_base
             pendientes_anteriores.append({
                 'obligacion': o,
                 'pago': pago_existente,
@@ -1108,9 +1115,10 @@ def pagos(anio=None, mes=None):
         saldo_cuota_pendiente = max((valor_causado or cuota_esperada or 0) - float(pago.valor_pagado or 0), 0) if pago and estado == 'parcial' else 0
         valor_abonado_cuota = float(pago.valor_pagado or 0) if pago and estado == 'parcial' else 0
         saldo_arrastrado_total = saldo_anterior_por_obligacion.get(o.id, 0) + saldo_cuota_pendiente
+        saldo_anterior_parcial = saldo_anterior_parcial_por_obligacion.get(o.id, 0)
+        saldo_anterior_cuotas = saldo_anterior_cuotas_por_obligacion.get(o.id, 0)
 
-        if estado == 'parcial' and saldo_cuota_pendiente > 0:
-            valor_mostrar = saldo_cuota_pendiente
+        valor_pago_sugerido = saldo_cuota_pendiente if estado == 'parcial' and saldo_cuota_pendiente > 0 else valor_mostrar
 
         # Días restantes
         dias_restantes = None
@@ -1228,10 +1236,14 @@ def pagos(anio=None, mes=None):
             'estado': estado,
             'estado_visual': estado_visual,
             'valor_mostrar': valor_mostrar,
+            'valor_pago_sugerido': valor_pago_sugerido,
             'valor_causado': valor_causado,
+            'saldo_anterior': saldo_anterior_por_obligacion.get(o.id, 0),
             'saldo_cuota_pendiente': saldo_cuota_pendiente,
             'valor_abonado_cuota': valor_abonado_cuota,
             'saldo_arrastrado_total': saldo_arrastrado_total,
+            'saldo_anterior_parcial': saldo_anterior_parcial,
+            'saldo_anterior_cuotas': saldo_anterior_cuotas,
             'cuota_esperada': cuota_esperada,
             'dias_restantes': dias_restantes,
             'tipo_pago': tipo_pago,

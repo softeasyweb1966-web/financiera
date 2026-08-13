@@ -368,6 +368,14 @@
                             <span class="tipo-tarde"> - pago tarde</span>
                         {% endif %}
                     </small>
+                {% elif item.estado == 'parcial' %}
+                    <small style="color:#8b5cf6" class="d-block">abono parcial</small>
+                    {% if item.valor_abonado_cuota > 0 %}
+                    <small style="color:#8b5cf6" class="d-block">Abonó: ${{ "{:,.0f}".format(item.valor_abonado_cuota) }} de ${{ "{:,.0f}".format(item.valor_causado or item.cuota_esperada or 0) }}</small>
+                    {% endif %}
+                    {% if item.saldo_cuota_pendiente > 0 %}
+                    <small class="text-danger d-block">Quedó debiendo: ${{ "{:,.0f}".format(item.saldo_cuota_pendiente) }}{% if item.esta_vencido %} - ya vencido{% endif %}</small>
+                    {% endif %}
                 {% elif item.esta_vencido %}
                     <small class="text-danger d-block">
                         vencido - total acumulado{{ ' - ' ~ item.cuotas_vencidas ~ ' cuota' ~ ('s' if item.cuotas_vencidas != 1 else '') if item.cuotas_vencidas else '' }}
@@ -376,11 +384,6 @@
                     <small class="text-muted d-block">estimado segun ultimo pago</small>
                 {% elif item.estado == 'causado' %}
                     <small class="text-warning d-block">cuota causada - pendiente de pago</small>
-                {% elif item.estado == 'parcial' %}
-                    <small style="color:#8b5cf6" class="d-block">pago parcial</small>
-                    {% if item.valor_abonado_cuota > 0 %}
-                    <small style="color:#8b5cf6" class="d-block">Abonado: ${{ "{:,.0f}".format(item.valor_abonado_cuota) }}</small>
-                    {% endif %}
                 {% elif item.pago_anulado %}
                     <small class="text-muted d-block">registro anterior anulado</small>
                 {% endif %}
@@ -396,15 +399,17 @@
                 <small class="text-muted d-block">
                     {{ item.etiqueta_fecha }}: {{ item.fecha_referencia.strftime('%d/%m/%Y') if item.fecha_referencia else '-' }}
                 </small>
-                {% if item.saldo_arrastrado_total > 0 %}
-                <small class="text-danger d-block">Saldo anterior: ${{ "{:,.0f}".format(item.saldo_arrastrado_total) }}</small>
+                {% if item.saldo_anterior > 0 %}
+                <small class="text-danger d-block">Saldo anterior: ${{ "{:,.0f}".format(item.saldo_anterior) }}</small>
                 {% endif %}
-                {% if item.saldo_anterior > 0 and item.saldo_cuota_pendiente > 0 %}
-                <small class="text-danger d-block">Meses anteriores: ${{ "{:,.0f}".format(item.saldo_anterior) }} · Cuota actual pendiente: ${{ "{:,.0f}".format(item.saldo_cuota_pendiente) }}</small>
-                {% elif item.saldo_anterior > 0 %}
-                <small class="text-danger d-block">Corresponde a meses anteriores.</small>
-                {% elif item.saldo_cuota_pendiente > 0 %}
-                <small class="text-danger d-block">Corresponde al faltante de la cuota actual.</small>
+                {% if item.saldo_anterior_parcial > 0 %}
+                <small class="text-danger d-block">Incluye abonos parciales pendientes de meses anteriores: ${{ "{:,.0f}".format(item.saldo_anterior_parcial) }}</small>
+                {% endif %}
+                {% if item.saldo_anterior_cuotas > 0 %}
+                <small class="text-danger d-block">Incluye cuotas completas pendientes de meses anteriores: ${{ "{:,.0f}".format(item.saldo_anterior_cuotas) }}</small>
+                {% endif %}
+                {% if item.estado == 'parcial' and item.saldo_cuota_pendiente > 0 %}
+                <small class="text-danger d-block">Este mes quedó debiendo: ${{ "{:,.0f}".format(item.saldo_cuota_pendiente) }}</small>
                 {% endif %}
                 <small class="text-muted d-block">Saldo actual: <strong>${{ "{:,.0f}".format(o.saldo_actual) if o.saldo_actual else '-' }}</strong></small>
                 {% if o.cuotas_pendientes is not none %}
@@ -437,7 +442,7 @@
             <div class="mt-2 d-flex gap-1 flex-wrap">
                 {% if item.estado != 'pagado' %}
                 <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick='prepararPago({{ o.id }}, {{ nombre_modal|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }})'>
+                        onclick='prepararPago({{ o.id }}, {{ nombre_modal|tojson }}, {{ mes }}, {{ item.valor_pago_sugerido or item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }})'>
                     <i class="bi bi-check-lg"></i> Pagar
                 </button>
                 {% if item.estado == 'sin_causar' or item.estado == 'pendiente' %}
