@@ -439,13 +439,14 @@
                     {% endif %}
                 {% endif %}
                 {% if pago and pago.estado != 'anulado' %}
-                <form method="POST" action="{{ url_for('obligaciones.anular_pago', pago_id=pago.id) }}" onsubmit="return solicitarAnulacion(this, {{ nombre_modal|tojson }}, {{ meses[mes-1]|tojson }}, {{ anio }})">
-                    <input type="hidden" name="motivo" value="">
-                    <input type="hidden" name="next" value="{{ url_for('obligaciones.pagos', anio=anio, mes=mes) }}">
-                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Anular pago conservando historial">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-danger"
+                            title="Anular pago conservando historial"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modalAnulacion"
+                            onclick='prepararAnulacion({{ url_for("obligaciones.anular_pago", pago_id=pago.id)|tojson }}, {{ url_for("obligaciones.pagos", anio=anio, mes=mes)|tojson }}, {{ nombre_modal|tojson }}, {{ (meses[mes-1] ~ " " ~ anio)|tojson }})'>
                         <i class="bi bi-slash-circle"></i>
                     </button>
-                </form>
                 {% endif %}
                 <a href="{{ url_for('obligaciones.detalle', id=o.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary" title="Historial mes a mes">
                     <i class="bi bi-clock-history"></i>
@@ -547,6 +548,30 @@
                 </div>
                 <div class="modal-footer py-1">
                     <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check-lg"></i> Guardar recibo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalAnulacion" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="formAnulacion">
+                <input type="hidden" name="next" id="anulacion_next">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold" id="anulacion_titulo">Anular pago</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning py-2 small mb-3">
+                        La cuota volvera a estado pendiente y el historial del pago se conservara.
+                    </div>
+                    <label class="form-label">Motivo de anulacion *</label>
+                    <textarea name="motivo" id="anulacion_motivo" class="form-control form-control-sm" rows="3" required></textarea>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="submit" class="btn btn-danger btn-sm">Confirmar anulacion</button>
                 </div>
             </form>
         </div>
@@ -707,17 +732,11 @@ function prepararComprobante(pagoId, nombre, tieneComprobante) {
     document.getElementById('comprobante_titulo').textContent = (tieneComprobante ? 'Cambiar recibo - ' : 'Adjuntar recibo - ') + nombre;
 }
 
-function solicitarAnulacion(form, nombre, mesNombre, anio) {
-    const motivo = window.prompt('Motivo de anulacion para ' + nombre + ' (' + mesNombre + ' ' + anio + '):');
-    if (motivo === null) {
-        return false;
-    }
-    if (!motivo.trim()) {
-        window.alert('Debe indicar el motivo de la anulacion.');
-        return false;
-    }
-    form.querySelector('input[name=\"motivo\"]').value = motivo.trim();
-    return window.confirm('Se anulara el pago de ' + nombre + ' y se conservara el historial. Desea continuar?');
+function prepararAnulacion(actionUrl, nextUrl, nombre, periodo) {
+    document.getElementById('formAnulacion').action = actionUrl;
+    document.getElementById('anulacion_next').value = nextUrl;
+    document.getElementById('anulacion_titulo').textContent = 'Anular pago - ' + nombre + ' - ' + periodo;
+    document.getElementById('anulacion_motivo').value = '';
 }
 </script>
 {% endblock %}

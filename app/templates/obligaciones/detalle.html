@@ -88,11 +88,13 @@
                     <td><small>{{ pago.observaciones if pago and pago.observaciones else '' }}</small></td>
                     <td>
                         {% if pago and pago.estado != 'anulado' %}
-                        <form method="POST" action="{{ url_for('obligaciones.anular_pago', pago_id=pago.id) }}" onsubmit="return solicitarAnulacion(this, '{{ meses[i-1] }}', {{ anio }})">
-                            <input type="hidden" name="motivo" value="">
-                            <input type="hidden" name="next" value="{{ url_for('obligaciones.detalle', id=obligacion.id, anio=anio) }}">
-                            <button type="submit" class="btn btn-sm btn-outline-danger py-0">Anular</button>
-                        </form>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-danger py-0"
+                                data-bs-toggle="modal"
+                                data-bs-target="#modalAnulacionDetalle"
+                                onclick='prepararAnulacionDetalle({{ url_for("obligaciones.anular_pago", pago_id=pago.id)|tojson }}, {{ url_for("obligaciones.detalle", id=obligacion.id, anio=anio)|tojson }}, {{ meses[i-1]|tojson }}, {{ anio }})'>
+                            Anular
+                        </button>
                         {% else %}
                         -
                         {% endif %}
@@ -155,21 +157,39 @@
         </table>
     </div>
 </div>
+
+<div class="modal fade" id="modalAnulacionDetalle" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="formAnulacionDetalle">
+                <input type="hidden" name="next" id="anulacion_detalle_next">
+                <div class="modal-header">
+                    <h6 class="modal-title fw-bold" id="anulacion_detalle_titulo">Anular pago</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning py-2 small mb-3">
+                        La cuota volvera a estado pendiente y el historial del pago se conservara.
+                    </div>
+                    <label class="form-label">Motivo de anulacion *</label>
+                    <textarea name="motivo" id="anulacion_detalle_motivo" class="form-control form-control-sm" rows="3" required></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-danger btn-sm">Confirmar anulacion</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-function solicitarAnulacion(form, mesNombre, anio) {
-    const motivo = window.prompt('Motivo de anulacion para ' + mesNombre + ' ' + anio + ':');
-    if (motivo === null) {
-        return false;
-    }
-    if (!motivo.trim()) {
-        window.alert('Debe indicar el motivo de la anulacion.');
-        return false;
-    }
-    form.querySelector('input[name=\"motivo\"]').value = motivo.trim();
-    return window.confirm('Se anulara el pago y se conservara el historial. Desea continuar?');
+function prepararAnulacionDetalle(actionUrl, nextUrl, mesNombre, anio) {
+    document.getElementById('formAnulacionDetalle').action = actionUrl;
+    document.getElementById('anulacion_detalle_next').value = nextUrl;
+    document.getElementById('anulacion_detalle_titulo').textContent = 'Anular pago - ' + mesNombre + ' ' + anio;
+    document.getElementById('anulacion_detalle_motivo').value = '';
 }
 </script>
 {% endblock %}
