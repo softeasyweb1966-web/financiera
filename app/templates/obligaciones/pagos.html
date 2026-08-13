@@ -551,6 +551,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="small text-muted mb-2" id="pago_periodo">Periodo: -</div>
                     <div id="seccion-causar" style="display:none">
                         <p class="small text-muted mb-2">Confirme el valor de la cuota para este mes. La fecha de causacion se asigna automaticamente.</p>
                         <div class="row">
@@ -635,6 +636,8 @@
 
 {% block scripts %}
 <script>
+const mesesObligaciones = {{ meses|tojson }};
+
 function toggleDesglose(requiereDesglose) {
     const visible = !!requiereDesglose;
     document.getElementById('seccion-desglose').style.display = visible ? 'flex' : 'none';
@@ -650,6 +653,7 @@ function toggleDesglose(requiereDesglose) {
 function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres) {
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
+    document.getElementById('pago_periodo').textContent = 'Periodo: ' + mesesObligaciones[mes - 1] + ' {{ anio }}';
     window.FinancieraMoney.setValue(document.getElementById('pago_valor_causado2'), valorEsperado || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_valor'), valorEsperado || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_capital'), valorCapital || '');
@@ -667,6 +671,7 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
 function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres, diaBase) {
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
+    document.getElementById('pago_periodo').textContent = 'Periodo: ' + mesesObligaciones[mes - 1] + ' {{ anio }}';
     window.FinancieraMoney.setValue(document.getElementById('pago_valor_causado'), valorEsperado || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_capital'), valorCapital || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
