@@ -384,6 +384,32 @@ def _obligacion_aplica_mes(obligacion, anio, mes):
     )
 
 
+def _obligacion_visible_mes(obligacion, anio, mes):
+    if not _obligacion_operativa_en_periodo(obligacion, anio, mes):
+        return False
+
+    if obligacion.modalidad != 'pago_total_pactado':
+        return _obligacion_aplica_mes(obligacion, anio, mes)
+
+    fecha_pactada = _coerce_date(obligacion.fecha_vencimiento)
+    if not fecha_pactada:
+        return False
+
+    fecha_inicio = _coerce_date(obligacion.fecha_inicio)
+    inicio_visible = fecha_inicio.replace(day=1) if fecha_inicio else date(fecha_pactada.year, 1, 1)
+    periodo = date(anio, mes, 1)
+    fin_visible = fecha_pactada.replace(day=1)
+    return inicio_visible <= periodo <= fin_visible
+
+
+def _es_pactado_informativo_mes(obligacion, anio, mes):
+    return (
+        obligacion.modalidad == 'pago_total_pactado'
+        and _obligacion_visible_mes(obligacion, anio, mes)
+        and not _obligacion_aplica_mes(obligacion, anio, mes)
+    )
+
+
 def _valor_programado_mes_obligacion(obligacion, anio, mes, ultimo_pago=None):
     base = _valor_estimado_obligacion(obligacion, ultimo_pago)
     if base <= 0:
@@ -813,7 +839,7 @@ def pagos(anio=None, mes=None):
     obligaciones = [
         o for o in obligaciones
         if concepto_activo_en_periodo(o.concepto, anio, mes, historiales.get(o.concepto_id, []))
-        and _obligacion_aplica_mes(o, anio, mes)
+        and _obligacion_visible_mes(o, anio, mes)
     ]
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
     obligacion_ids = [o.id for o in obligaciones]
@@ -1031,12 +1057,13 @@ def pagos(anio=None, mes=None):
     esperado_mes = 0
     items_mes_actual = []
     for o in obligaciones:
-        cuota_estimado = _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
+        es_pactado_informativo = _es_pactado_informativo_mes(o, anio, mes)
+        cuota_estimado = 0 if es_pactado_informativo else _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
         total_estimado_mes += cuota_estimado
         if cuota_estimado > 0:
             total_estimado_items += 1
         pago = pagos_dict.get(o.id)
-        estado_item = _estado_visible_pago(pago)
+        estado_item = _estado_visible_pago(pago, cuota_estimado or _valor_estimado_obligacion(o, ultimos_pagos_dict.get(o.id)))
         pago_anulado = bool(pago and pago.estado == 'anulado')
         valor_causado = 0 if pago_anulado else (float(pago.valor_causado or 0) if pago else 0)
         valor_pagado = 0 if pago_anulado else (float(pago.valor_pagado or 0) if pago else 0)
@@ -1058,6 +1085,7 @@ def pagos(anio=None, mes=None):
             'modalidad': o.modalidad.replace('_', ' ').title(),
             'estado': estado_item,
             'valor_estimado': cuota_estimado,
+            'es_informativo': es_pactado_informativo,
             'valor_causado': valor_causado,
             'cuota_esperada': cuota_estimado,
             'valor_pagado': valor_pagado
@@ -1097,16 +1125,19 @@ def pagos(anio=None, mes=None):
         if pago and pago.estado in ('pagado', 'parcial'):
             resumen_modalidades[mod]['pagado'] += float(pago.valor_pagado or 0)
 
-        resumen_modalidades[mod]['esperado'] += _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
+        if not _es_pactado_informativo_mes(o, anio, mes):
+            resumen_modalidades[mod]['esperado'] += _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
 
     resumen_grupos = [v for v in resumen_modalidades.values() if v['cantidad'] > 0]
 
     # Tarjetas por obligación
     obligaciones_mes = []
     for o in obligaciones:
+        es_informativo = _es_pactado_informativo_mes(o, anio, mes)
         cuota_esperada = _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
+        valor_referencia_card = _valor_estimado_obligacion(o, ultimos_pagos_dict.get(o.id)) if es_informativo else cuota_esperada
         pago = pagos_dict.get(o.id)
-        estado = _estado_visible_pago(pago, cuota_esperada)
+        estado = _estado_visible_pago(pago, cuota_esperada or valor_referencia_card)
         pago_anulado = bool(pago and pago.estado == 'anulado')
         resumen_vencido = _resumen_vencido_obligacion(
             o,
@@ -1124,9 +1155,9 @@ def pagos(anio=None, mes=None):
             elif pago.valor_causado:
                 valor_mostrar = float(pago.valor_causado)
             else:
-                valor_mostrar = cuota_esperada
+                valor_mostrar = valor_referencia_card
         else:
-            valor_mostrar = cuota_esperada
+            valor_mostrar = valor_referencia_card
         valor_causado = 0 if pago_anulado else (float(pago.valor_causado or 0) if pago else 0)
         saldo_cuota_pendiente = max((valor_causado or cuota_esperada or 0) - float(pago.valor_pagado or 0), 0) if pago and estado == 'parcial' else 0
         valor_abonado_cuota = float(pago.valor_pagado or 0) if pago and estado == 'parcial' else 0
@@ -1157,6 +1188,10 @@ def pagos(anio=None, mes=None):
             if fecha_referencia:
                 etiqueta_fecha = 'Proximo pago'
 
+        if es_informativo and not fecha_referencia:
+            fecha_referencia = _coerce_date(o.fecha_vencimiento)
+            etiqueta_fecha = 'Fecha pactada'
+
         dias_restantes = (fecha_referencia - hoy).days if fecha_referencia else None
 
         if esta_vencido and resumen_vencido['fecha_mora_mas_antigua']:
@@ -1186,11 +1221,27 @@ def pagos(anio=None, mes=None):
         resumen_fecha_label = 'Fecha estimada'
         resumen_fecha = fecha_limite_actual or fecha_referencia
         resumen_valor_label = 'Valor estimado'
-        resumen_valor = cuota_esperada
+        resumen_valor = valor_referencia_card
         resumen_dias_texto = '-'
         resumen_dias_clase = 'text-muted'
 
-        if estado == 'pagado':
+        if es_informativo:
+            resumen_estado = 'Informativo'
+            resumen_fecha_label = 'Fecha pactada'
+            resumen_fecha = fecha_referencia
+            resumen_valor_label = 'Valor pactado'
+            resumen_valor = valor_referencia_card
+            if dias_restantes is not None:
+                if dias_restantes < 0:
+                    resumen_dias_texto = f'Vencido {abs(dias_restantes)}d'
+                    resumen_dias_clase = 'text-danger'
+                elif dias_restantes == 0:
+                    resumen_dias_texto = 'Vence hoy'
+                    resumen_dias_clase = 'text-warning'
+                else:
+                    resumen_dias_texto = f'Faltan {dias_restantes}d'
+                    resumen_dias_clase = 'text-success'
+        elif estado == 'pagado':
             resumen_estado = 'Pagado'
             resumen_fecha_label = 'Fecha pago'
             resumen_fecha = pago.fecha_pago if pago else None
@@ -1251,6 +1302,7 @@ def pagos(anio=None, mes=None):
             'pago': pago,
             'estado': estado,
             'estado_visual': estado_visual,
+            'es_informativo': es_informativo,
             'valor_mostrar': valor_mostrar,
             'valor_pago_sugerido': valor_pago_sugerido,
             'valor_causado': valor_causado,
