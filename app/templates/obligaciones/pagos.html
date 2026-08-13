@@ -299,11 +299,16 @@
     {% for item in obligaciones_mes %}
     {% set o = item.obligacion %}
     {% set pago = item.pago %}
+    {% set nombre_visible = o.tercero.nombre ~ (' - ' ~ o.referencia if o.referencia else '') %}
+    {% set nombre_modal = nombre_visible ~ (' · ' ~ o.titular if o.titular else '') %}
     <div class="col-12 col-md-6 col-lg-4">
         <div class="card card-servicio estado-{{ item.estado_visual }} p-3 h-100">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <div class="fw-bold" style="font-size:0.9rem;">{{ o.tercero.nombre }}{{ ' - ' + o.referencia if o.referencia else '' }}</div>
+                    <div class="fw-bold" style="font-size:0.9rem;">{{ nombre_visible }}</div>
+                    {% if o.titular %}
+                    <small class="text-muted d-block">{{ o.titular }}</small>
+                    {% endif %}
                     <small class="text-muted">{{ o.modalidad.replace('_',' ')|title }}</small>
                 </div>
                 <div class="text-end">
@@ -390,12 +395,12 @@
             <div class="mt-2 d-flex gap-1 flex-wrap">
                 {% if item.estado != 'pagado' %}
                 <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick='prepararPago({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }})'>
+                        onclick='prepararPago({{ o.id }}, {{ nombre_modal|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }})'>
                     <i class="bi bi-check-lg"></i> Pagar
                 </button>
                 {% if item.estado == 'sin_causar' or item.estado == 'pendiente' %}
                 <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick='prepararCausar({{ o.id }}, {{ o.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }}, {{ o.dia_limite_pago if o.dia_limite_pago is not none else (item.fecha_limite_actual.day if item.fecha_limite_actual else "null") }})'>
+                        onclick='prepararCausar({{ o.id }}, {{ nombre_modal|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }}, {{ o.dia_limite_pago if o.dia_limite_pago is not none else (item.fecha_limite_actual.day if item.fecha_limite_actual else "null") }})'>
                     <i class="bi bi-pencil"></i> Causar
                 </button>
                 {% endif %}
@@ -406,12 +411,12 @@
                         <i class="bi bi-paperclip"></i> Ver recibo
                     </a>
                     <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalComprobante"
-                            onclick='prepararComprobante({{ pago.id }}, {{ o.tercero.nombre|tojson }}, true)'>
+                            onclick='prepararComprobante({{ pago.id }}, {{ nombre_modal|tojson }}, true)'>
                         <i class="bi bi-arrow-repeat"></i> Cambiar recibo
                     </button>
                     {% else %}
                     <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalComprobante"
-                            onclick='prepararComprobante({{ pago.id }}, {{ o.tercero.nombre|tojson }}, false)'>
+                            onclick='prepararComprobante({{ pago.id }}, {{ nombre_modal|tojson }}, false)'>
                         <i class="bi bi-upload"></i> Adjuntar recibo
                     </button>
                     {% endif %}
@@ -432,11 +437,16 @@
 <div class="tab-pane fade tab-pane-box" id="obligaciones-resumen" role="tabpanel" aria-labelledby="obligaciones-resumen-tab">
     {% for item in obligaciones_mes %}
     {% set o = item.obligacion %}
+    {% set nombre_visible = o.tercero.nombre ~ (' - ' ~ o.referencia if o.referencia else '') %}
+    {% set nombre_modal = nombre_visible ~ (' · ' ~ o.titular if o.titular else '') %}
     <div class="summary-row">
         <div class="row g-2 align-items-center">
             <div class="col-lg-4">
                 <div class="summary-title">{{ o.concepto.nombre }}</div>
-                <div class="summary-subtitle">{{ o.tercero.nombre }}{% if o.referencia %} - {{ o.referencia }}{% endif %}</div>
+                <div class="summary-subtitle">{{ nombre_visible }}</div>
+                {% if o.titular %}
+                <div class="summary-subtitle">{{ o.titular }}</div>
+                {% endif %}
             </div>
             <div class="col-lg-2">
                 {% set badge_class = 'summary-badge-por_causar' %}
@@ -470,12 +480,12 @@
                         <i class="bi bi-paperclip"></i> Ver recibo de pago
                     </a>
                     <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalComprobante"
-                            onclick='prepararComprobante({{ item.pago.id }}, {{ o.tercero.nombre|tojson }}, true)'>
+                            onclick='prepararComprobante({{ item.pago.id }}, {{ nombre_modal|tojson }}, true)'>
                         <i class="bi bi-arrow-repeat"></i> Cambiar recibo
                     </button>
                     {% else %}
                     <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalComprobante"
-                            onclick='prepararComprobante({{ item.pago.id }}, {{ o.tercero.nombre|tojson }}, false)'>
+                            onclick='prepararComprobante({{ item.pago.id }}, {{ nombre_modal|tojson }}, false)'>
                         <i class="bi bi-upload"></i> Adjuntar recibo
                     </button>
                     {% endif %}

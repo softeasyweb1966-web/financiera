@@ -160,6 +160,18 @@ def _coerce_day(valor):
     return dia if 1 <= dia <= 31 else None
 
 
+def _dia_base_obligacion(obligacion, fecha_inicio=None):
+    dia_limite_pago = _coerce_day(obligacion.dia_limite_pago)
+    if dia_limite_pago:
+        return dia_limite_pago
+
+    fecha_inicio = fecha_inicio or _coerce_date(obligacion.fecha_inicio)
+    if fecha_inicio:
+        return fecha_inicio.day
+
+    return None
+
+
 def _obligacion_operativa_en_periodo(obligacion, anio, mes):
     fecha_finalizacion = _coerce_date(obligacion.fecha_finalizacion)
     if not fecha_finalizacion:
@@ -174,7 +186,7 @@ def _fechas_programadas_obligacion(obligacion, anio, mes):
     inicio_mes, fin_mes = _rango_mes(anio, mes)
     fecha_inicio = _coerce_date(obligacion.fecha_inicio)
     fecha_final = _coerce_date(obligacion.fecha_vencimiento)
-    dia_limite_pago = _coerce_day(obligacion.dia_limite_pago)
+    dia_base_programado = _dia_base_obligacion(obligacion, fecha_inicio)
 
     if obligacion.modalidad == 'pago_total_pactado':
         if fecha_final and inicio_mes <= fecha_final <= fin_mes:
@@ -196,19 +208,18 @@ def _fechas_programadas_obligacion(obligacion, anio, mes):
                 actual += timedelta(days=15)
             return fechas
 
-        dia_base = dia_limite_pago or fecha_inicio.day
-        dia = min(dia_base, fin_mes.day)
+        dia = min(dia_base_programado or fecha_inicio.day, fin_mes.day)
         fecha_mes = _ajustar_fecha_al_rango_mes(
             date(anio, mes, dia), fecha_inicio, fecha_final, anio, mes
         )
         return [fecha_mes] if fecha_mes else []
 
-    if dia_limite_pago:
+    if dia_base_programado:
         if not _mes_intersecta_rango(fecha_inicio, fecha_final, anio, mes):
             return []
         try:
             fecha_mes = _ajustar_fecha_al_rango_mes(
-                date(anio, mes, min(dia_limite_pago, fin_mes.day)),
+                date(anio, mes, min(dia_base_programado, fin_mes.day)),
                 fecha_inicio,
                 fecha_final,
                 anio,
@@ -223,7 +234,7 @@ def _fechas_programadas_obligacion(obligacion, anio, mes):
 def _siguiente_fecha_programada(obligacion, desde_fecha):
     fecha_inicio = _coerce_date(obligacion.fecha_inicio)
     fecha_final = _coerce_date(obligacion.fecha_vencimiento)
-    dia_limite_pago = _coerce_day(obligacion.dia_limite_pago)
+    dia_base_programado = _dia_base_obligacion(obligacion, fecha_inicio)
 
     if obligacion.modalidad == 'pago_total_pactado':
         if fecha_final and fecha_final > desde_fecha:
@@ -258,15 +269,15 @@ def _siguiente_fecha_programada(obligacion, desde_fecha):
                 siguiente_mes,
                 min(dia_base, monthrange(siguiente_anio, siguiente_mes)[1])
             )
-        if fecha_final and actual > fecha_final:
-            return None
-        return actual
+            if fecha_final and actual > fecha_final:
+                return None
+            return actual
 
-    if dia_limite_pago:
+    if dia_base_programado:
         candidato = date(
             desde_fecha.year,
             desde_fecha.month,
-            min(dia_limite_pago, monthrange(desde_fecha.year, desde_fecha.month)[1])
+            min(dia_base_programado, monthrange(desde_fecha.year, desde_fecha.month)[1])
         )
         while candidato <= desde_fecha or (fecha_inicio and candidato < fecha_inicio):
             if candidato.year == 9999 and candidato.month == 12:
@@ -280,7 +291,7 @@ def _siguiente_fecha_programada(obligacion, desde_fecha):
             candidato = date(
                 siguiente_anio,
                 siguiente_mes,
-                min(dia_limite_pago, monthrange(siguiente_anio, siguiente_mes)[1])
+                min(dia_base_programado, monthrange(siguiente_anio, siguiente_mes)[1])
             )
         if fecha_final and candidato > fecha_final:
             return None
