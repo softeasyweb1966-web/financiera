@@ -11,6 +11,7 @@
     .estado-pagado      { border-left-color: #10b981; }
     .estado-vencido     { border-left-color: #ef4444; }
     .estado-parcial     { border-left-color: #8b5cf6; }
+    .estado-informativo { border-left-color: #94a3b8; background: #f8fafc; }
     .indicador { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .ind-pendiente   { background: #fb923c; }
     .ind-sin_causar  { background: #fb923c; }
@@ -18,6 +19,7 @@
     .ind-pagado      { background: #10b981; }
     .ind-vencido     { background: #ef4444; }
     .ind-parcial     { background: #8b5cf6; }
+    .ind-informativo { background: #94a3b8; }
     .alerta-deuda    { background: #fef2f2; border-left: 3px solid #ef4444; }
     .nav-mes .btn { min-width: 44px; }
     .nav-mes .btn.activo { background: #2563eb; color: #fff; font-weight: 700; }
@@ -56,6 +58,7 @@
     .summary-badge-vencido { background: #fee2e2; color: #991b1b; }
     .summary-badge-parcial { background: #ede9fe; color: #6d28d9; }
     .summary-badge-por_causar { background: #e2e8f0; color: #475569; }
+    .summary-badge-informativo { background: #e2e8f0; color: #475569; }
     .monto-detalle { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; }
     .monto-detalle-linea { display: flex; justify-content: space-between; gap: 10px; font-size: 0.78rem; line-height: 1.35; }
     .monto-detalle-linea + .monto-detalle-linea { margin-top: 4px; }
@@ -321,7 +324,7 @@
     {% set nombre_visible = o.tercero.nombre ~ (' - ' ~ o.referencia if o.referencia else '') %}
     {% set nombre_modal = nombre_visible ~ (' · ' ~ o.titular if o.titular else '') %}
     <div class="col-12 col-md-6 col-lg-4">
-        <div class="card card-servicio estado-{{ item.estado_visual }} p-3 h-100">
+        <div class="card card-servicio estado-{{ 'informativo' if item.es_informativo else item.estado_visual }} p-3 h-100">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
                     <div class="fw-bold" style="font-size:0.9rem;">{{ nombre_visible }}</div>
@@ -331,7 +334,7 @@
                     <small class="text-muted">{{ o.modalidad.replace('_',' ')|title }}</small>
                 </div>
                 <div class="text-end">
-                    <span class="indicador ind-{{ item.estado_visual }}"></span>
+                    <span class="indicador ind-{{ 'informativo' if item.es_informativo else item.estado_visual }}"></span>
                     {% if item.dias_restantes is not none %}
                         {% if item.dias_restantes > 5 %}
                             <br><span class="dias-badge dias-ok">{{ item.dias_restantes }}d</span>
@@ -522,6 +525,8 @@
                     {% set badge_class = 'summary-badge-vencido' %}
                 {% elif item.resumen_estado == 'Parcial' %}
                     {% set badge_class = 'summary-badge-parcial' %}
+                {% elif item.resumen_estado == 'Informativo' %}
+                    {% set badge_class = 'summary-badge-informativo' %}
                 {% endif %}
                 <span class="summary-badge {{ badge_class }}">{{ item.resumen_estado }}</span>
             </div>

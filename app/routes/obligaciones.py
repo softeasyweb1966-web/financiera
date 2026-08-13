@@ -1348,7 +1348,7 @@ def pagos(anio=None, mes=None):
         'pagado': 5,
     }
     obligaciones_mes.sort(key=lambda item: (
-        1 if item['estado'] == 'pagado' else 0,
+        2 if item['estado'] == 'pagado' else 1 if item.get('es_informativo') else 0,
         prioridad_estado.get(item['estado_visual'], 9),
         item['fecha_referencia'] or date.max,
         item['obligacion'].dia_limite_pago or 99,
