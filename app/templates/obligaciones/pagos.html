@@ -398,8 +398,8 @@
                 {% if o.requiere_desglose_pago %}
                 <small class="text-primary d-block">Esta obligacion pide cuota con capital e interes.</small>
                 {% endif %}
-                {% if o.fecha_recibe %}
-                <small class="text-muted d-block">Recibe: {{ o.fecha_recibe.strftime('%d/%m/%Y') }}</small>
+                {% if o.modalidad == 'cadena' %}
+                <small class="text-muted d-block">Recibe: {{ o.fecha_recibe.strftime('%d/%m/%Y') if o.fecha_recibe else '-' }}</small>
                 {% endif %}
                 {% if o.tasa_interes_mensual %}
                 <small class="text-muted d-block">Tasa: {{ o.tasa_interes_mensual }}%</small>
