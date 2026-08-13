@@ -1107,7 +1107,6 @@ def pagos(anio=None, mes=None):
         dias_restantes = (fecha_referencia - hoy).days if fecha_referencia else None
 
         if esta_vencido and resumen_vencido['fecha_mora_mas_antigua']:
-            valor_mostrar = resumen_vencido['total_vencido']
             fecha_referencia = resumen_vencido['fecha_mora_mas_antigua']
             dias_restantes = resumen_vencido['dias_mora_mas_antigua']
             etiqueta_fecha = 'Vencida desde'

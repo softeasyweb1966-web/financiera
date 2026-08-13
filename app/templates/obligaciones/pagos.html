@@ -332,6 +332,9 @@
                 <span class="fs-5 {{ 'valor-estimado' if item.es_estimado else 'valor-real' }}">
                     ${{ "{:,.0f}".format(item.valor_mostrar) if item.valor_mostrar else '-' }}
                 </span>
+                {% if item.esta_vencido %}
+                    <small class="text-muted d-block">cuota del mes</small>
+                {% endif %}
                 {% if item.estado == 'pagado' %}
                     <small class="text-success d-block">
                         pagado{{ ' - ' + pago.fecha_pago.strftime('%d/%m') if pago and pago.fecha_pago else '' }}{{ ' - ' + pago.medio_pago.nombre if pago and pago.medio_pago else '' }}
