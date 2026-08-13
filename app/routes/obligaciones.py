@@ -1465,6 +1465,76 @@ def anular_pago(pago_id):
     return redirect(request.form.get('next') or url_for('obligaciones.pagos', anio=pago.anio, mes=pago.mes))
 
 
+@obligaciones_bp.route('/pago/<int:pago_id>/ajustar', methods=['POST'])
+def ajustar_pago_cancelado(pago_id):
+    pago = PagoObligacion.query.get_or_404(pago_id)
+    obligacion = pago.obligacion
+
+    if pago.estado not in ('pagado', 'parcial'):
+        flash('Solo se pueden ajustar cuotas que ya fueron registradas como pagadas o parciales.', 'warning')
+        return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
+
+    motivo = (request.form.get('motivo') or '').strip()
+    if not motivo:
+        flash('Debe indicar el motivo del ajuste para conservar el historial.', 'danger')
+        return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
+
+    valor_pagado = _money_raw_or_none(request.form.get('valor_pagado'))
+    valor_causado = _money_raw_or_none(request.form.get('valor_causado'))
+    componente_capital = _money_raw_or_none(request.form.get('componente_capital'))
+    componente_interes = _money_raw_or_none(request.form.get('componente_interes'))
+    medio_pago_id = request.form.get('medio_pago_id') or None
+    fecha_pago = _date_or_none(request.form.get('fecha_pago'))
+    observaciones = (request.form.get('observaciones') or '').strip()
+
+    valor_pagado_num = _float_or_none(valor_pagado)
+    valor_causado_num = _float_or_none(valor_causado)
+    componente_capital_num = _float_or_none(componente_capital)
+    componente_interes_num = _float_or_none(componente_interes)
+
+    if valor_pagado_num is None or valor_pagado_num <= 0:
+        flash('El valor pagado ajustado debe ser mayor que cero.', 'danger')
+        return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
+
+    if not fecha_pago:
+        flash('Debe indicar una fecha de pago valida.', 'danger')
+        return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
+
+    requiere_desglose = bool(
+        obligacion.requiere_desglose_pago
+        or pago.componente_capital is not None
+        or pago.componente_interes is not None
+        or componente_capital_num is not None
+        or componente_interes_num is not None
+    )
+    if requiere_desglose:
+        if componente_capital_num is None or componente_interes_num is None:
+            flash('Esta cuota requiere ajustar capital e interes junto con el valor pagado.', 'danger')
+            return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
+        if abs((componente_capital_num or 0) + (componente_interes_num or 0) - valor_pagado_num) > 1:
+            flash('La suma de capital e interes debe coincidir con el valor pagado ajustado.', 'danger')
+            return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
+
+    _registrar_historial_pago_obligacion(pago, 'ajuste', motivo)
+    _revertir_impacto_pago(obligacion, pago)
+
+    pago.valor_pagado = valor_pagado
+    pago.fecha_pago = fecha_pago
+    pago.medio_pago_id = medio_pago_id
+    pago.observaciones = observaciones
+    if valor_causado_num is not None:
+        pago.valor_causado = valor_causado
+    if requiere_desglose:
+        pago.componente_capital = componente_capital
+        pago.componente_interes = componente_interes
+
+    _aplicar_impacto_pago(obligacion, pago)
+
+    db.session.commit()
+    flash('Cuota ajustada conservando el historial anterior.', 'success')
+    return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
+
+
 @obligaciones_bp.route('/detalle/<int:id>')
 def detalle(id):
     """Vista detalle de una obligación: historial de todos los meses del año"""
@@ -1497,6 +1567,20 @@ def refinanciaciones(id):
         AbonoCapitalObligacion.id.desc()
     ).all()
     pagos = PagoObligacion.query.filter_by(obligacion_id=id).all()
+    pagos_cancelados = PagoObligacion.query.filter(
+        PagoObligacion.obligacion_id == id,
+        PagoObligacion.estado.in_(['pagado', 'parcial'])
+    ).order_by(
+        PagoObligacion.anio.desc(),
+        PagoObligacion.mes.desc(),
+        PagoObligacion.fecha_pago.desc(),
+        PagoObligacion.id.desc()
+    ).all()
+    historial_pagos = HistorialPagoObligacion.query.filter_by(obligacion_id=id).order_by(
+        HistorialPagoObligacion.created_at.desc(),
+        HistorialPagoObligacion.id.desc()
+    ).all()
+    medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
 
     total_pagado = sum(float(p.valor_pagado or 0) for p in pagos)
     total_capital_pagado = sum(float(p.componente_capital or 0) for p in pagos)
@@ -1509,6 +1593,10 @@ def refinanciaciones(id):
                            obligacion=obligacion,
                            refinanciaciones=refis,
                            abonos=abonos,
+                           pagos_cancelados=pagos_cancelados,
+                           historial_pagos=historial_pagos,
+                           medios=medios,
+                           meses=MESES,
                            hoy=date.today(),
                            resumen_costos={
                                'capital_inicial': float(obligacion.capital_inicial or 0),

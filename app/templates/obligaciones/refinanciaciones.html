@@ -33,6 +33,10 @@
         background: #eff6ff;
         color: #1d4ed8;
     }
+    .tiny-note {
+        font-size: 0.72rem;
+        color: #64748b;
+    }
     @media (max-width: 767px) {
         .metric-value {
             font-size: 1rem;
@@ -190,6 +194,76 @@
     <div class="col-12 col-xl-7">
         <div class="soft-panel p-3 mb-3">
             <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <div>
+                    <h6 class="fw-bold mb-0">Cuotas canceladas ajustables</h6>
+                    <small class="tiny-note">Puede corregir valor o fecha de una cuota pagada sin perder el historial anterior.</small>
+                </div>
+                <span class="history-chip">{{ pagos_cancelados|length }} registros</span>
+            </div>
+            {% if pagos_cancelados %}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Periodo</th>
+                            <th>Estado</th>
+                            <th>Fecha pago</th>
+                            <th>Valor pagado</th>
+                            <th>Capital / interes</th>
+                            <th>Medio</th>
+                            <th>Observaciones</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in pagos_cancelados %}
+                        <tr>
+                            <td>{{ meses[p.mes - 1] }} {{ p.anio }}</td>
+                            <td>{{ p.estado.replace('_', ' ')|title }}</td>
+                            <td>{{ p.fecha_pago.strftime('%d/%m/%Y') if p.fecha_pago else '-' }}</td>
+                            <td class="fw-bold text-success">${{ "{:,.0f}".format(p.valor_pagado or 0) }}</td>
+                            <td>
+                                {% if p.componente_capital or p.componente_interes %}
+                                <small class="text-muted d-block">Cap: ${{ "{:,.0f}".format(p.componente_capital or 0) }}</small>
+                                <small class="text-muted d-block">Int: ${{ "{:,.0f}".format(p.componente_interes or 0) }}</small>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>{{ p.medio_pago.nombre if p.medio_pago else '-' }}</td>
+                            <td><small>{{ p.observaciones or '' }}</small></td>
+                            <td>
+                                <button type="button"
+                                        class="btn btn-outline-primary btn-sm py-0"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#modalAjustePago"
+                                        onclick='prepararAjustePago(
+                                            {{ p.id }},
+                                            {{ (meses[p.mes - 1] ~ " " ~ p.anio)|tojson }},
+                                            {{ ("{:,.0f}".format(p.valor_pagado or 0))|tojson }},
+                                            {{ p.fecha_pago.strftime("%Y-%m-%d")|tojson if p.fecha_pago else "null" }},
+                                            {{ ("{:,.0f}".format(p.valor_causado or 0))|tojson if p.valor_causado else '""' }},
+                                            {{ ("{:,.0f}".format(p.componente_capital or 0))|tojson if p.componente_capital is not none else '""' }},
+                                            {{ ("{:,.0f}".format(p.componente_interes or 0))|tojson if p.componente_interes is not none else '""' }},
+                                            {{ p.medio_pago_id if p.medio_pago_id else "null" }},
+                                            {{ (p.observaciones or "")|tojson }},
+                                            {{ "true" if obligacion.requiere_desglose_pago or p.componente_capital is not none or p.componente_interes is not none else "false" }}
+                                        )'>
+                                    Ajustar
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted small mb-0">No hay cuotas pagadas registradas para ajustar.</p>
+            {% endif %}
+        </div>
+
+        <div class="soft-panel p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                 <h6 class="fw-bold mb-0">Historial de abonos a capital</h6>
                 <span class="history-chip">{{ abonos|length }} registros</span>
             </div>
@@ -278,6 +352,134 @@
             <p class="text-muted small mb-0">No hay refinanciaciones registradas.</p>
             {% endif %}
         </div>
+
+        <div class="soft-panel p-3 mt-3">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <h6 class="fw-bold mb-0">Historial de ajustes y anulaciones de cuotas</h6>
+                <span class="history-chip">{{ historial_pagos|length }} registros</span>
+            </div>
+            {% if historial_pagos %}
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Periodo</th>
+                            <th>Accion</th>
+                            <th>Valor previo</th>
+                            <th>Fecha previa</th>
+                            <th>Capital / interes</th>
+                            <th>Motivo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for h in historial_pagos %}
+                        <tr>
+                            <td>{{ h.created_at.strftime('%d/%m/%Y %H:%M') if h.created_at else '-' }}</td>
+                            <td>{{ meses[h.mes - 1] }} {{ h.anio }}</td>
+                            <td>{{ h.accion.replace('_', ' ')|capitalize }}</td>
+                            <td>{{ "${:,.0f}".format(h.valor_pagado) if h.valor_pagado else '-' }}</td>
+                            <td>{{ h.fecha_pago.strftime('%d/%m/%Y') if h.fecha_pago else '-' }}</td>
+                            <td>
+                                {% if h.componente_capital or h.componente_interes %}
+                                <small class="text-muted d-block">Cap: ${{ "{:,.0f}".format(h.componente_capital or 0) }}</small>
+                                <small class="text-muted d-block">Int: ${{ "{:,.0f}".format(h.componente_interes or 0) }}</small>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td><small>{{ h.motivo or h.observaciones or '' }}</small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted small mb-0">No hay ajustes ni anulaciones registrados para esta obligacion.</p>
+            {% endif %}
+        </div>
     </div>
 </div>
+
+<div class="modal fade" id="modalAjustePago" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="formAjustePago">
+                <input type="hidden" name="next" value="{{ url_for('obligaciones.refinanciaciones', id=obligacion.id) }}">
+                <div class="modal-header">
+                    <h6 class="modal-title fw-bold" id="ajustePagoTitulo">Ajustar cuota cancelada</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2 small">
+                        El sistema conserva el registro anterior en el historial antes de aplicar el ajuste.
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Fecha de pago ajustada *</label>
+                        <input type="date" name="fecha_pago" id="ajuste_fecha_pago" class="form-control form-control-sm" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Valor pagado ajustado *</label>
+                        <input type="text" name="valor_pagado" id="ajuste_valor_pagado" class="form-control form-control-sm js-money" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Valor causado</label>
+                        <input type="text" name="valor_causado" id="ajuste_valor_causado" class="form-control form-control-sm js-money">
+                        <div class="form-text">Opcional. Si lo deja igual, se conserva el valor causado existente.</div>
+                    </div>
+                    <div class="row g-2" id="ajuste_desglose_wrapper">
+                        <div class="col-6">
+                            <label class="form-label">Capital</label>
+                            <input type="text" name="componente_capital" id="ajuste_capital" class="form-control form-control-sm js-money">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Interes</label>
+                            <input type="text" name="componente_interes" id="ajuste_interes" class="form-control form-control-sm js-money">
+                        </div>
+                    </div>
+                    <div class="mb-2 mt-2">
+                        <label class="form-label">Medio de pago</label>
+                        <select name="medio_pago_id" id="ajuste_medio_pago" class="form-select form-select-sm">
+                            <option value="">--</option>
+                            {% for medio in medios %}
+                            <option value="{{ medio.id }}">{{ medio.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Motivo del ajuste *</label>
+                        <textarea name="motivo" id="ajuste_motivo" class="form-control form-control-sm" rows="2" required></textarea>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label">Observaciones vigentes</label>
+                        <textarea name="observaciones" id="ajuste_observaciones" class="form-control form-control-sm" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary btn-sm">Guardar ajuste</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ajustePagoBaseUrl = {{ url_for('obligaciones.ajustar_pago_cancelado', pago_id=0)|tojson }};
+
+function prepararAjustePago(pagoId, periodo, valorPagado, fechaPago, valorCausado, capital, interes, medioPagoId, observaciones, requiereDesglose) {
+    document.getElementById('formAjustePago').action = ajustePagoBaseUrl.replace('/0/ajustar', '/' + pagoId + '/ajustar');
+    document.getElementById('ajustePagoTitulo').textContent = 'Ajustar cuota cancelada - ' + periodo;
+    document.getElementById('ajuste_fecha_pago').value = fechaPago || '';
+    document.getElementById('ajuste_valor_pagado').value = valorPagado || '';
+    document.getElementById('ajuste_valor_causado').value = valorCausado || '';
+    document.getElementById('ajuste_capital').value = capital || '';
+    document.getElementById('ajuste_interes').value = interes || '';
+    document.getElementById('ajuste_medio_pago').value = medioPagoId || '';
+    document.getElementById('ajuste_observaciones').value = observaciones || '';
+    document.getElementById('ajuste_motivo').value = '';
+    document.getElementById('ajuste_desglose_wrapper').style.display = requiereDesglose ? '' : 'none';
+}
+</script>
 {% endblock %}
