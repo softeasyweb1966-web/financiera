@@ -1211,7 +1211,7 @@ def pagos(anio=None, mes=None):
             'total_vencido': resumen_vencido['total_vencido'],
             'cuotas_vencidas': resumen_vencido['cuotas_vencidas'],
             'fecha_mora_mas_antigua': resumen_vencido['fecha_mora_mas_antigua'],
-            'es_estimado': pago_anulado or not pago or not (pago.valor_causado or pago.valor_pagado),
+            'es_estimado': (pago_anulado or not pago or not (pago.valor_causado or pago.valor_pagado)) and not esta_vencido,
             'capital_pagado_total': capital_pagado_total,
             'interes_pagado_total': interes_pagado_total,
             'pendiente_total': pendiente_total,

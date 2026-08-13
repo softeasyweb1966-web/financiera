@@ -375,6 +375,9 @@
                 <small class="text-muted d-block">Capital pagado: <strong>${{ "{:,.0f}".format(item.capital_pagado_total) }}</strong></small>
                 <small class="text-muted d-block">Intereses pagados: <strong>${{ "{:,.0f}".format(item.interes_pagado_total) }}</strong></small>
                 <small class="text-danger d-block">Falta total por pagar: ${{ "{:,.0f}".format(item.pendiente_total) }}</small>
+                {% if item.esta_vencido and item.total_vencido %}
+                <small class="text-danger d-block fw-semibold">Acumulado vencido mensual: ${{ "{:,.0f}".format(item.total_vencido) }}</small>
+                {% endif %}
                 <small class="text-muted d-block">
                     Ultimo pago{% if not o.fecha_vencimiento %} estimado{% endif %}:
                     {{ item.fecha_ultimo_pago.strftime('%d/%m/%Y') if item.fecha_ultimo_pago else '-' }}
