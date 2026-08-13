@@ -785,21 +785,27 @@ def pagos(anio=None, mes=None):
             for obligacion_id, capital_pagado, interes_pagado in totales_pago_rows
         }
 
-    # Pendientes de meses anteriores
+    # Pendientes de meses anteriores (pendiente, causado, vencido, parcial)
     pendientes_anteriores = []
     total_deuda_anterior = 0
     for o in obligaciones:
-        deudas = PagoObligacion.query.filter(
+        pagos_anteriores = PagoObligacion.query.filter(
             PagoObligacion.obligacion_id == o.id,
-            PagoObligacion.estado == 'pendiente',
             db.or_(
                 PagoObligacion.anio < anio,
                 db.and_(PagoObligacion.anio == anio, PagoObligacion.mes < mes)
             )
         ).order_by(PagoObligacion.anio, PagoObligacion.mes).all()
-        for d in deudas:
+
+        pagos_anteriores_map = {(p.anio, p.mes): p for p in pagos_anteriores}
+
+        for d in pagos_anteriores:
+            if d.estado not in ['pendiente', 'causado', 'vencido', 'parcial']:
+                continue
             cuota_base = _valor_programado_mes_obligacion(o, d.anio, d.mes, ultimos_pagos_dict.get(o.id))
             valor_deuda = float(d.valor_causado or d.valor_pagado or cuota_base or 0)
+            if d.estado == 'parcial' and d.valor_causado and d.valor_pagado:
+                valor_deuda = max(float(d.valor_causado) - float(d.valor_pagado), 0)
             total_deuda_anterior += valor_deuda
             pendientes_anteriores.append({
                 'obligacion': o,
@@ -807,6 +813,32 @@ def pagos(anio=None, mes=None):
                 'mes_nombre': MESES[d.mes - 1],
                 'anio': d.anio,
                 'valor_deuda': valor_deuda
+            })
+
+        fecha_inicio = _coerce_date(o.fecha_inicio)
+        if fecha_inicio and fecha_inicio.year > anio:
+            continue
+
+        mes_inicio_revision = fecha_inicio.month if fecha_inicio and fecha_inicio.year == anio else 1
+        for mes_revision in range(mes_inicio_revision, mes):
+            if not _obligacion_aplica_mes(o, anio, mes_revision):
+                continue
+
+            pago_existente = pagos_anteriores_map.get((anio, mes_revision))
+            if pago_existente and pago_existente.estado != 'anulado':
+                continue
+
+            cuota_base = _valor_programado_mes_obligacion(o, anio, mes_revision, ultimos_pagos_dict.get(o.id))
+            if cuota_base <= 0:
+                continue
+
+            total_deuda_anterior += cuota_base
+            pendientes_anteriores.append({
+                'obligacion': o,
+                'pago': pago_existente,
+                'mes_nombre': MESES[mes_revision - 1],
+                'anio': anio,
+                'valor_deuda': cuota_base
             })
 
     # Acumulado pagado meses anteriores del año
