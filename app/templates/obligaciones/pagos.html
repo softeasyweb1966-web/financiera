@@ -149,6 +149,12 @@
                         <a href="{{ url_for('obligaciones.detalle', id=item.obligacion.id, anio=item.anio) }}" class="text-decoration-none">
                             <span class="indicador ind-pendiente"></span>
                             {{ item.obligacion.tercero.nombre }} <small class="text-muted">- {{ item.mes_nombre }} {{ item.anio }}</small>
+                            {% if item.descripcion %}
+                            <small class="d-block text-muted">{{ item.descripcion }}</small>
+                            {% endif %}
+                            {% if item.es_parcial %}
+                            <small class="d-block" style="color:#8b5cf6">Abonado: ${{ "{:,.0f}".format(item.valor_abonado) }} de ${{ "{:,.0f}".format(item.valor_cuota) }}</small>
+                            {% endif %}
                         </a>
                         <span class="text-danger fw-bold">${{ "{:,.0f}".format(item.valor_deuda) }}</span>
                     </div>
@@ -249,6 +255,12 @@
                     <span class="indicador ind-pendiente"></span>
                     <strong>{{ item.obligacion.tercero.nombre }}</strong>
                     <br><small class="text-muted">{{ item.mes_nombre }} {{ item.anio }} - {{ item.obligacion.modalidad.replace('_',' ')|title }}</small>
+                    {% if item.descripcion %}
+                    <br><small class="text-muted">{{ item.descripcion }}</small>
+                    {% endif %}
+                    {% if item.es_parcial %}
+                    <br><small style="color:#8b5cf6">Abonado: ${{ "{:,.0f}".format(item.valor_abonado) }} de ${{ "{:,.0f}".format(item.valor_cuota) }}</small>
+                    {% endif %}
                 </div>
                 <span class="text-danger fw-bold">${{ "{:,.0f}".format(item.valor_deuda) }}</span>
             </div>
@@ -366,6 +378,9 @@
                     <small class="text-warning d-block">cuota causada - pendiente de pago</small>
                 {% elif item.estado == 'parcial' %}
                     <small style="color:#8b5cf6" class="d-block">pago parcial</small>
+                    {% if item.valor_abonado_cuota > 0 %}
+                    <small style="color:#8b5cf6" class="d-block">Abonado: ${{ "{:,.0f}".format(item.valor_abonado_cuota) }}</small>
+                    {% endif %}
                 {% elif item.pago_anulado %}
                     <small class="text-muted d-block">registro anterior anulado</small>
                 {% endif %}
@@ -381,11 +396,15 @@
                 <small class="text-muted d-block">
                     {{ item.etiqueta_fecha }}: {{ item.fecha_referencia.strftime('%d/%m/%Y') if item.fecha_referencia else '-' }}
                 </small>
-                {% if item.saldo_anterior > 0 %}
-                <small class="text-danger d-block">Saldo anterior: ${{ "{:,.0f}".format(item.saldo_anterior) }}</small>
+                {% if item.saldo_arrastrado_total > 0 %}
+                <small class="text-danger d-block">Saldo anterior: ${{ "{:,.0f}".format(item.saldo_arrastrado_total) }}</small>
                 {% endif %}
-                {% if item.saldo_cuota_pendiente > 0 %}
-                <small style="color:#8b5cf6" class="d-block">Saldo pendiente cuota actual: ${{ "{:,.0f}".format(item.saldo_cuota_pendiente) }}</small>
+                {% if item.saldo_anterior > 0 and item.saldo_cuota_pendiente > 0 %}
+                <small class="text-danger d-block">Meses anteriores: ${{ "{:,.0f}".format(item.saldo_anterior) }} · Cuota actual pendiente: ${{ "{:,.0f}".format(item.saldo_cuota_pendiente) }}</small>
+                {% elif item.saldo_anterior > 0 %}
+                <small class="text-danger d-block">Corresponde a meses anteriores.</small>
+                {% elif item.saldo_cuota_pendiente > 0 %}
+                <small class="text-danger d-block">Corresponde al faltante de la cuota actual.</small>
                 {% endif %}
                 <small class="text-muted d-block">Saldo actual: <strong>${{ "{:,.0f}".format(o.saldo_actual) if o.saldo_actual else '-' }}</strong></small>
                 {% if o.cuotas_pendientes is not none %}

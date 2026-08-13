@@ -895,6 +895,10 @@ def pagos(anio=None, mes=None):
             valor_deuda = _valor_deuda_periodo_obligacion(
                 o, d, d.anio, d.mes, ultimos_pagos_dict.get(o.id)
             )
+            valor_cuota_periodo = float(d.valor_causado or _valor_programado_mes_obligacion(
+                o, d.anio, d.mes, ultimos_pagos_dict.get(o.id)
+            ) or 0)
+            valor_abonado_periodo = float(d.valor_pagado or 0)
             total_deuda_anterior += valor_deuda
             saldo_anterior_por_obligacion[o.id] = saldo_anterior_por_obligacion.get(o.id, 0) + valor_deuda
             pendientes_anteriores.append({
@@ -902,7 +906,11 @@ def pagos(anio=None, mes=None):
                 'pago': d,
                 'mes_nombre': MESES[d.mes - 1],
                 'anio': d.anio,
-                'valor_deuda': valor_deuda
+                'valor_deuda': valor_deuda,
+                'es_parcial': d.estado == 'parcial',
+                'valor_cuota': valor_cuota_periodo,
+                'valor_abonado': valor_abonado_periodo,
+                'descripcion': 'Saldo restante por abono parcial' if d.estado == 'parcial' else 'Cuota pendiente',
             })
 
         fecha_inicio = _coerce_date(o.fecha_inicio)
@@ -931,7 +939,11 @@ def pagos(anio=None, mes=None):
                 'pago': pago_existente,
                 'mes_nombre': MESES[mes_revision - 1],
                 'anio': anio,
-                'valor_deuda': cuota_base
+                'valor_deuda': cuota_base,
+                'es_parcial': False,
+                'valor_cuota': cuota_base,
+                'valor_abonado': 0,
+                'descripcion': 'Cuota pendiente',
             })
 
     # Acumulado pagado meses anteriores del año
@@ -1094,6 +1106,11 @@ def pagos(anio=None, mes=None):
             valor_mostrar = cuota_esperada
         valor_causado = 0 if pago_anulado else (float(pago.valor_causado or 0) if pago else 0)
         saldo_cuota_pendiente = max((valor_causado or cuota_esperada or 0) - float(pago.valor_pagado or 0), 0) if pago and estado == 'parcial' else 0
+        valor_abonado_cuota = float(pago.valor_pagado or 0) if pago and estado == 'parcial' else 0
+        saldo_arrastrado_total = saldo_anterior_por_obligacion.get(o.id, 0) + saldo_cuota_pendiente
+
+        if estado == 'parcial' and saldo_cuota_pendiente > 0:
+            valor_mostrar = saldo_cuota_pendiente
 
         # Días restantes
         dias_restantes = None
@@ -1184,8 +1201,8 @@ def pagos(anio=None, mes=None):
             resumen_estado = 'Parcial'
             resumen_fecha_label = 'Fecha pago'
             resumen_fecha = pago.fecha_pago if pago else None
-            resumen_valor_label = 'Valor pagado'
-            resumen_valor = float(pago.valor_pagado or 0) if pago else 0
+            resumen_valor_label = 'Saldo pendiente'
+            resumen_valor = saldo_cuota_pendiente if saldo_cuota_pendiente > 0 else float(pago.valor_pagado or 0) if pago else 0
             if dias_restantes is not None:
                 if dias_restantes < 0:
                     resumen_dias_texto = f'Vencido {abs(dias_restantes)}d'
@@ -1213,6 +1230,8 @@ def pagos(anio=None, mes=None):
             'valor_mostrar': valor_mostrar,
             'valor_causado': valor_causado,
             'saldo_cuota_pendiente': saldo_cuota_pendiente,
+            'valor_abonado_cuota': valor_abonado_cuota,
+            'saldo_arrastrado_total': saldo_arrastrado_total,
             'cuota_esperada': cuota_esperada,
             'dias_restantes': dias_restantes,
             'tipo_pago': tipo_pago,
