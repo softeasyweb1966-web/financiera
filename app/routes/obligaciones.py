@@ -7,9 +7,11 @@ from app.models import (
 from app.conceptos_estado import cargar_historial_conceptos, concepto_activo_en_periodo
 from calendar import monthrange
 from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from sqlalchemy import func
 import math
+import re
 
 obligaciones_bp = Blueprint('obligaciones', __name__, url_prefix='/obligaciones')
 
@@ -430,11 +432,69 @@ def _plazo_con_tasa(saldo, tasa_mensual, cuota_objetivo):
 
 def _float_or_none(valor):
     try:
-        if valor in (None, ''):
+        normalizado = _money_raw_or_none(valor)
+        if normalizado in (None, ''):
             return None
-        return float(valor)
-    except (TypeError, ValueError):
+        return float(normalizado)
+    except (TypeError, ValueError, InvalidOperation):
         return None
+
+
+def _money_raw_or_none(valor, scale=0):
+    if valor in (None, ''):
+        return None
+
+    if isinstance(valor, Decimal):
+        return format(valor, 'f')
+    if isinstance(valor, (int, float)):
+        return format(Decimal(str(valor)), 'f')
+
+    cleaned = str(valor).strip().replace(' ', '')
+    if not cleaned:
+        return None
+
+    negative = cleaned.startswith('-')
+    unsigned = re.sub(r'[^0-9.,]', '', cleaned)
+    if not unsigned:
+        return None
+
+    if scale == 0:
+        last_dot = unsigned.rfind('.')
+        last_comma = unsigned.rfind(',')
+        separator_index = max(last_dot, last_comma)
+        separator_count = unsigned.count('.') + unsigned.count(',')
+
+        integer_digits = re.sub(r'\D', '', unsigned)
+        if separator_index >= 0:
+            tail = re.sub(r'\D', '', unsigned[separator_index + 1:])
+            head = re.sub(r'\D', '', unsigned[:separator_index])
+            if tail and (
+                len(tail) <= 2
+                or (separator_count == 1 and len(head) > 3 and set(tail) == {'0'})
+            ):
+                integer_digits = head or '0'
+
+        integer_digits = integer_digits.lstrip('0') or '0'
+        return ('-' if negative else '') + integer_digits
+
+    last_dot = unsigned.rfind('.')
+    last_comma = unsigned.rfind(',')
+    separator_index = max(last_dot, last_comma)
+    integer_digits = re.sub(r'\D', '', unsigned)
+    decimal_digits = ''
+
+    if separator_index >= 0:
+        tail = re.sub(r'\D', '', unsigned[separator_index + 1:])
+        head = re.sub(r'\D', '', unsigned[:separator_index])
+        if tail:
+            integer_digits = head or '0'
+            decimal_digits = tail[:scale]
+
+    integer_digits = integer_digits.lstrip('0') or '0'
+    raw = ('-' if negative else '') + integer_digits
+    if decimal_digits:
+        raw += '.' + decimal_digits
+    return raw
 
 
 def _date_or_none(valor):
@@ -556,15 +616,15 @@ def nueva():
             tercero_id=request.form['tercero_id'],
             concepto_id=request.form['concepto_id'],
             modalidad=request.form['modalidad'],
-            capital_inicial=request.form.get('capital_inicial') or None,
-            saldo_actual=request.form.get('saldo_actual') or request.form.get('capital_inicial') or None,
+            capital_inicial=_money_raw_or_none(request.form.get('capital_inicial')),
+            saldo_actual=_money_raw_or_none(request.form.get('saldo_actual')) or _money_raw_or_none(request.form.get('capital_inicial')),
             tasa_interes_mensual=request.form.get('tasa_interes_mensual') or None,
             plazo_meses=request.form.get('plazo_meses') or None,
             plazo_dias=request.form.get('plazo_dias') or None,
             cuotas_totales=request.form.get('cuotas_totales') or None,
-            valor_cuota_fija=request.form.get('valor_cuota_fija') or None,
-            valor_cuota_capital=request.form.get('valor_cuota_capital') or None,
-            valor_cuota_interes=request.form.get('valor_cuota_interes') or None,
+            valor_cuota_fija=_money_raw_or_none(request.form.get('valor_cuota_fija')),
+            valor_cuota_capital=_money_raw_or_none(request.form.get('valor_cuota_capital')),
+            valor_cuota_interes=_money_raw_or_none(request.form.get('valor_cuota_interes')),
             fecha_inicio=request.form.get('fecha_inicio') or None,
             fecha_vencimiento=request.form.get('fecha_vencimiento') or None,
             fecha_recibe=request.form.get('fecha_recibe') or None,
@@ -622,15 +682,15 @@ def editar(id):
         obligacion.tercero_id = request.form['tercero_id']
         obligacion.concepto_id = request.form['concepto_id']
         obligacion.modalidad = request.form['modalidad']
-        obligacion.capital_inicial = request.form.get('capital_inicial') or None
-        obligacion.saldo_actual = 0 if finalizar_obligacion else (request.form.get('saldo_actual') or None)
+        obligacion.capital_inicial = _money_raw_or_none(request.form.get('capital_inicial'))
+        obligacion.saldo_actual = 0 if finalizar_obligacion else _money_raw_or_none(request.form.get('saldo_actual'))
         obligacion.tasa_interes_mensual = request.form.get('tasa_interes_mensual') or None
         obligacion.plazo_meses = request.form.get('plazo_meses') or None
         obligacion.plazo_dias = request.form.get('plazo_dias') or None
         obligacion.cuotas_totales = request.form.get('cuotas_totales') or None
-        obligacion.valor_cuota_fija = request.form.get('valor_cuota_fija') or None
-        obligacion.valor_cuota_capital = request.form.get('valor_cuota_capital') or None
-        obligacion.valor_cuota_interes = request.form.get('valor_cuota_interes') or None
+        obligacion.valor_cuota_fija = _money_raw_or_none(request.form.get('valor_cuota_fija'))
+        obligacion.valor_cuota_capital = _money_raw_or_none(request.form.get('valor_cuota_capital'))
+        obligacion.valor_cuota_interes = _money_raw_or_none(request.form.get('valor_cuota_interes'))
         obligacion.fecha_inicio = request.form.get('fecha_inicio') or None
         obligacion.fecha_vencimiento = request.form.get('fecha_vencimiento') or None
         obligacion.fecha_recibe = request.form.get('fecha_recibe') or None
@@ -1102,10 +1162,10 @@ def registrar_pago():
     mes = int(request.form['mes'])
     obligacion = Obligacion.query.get_or_404(obligacion_id)
     accion = request.form.get('accion', 'pagar')  # causar o pagar
-    valor_causado = request.form.get('valor_causado') or None
-    valor_pagado = request.form.get('valor_pagado') or None
-    componente_capital = request.form.get('componente_capital') or None
-    componente_interes = request.form.get('componente_interes') or None
+    valor_causado = _money_raw_or_none(request.form.get('valor_causado'))
+    valor_pagado = _money_raw_or_none(request.form.get('valor_pagado'))
+    componente_capital = _money_raw_or_none(request.form.get('componente_capital'))
+    componente_interes = _money_raw_or_none(request.form.get('componente_interes'))
     estado = request.form.get('estado', 'pagado')
     medio_pago_id = request.form.get('medio_pago_id') or None
     fecha_pago = request.form.get('fecha_pago') or None
@@ -1343,7 +1403,7 @@ def abonar_capital(id):
         return redirect(url_for('obligaciones.refinanciaciones', id=id))
 
     try:
-        valor_abono = float(request.form.get('valor_abono') or 0)
+        valor_abono = float(_money_raw_or_none(request.form.get('valor_abono')) or 0)
     except ValueError:
         valor_abono = 0
 
@@ -1445,12 +1505,12 @@ def refinanciar(id):
     refi = Refinanciacion(
         obligacion_id=id,
         fecha_refinanciacion=datetime.strptime(request.form['fecha_refinanciacion'], '%Y-%m-%d').date(),
-        valor_refinanciado=request.form['valor_refinanciado'],
+        valor_refinanciado=_money_raw_or_none(request.form.get('valor_refinanciado')),
         nueva_tasa_mensual=request.form.get('nueva_tasa_mensual') or None,
         nuevo_plazo_meses=request.form.get('nuevo_plazo_meses') or None,
-        nuevo_valor_cuota=nuevo_valor_cuota or None,
-        nuevo_valor_cuota_capital=nuevo_valor_cuota_capital or None,
-        nuevo_valor_cuota_interes=nuevo_valor_cuota_interes or None,
+        nuevo_valor_cuota=_money_raw_or_none(nuevo_valor_cuota),
+        nuevo_valor_cuota_capital=_money_raw_or_none(nuevo_valor_cuota_capital),
+        nuevo_valor_cuota_interes=_money_raw_or_none(nuevo_valor_cuota_interes),
         nueva_fecha_vencimiento=request.form.get('nueva_fecha_vencimiento') or None,
         observaciones=request.form.get('observaciones', '').strip()
     )
