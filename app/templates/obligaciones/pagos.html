@@ -344,7 +344,9 @@
                         {% endif %}
                     </small>
                 {% elif item.esta_vencido %}
-                    <small class="text-danger d-block">vencido - pago pendiente</small>
+                    <small class="text-danger d-block">
+                        vencido - total acumulado{{ ' - ' ~ item.cuotas_vencidas ~ ' cuota' ~ ('s' if item.cuotas_vencidas != 1 else '') if item.cuotas_vencidas else '' }}
+                    </small>
                 {% elif item.es_estimado %}
                     <small class="text-muted d-block">estimado segun ultimo pago</small>
                 {% elif item.estado == 'causado' %}

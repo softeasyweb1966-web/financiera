@@ -386,6 +386,70 @@ def _valor_programado_mes_obligacion(obligacion, anio, mes, ultimo_pago=None):
     return base
 
 
+def _periodos_hasta_obligacion(obligacion, anio_hasta, mes_hasta):
+    fecha_inicio = _coerce_date(obligacion.fecha_inicio)
+    cursor_anio = fecha_inicio.year if fecha_inicio else anio_hasta
+    cursor_mes = fecha_inicio.month if fecha_inicio else 1
+
+    while (cursor_anio, cursor_mes) <= (anio_hasta, mes_hasta):
+        yield cursor_anio, cursor_mes
+        cursor_mes += 1
+        if cursor_mes > 12:
+            cursor_mes = 1
+            cursor_anio += 1
+
+
+def _valor_deuda_periodo_obligacion(obligacion, pago, anio, mes, ultimo_pago=None):
+    cuota_base = _valor_programado_mes_obligacion(obligacion, anio, mes, ultimo_pago)
+
+    if not pago or pago.estado == 'anulado':
+        return float(cuota_base or 0)
+
+    if pago.estado == 'parcial':
+        valor_causado = float(pago.valor_causado or cuota_base or 0)
+        valor_pagado = float(pago.valor_pagado or 0)
+        return max(valor_causado - valor_pagado, 0)
+
+    if pago.estado in ['pendiente', 'causado', 'vencido']:
+        return float(pago.valor_causado or pago.valor_pagado or cuota_base or 0)
+
+    return 0
+
+
+def _resumen_vencido_obligacion(obligacion, pagos_por_periodo, anio_hasta, mes_hasta, hoy, ultimo_pago=None):
+    total_vencido = 0
+    fecha_mora_mas_antigua = None
+    cuotas_vencidas = 0
+
+    for anio_periodo, mes_periodo in _periodos_hasta_obligacion(obligacion, anio_hasta, mes_hasta):
+        if not _obligacion_aplica_mes(obligacion, anio_periodo, mes_periodo):
+            continue
+
+        fechas_programadas = _fechas_programadas_obligacion(obligacion, anio_periodo, mes_periodo)
+        fecha_limite = fechas_programadas[0] if fechas_programadas else None
+        if not fecha_limite or fecha_limite >= hoy:
+            continue
+
+        pago = (pagos_por_periodo or {}).get((anio_periodo, mes_periodo))
+        valor_deuda = _valor_deuda_periodo_obligacion(
+            obligacion, pago, anio_periodo, mes_periodo, ultimo_pago
+        )
+        if valor_deuda <= 0:
+            continue
+
+        total_vencido += valor_deuda
+        cuotas_vencidas += 1
+        if not fecha_mora_mas_antigua or fecha_limite < fecha_mora_mas_antigua:
+            fecha_mora_mas_antigua = fecha_limite
+
+    return {
+        'total_vencido': total_vencido,
+        'cuotas_vencidas': cuotas_vencidas,
+        'fecha_mora_mas_antigua': fecha_mora_mas_antigua,
+        'dias_mora_mas_antigua': (fecha_mora_mas_antigua - hoy).days if fecha_mora_mas_antigua else None,
+    }
+
+
 def _saldo_pendiente_total_obligacion(obligacion, capital_pagado=0):
     if obligacion.saldo_actual is not None:
         return float(obligacion.saldo_actual)
@@ -746,6 +810,26 @@ def pagos(anio=None, mes=None):
     ).all() if obligacion_ids else []
     pagos_dict = {p.obligacion_id: p for p in pagos_mes}
 
+    pagos_hasta_mes_por_obligacion = {obligacion_id: {} for obligacion_id in obligacion_ids}
+    if obligacion_ids:
+        pagos_hasta_mes = PagoObligacion.query.filter(
+            PagoObligacion.obligacion_id.in_(obligacion_ids),
+            db.or_(
+                PagoObligacion.anio < anio,
+                db.and_(PagoObligacion.anio == anio, PagoObligacion.mes <= mes)
+            )
+        ).order_by(
+            PagoObligacion.obligacion_id,
+            PagoObligacion.anio,
+            PagoObligacion.mes,
+            PagoObligacion.id
+        ).all()
+
+        for pago_historico in pagos_hasta_mes:
+            pagos_hasta_mes_por_obligacion.setdefault(pago_historico.obligacion_id, {})[
+                (pago_historico.anio, pago_historico.mes)
+            ] = pago_historico
+
     ultimos_pagos_dict = {}
     if obligacion_ids:
         pagos_historicos = PagoObligacion.query.filter(
@@ -789,23 +873,19 @@ def pagos(anio=None, mes=None):
     pendientes_anteriores = []
     total_deuda_anterior = 0
     for o in obligaciones:
-        pagos_anteriores = PagoObligacion.query.filter(
-            PagoObligacion.obligacion_id == o.id,
-            db.or_(
-                PagoObligacion.anio < anio,
-                db.and_(PagoObligacion.anio == anio, PagoObligacion.mes < mes)
-            )
-        ).order_by(PagoObligacion.anio, PagoObligacion.mes).all()
-
+        pagos_hasta_mes = pagos_hasta_mes_por_obligacion.get(o.id, {})
+        pagos_anteriores = [
+            p for (anio_pago, mes_pago), p in pagos_hasta_mes.items()
+            if (anio_pago, mes_pago) < (anio, mes)
+        ]
         pagos_anteriores_map = {(p.anio, p.mes): p for p in pagos_anteriores}
 
         for d in pagos_anteriores:
             if d.estado not in ['pendiente', 'causado', 'vencido', 'parcial']:
                 continue
-            cuota_base = _valor_programado_mes_obligacion(o, d.anio, d.mes, ultimos_pagos_dict.get(o.id))
-            valor_deuda = float(d.valor_causado or d.valor_pagado or cuota_base or 0)
-            if d.estado == 'parcial' and d.valor_causado and d.valor_pagado:
-                valor_deuda = max(float(d.valor_causado) - float(d.valor_pagado), 0)
+            valor_deuda = _valor_deuda_periodo_obligacion(
+                o, d, d.anio, d.mes, ultimos_pagos_dict.get(o.id)
+            )
             total_deuda_anterior += valor_deuda
             pendientes_anteriores.append({
                 'obligacion': o,
@@ -828,7 +908,9 @@ def pagos(anio=None, mes=None):
             if pago_existente and pago_existente.estado != 'anulado':
                 continue
 
-            cuota_base = _valor_programado_mes_obligacion(o, anio, mes_revision, ultimos_pagos_dict.get(o.id))
+            cuota_base = _valor_deuda_periodo_obligacion(
+                o, pago_existente, anio, mes_revision, ultimos_pagos_dict.get(o.id)
+            )
             if cuota_base <= 0:
                 continue
 
@@ -979,6 +1061,14 @@ def pagos(anio=None, mes=None):
         pago = pagos_dict.get(o.id)
         estado = _estado_visible_pago(pago)
         pago_anulado = bool(pago and pago.estado == 'anulado')
+        resumen_vencido = _resumen_vencido_obligacion(
+            o,
+            pagos_hasta_mes_por_obligacion.get(o.id, {}),
+            anio,
+            mes,
+            hoy,
+            ultimos_pagos_dict.get(o.id)
+        )
 
         # Valor cuota esperada
         cuota_esperada = _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
@@ -997,7 +1087,7 @@ def pagos(anio=None, mes=None):
         dias_restantes = None
         fechas_programadas_mes = _fechas_programadas_obligacion(o, anio, mes)
         fecha_limite_actual = fechas_programadas_mes[0] if fechas_programadas_mes else None
-        esta_vencido = bool(fecha_limite_actual and estado != 'pagado' and fecha_limite_actual < hoy)
+        esta_vencido = bool(estado != 'pagado' and resumen_vencido['total_vencido'] > 0)
         estado_visual = 'vencido' if esta_vencido else estado
 
         fecha_referencia = fecha_limite_actual
@@ -1015,6 +1105,12 @@ def pagos(anio=None, mes=None):
                 etiqueta_fecha = 'Proximo pago'
 
         dias_restantes = (fecha_referencia - hoy).days if fecha_referencia else None
+
+        if esta_vencido and resumen_vencido['fecha_mora_mas_antigua']:
+            valor_mostrar = resumen_vencido['total_vencido']
+            fecha_referencia = resumen_vencido['fecha_mora_mas_antigua']
+            dias_restantes = resumen_vencido['dias_mora_mas_antigua']
+            etiqueta_fecha = 'Vencida desde'
 
         # Tipo de pago
         tipo_pago = None
@@ -1066,10 +1162,10 @@ def pagos(anio=None, mes=None):
                     resumen_dias_clase = 'text-warning'
         elif esta_vencido:
             resumen_estado = 'Vencido'
-            resumen_fecha_label = 'Fecha estimada'
-            resumen_fecha = fecha_limite_actual or fecha_referencia
-            resumen_valor_label = 'Valor causado' if pago and pago.valor_causado else 'Valor estimado'
-            resumen_valor = float(pago.valor_causado or 0) if pago and pago.valor_causado else cuota_esperada
+            resumen_fecha_label = 'Mora mas antigua'
+            resumen_fecha = resumen_vencido['fecha_mora_mas_antigua'] or fecha_referencia
+            resumen_valor_label = 'Total vencido'
+            resumen_valor = resumen_vencido['total_vencido']
             if dias_restantes is not None:
                 resumen_dias_texto = f'Vencido {abs(dias_restantes)}d'
                 resumen_dias_clase = 'text-danger'
@@ -1112,6 +1208,9 @@ def pagos(anio=None, mes=None):
             'fecha_limite_actual': fecha_limite_actual,
             'etiqueta_fecha': etiqueta_fecha,
             'esta_vencido': esta_vencido,
+            'total_vencido': resumen_vencido['total_vencido'],
+            'cuotas_vencidas': resumen_vencido['cuotas_vencidas'],
+            'fecha_mora_mas_antigua': resumen_vencido['fecha_mora_mas_antigua'],
             'es_estimado': pago_anulado or not pago or not (pago.valor_causado or pago.valor_pagado),
             'capital_pagado_total': capital_pagado_total,
             'interes_pagado_total': interes_pagado_total,
