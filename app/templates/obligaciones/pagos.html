@@ -56,6 +56,13 @@
     .summary-badge-vencido { background: #fee2e2; color: #991b1b; }
     .summary-badge-parcial { background: #ede9fe; color: #6d28d9; }
     .summary-badge-por_causar { background: #e2e8f0; color: #475569; }
+    .monto-detalle { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; }
+    .monto-detalle-linea { display: flex; justify-content: space-between; gap: 10px; font-size: 0.78rem; line-height: 1.35; }
+    .monto-detalle-linea + .monto-detalle-linea { margin-top: 4px; }
+    .monto-detalle-label { color: #64748b; }
+    .monto-detalle-valor { font-weight: 700; color: #0f172a; white-space: nowrap; }
+    .monto-detalle-linea.vencido .monto-detalle-label,
+    .monto-detalle-linea.vencido .monto-detalle-valor { color: #b91c1c; }
     @media (max-width: 991px) {
         .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
@@ -329,12 +336,12 @@
             </div>
 
             <div class="mt-2">
+                {% if item.esta_vencido %}
+                    <small class="text-muted d-block">Cuota del mes</small>
+                {% endif %}
                 <span class="fs-5 {{ 'valor-estimado' if item.es_estimado else 'valor-real' }}">
                     ${{ "{:,.0f}".format(item.valor_mostrar) if item.valor_mostrar else '-' }}
                 </span>
-                {% if item.esta_vencido %}
-                    <small class="text-muted d-block">cuota del mes</small>
-                {% endif %}
                 {% if item.estado == 'pagado' %}
                     <small class="text-success d-block">
                         pagado{{ ' - ' + pago.fecha_pago.strftime('%d/%m') if pago and pago.fecha_pago else '' }}{{ ' - ' + pago.medio_pago.nombre if pago and pago.medio_pago else '' }}
@@ -358,6 +365,18 @@
                     <small style="color:#8b5cf6" class="d-block">pago parcial</small>
                 {% elif item.pago_anulado %}
                     <small class="text-muted d-block">registro anterior anulado</small>
+                {% endif %}
+                {% if item.esta_vencido %}
+                <div class="monto-detalle">
+                    <div class="monto-detalle-linea">
+                        <span class="monto-detalle-label">Cuota del mes</span>
+                        <span class="monto-detalle-valor">${{ "{:,.0f}".format(item.valor_mostrar) if item.valor_mostrar else '-' }}</span>
+                    </div>
+                    <div class="monto-detalle-linea vencido">
+                        <span class="monto-detalle-label">Acumulado vencido</span>
+                        <span class="monto-detalle-valor">${{ "{:,.0f}".format(item.total_vencido) if item.total_vencido else '-' }}</span>
+                    </div>
+                </div>
                 {% endif %}
             </div>
 
