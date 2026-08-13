@@ -342,6 +342,9 @@
                 <span class="fs-5 {{ 'valor-estimado' if item.es_estimado else 'valor-real' }}">
                     ${{ "{:,.0f}".format(item.valor_mostrar) if item.valor_mostrar else '-' }}
                 </span>
+                {% if item.esta_vencido and item.total_vencido %}
+                    <small class="text-danger fw-semibold d-block">Acumulado vencido: ${{ "{:,.0f}".format(item.total_vencido) }}</small>
+                {% endif %}
                 {% if item.estado == 'pagado' %}
                     <small class="text-success d-block">
                         pagado{{ ' - ' + pago.fecha_pago.strftime('%d/%m') if pago and pago.fecha_pago else '' }}{{ ' - ' + pago.medio_pago.nombre if pago and pago.medio_pago else '' }}
@@ -366,18 +369,6 @@
                 {% elif item.pago_anulado %}
                     <small class="text-muted d-block">registro anterior anulado</small>
                 {% endif %}
-                {% if item.esta_vencido %}
-                <div class="monto-detalle">
-                    <div class="monto-detalle-linea">
-                        <span class="monto-detalle-label">Cuota del mes</span>
-                        <span class="monto-detalle-valor">${{ "{:,.0f}".format(item.valor_mostrar) if item.valor_mostrar else '-' }}</span>
-                    </div>
-                    <div class="monto-detalle-linea vencido">
-                        <span class="monto-detalle-label">Acumulado vencido</span>
-                        <span class="monto-detalle-valor">${{ "{:,.0f}".format(item.total_vencido) if item.total_vencido else '-' }}</span>
-                    </div>
-                </div>
-                {% endif %}
             </div>
 
             <div class="mt-1 card-meta-line">
@@ -397,9 +388,6 @@
                 <small class="text-muted d-block">Capital pagado: <strong>${{ "{:,.0f}".format(item.capital_pagado_total) }}</strong></small>
                 <small class="text-muted d-block">Intereses pagados: <strong>${{ "{:,.0f}".format(item.interes_pagado_total) }}</strong></small>
                 <small class="text-danger d-block">Falta total por pagar: ${{ "{:,.0f}".format(item.pendiente_total) }}</small>
-                {% if item.esta_vencido and item.total_vencido %}
-                <small class="text-danger d-block fw-semibold">Acumulado vencido mensual: ${{ "{:,.0f}".format(item.total_vencido) }}</small>
-                {% endif %}
                 <small class="text-muted d-block">
                     Ultimo pago{% if not o.fecha_vencimiento %} estimado{% endif %}:
                     {{ item.fecha_ultimo_pago.strftime('%d/%m/%Y') if item.fecha_ultimo_pago else '-' }}
