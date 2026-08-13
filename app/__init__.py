@@ -8,9 +8,15 @@ migrate = Migrate()
 
 
 def _ensure_schema():
+    from app.models import HistorialPagoObligacion
+
     inspector = inspect(db.engine)
     if not inspector.has_table('tipo_tercero'):
         db.create_all()
+        inspector = inspect(db.engine)
+
+    if not inspector.has_table('historial_pagos_obligaciones'):
+        HistorialPagoObligacion.__table__.create(bind=db.engine, checkfirst=True)
         inspector = inspect(db.engine)
 
     if inspector.has_table('historial_estados'):

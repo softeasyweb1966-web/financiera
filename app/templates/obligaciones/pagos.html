@@ -351,6 +351,8 @@
                     <small class="text-warning d-block">cuota causada - pendiente de pago</small>
                 {% elif item.estado == 'parcial' %}
                     <small style="color:#8b5cf6" class="d-block">pago parcial</small>
+                {% elif item.pago_anulado %}
+                    <small class="text-muted d-block">registro anterior anulado</small>
                 {% endif %}
             </div>
 
@@ -420,6 +422,15 @@
                         <i class="bi bi-upload"></i> Adjuntar recibo
                     </button>
                     {% endif %}
+                {% endif %}
+                {% if pago and pago.estado != 'anulado' %}
+                <form method="POST" action="{{ url_for('obligaciones.anular_pago', pago_id=pago.id) }}" onsubmit="return solicitarAnulacion(this, {{ nombre_modal|tojson }}, {{ meses[mes-1]|tojson }}, {{ anio }})">
+                    <input type="hidden" name="motivo" value="">
+                    <input type="hidden" name="next" value="{{ url_for('obligaciones.pagos', anio=anio, mes=mes) }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Anular pago conservando historial">
+                        <i class="bi bi-slash-circle"></i>
+                    </button>
+                </form>
                 {% endif %}
                 <a href="{{ url_for('obligaciones.detalle', id=o.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary" title="Historial mes a mes">
                     <i class="bi bi-clock-history"></i>
@@ -670,6 +681,19 @@ function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorC
 function prepararComprobante(pagoId, nombre, tieneComprobante) {
     document.getElementById('formComprobante').action = '/obligaciones/pago/' + pagoId + '/comprobante';
     document.getElementById('comprobante_titulo').textContent = (tieneComprobante ? 'Cambiar recibo - ' : 'Adjuntar recibo - ') + nombre;
+}
+
+function solicitarAnulacion(form, nombre, mesNombre, anio) {
+    const motivo = window.prompt('Motivo de anulacion para ' + nombre + ' (' + mesNombre + ' ' + anio + '):');
+    if (motivo === null) {
+        return false;
+    }
+    if (!motivo.trim()) {
+        window.alert('Debe indicar el motivo de la anulacion.');
+        return false;
+    }
+    form.querySelector('input[name=\"motivo\"]').value = motivo.trim();
+    return window.confirm('Se anulara el pago de ' + nombre + ' y se conservara el historial. Desea continuar?');
 }
 </script>
 {% endblock %}

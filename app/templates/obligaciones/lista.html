@@ -6,6 +6,7 @@
     <h5 class="fw-bold mb-0"><i class="bi bi-bank text-info"></i> Obligaciones Financieras</h5>
     <div class="d-flex gap-2">
         <a href="{{ url_for('obligaciones.pagos', anio=anio) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-calendar-check"></i> Pagos {{ anio }}</a>
+        <a href="{{ url_for('obligaciones.verificar_valores', anio=anio) }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-search"></i> Verificar valores</a>
         <a href="{{ url_for('catalogos.conceptos') }}" class="btn btn-outline-secondary btn-sm" title="Administrar conceptos de obligaciones"><i class="bi bi-tags"></i> Conceptos</a>
         <a href="{{ url_for('obligaciones.nueva') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Nueva obligación</a>
     </div>

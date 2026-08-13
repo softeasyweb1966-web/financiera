@@ -8,6 +8,7 @@
     .ind-pagado     { background: #10b981; }
     .ind-vencido    { background: #ef4444; }
     .ind-parcial    { background: #8b5cf6; }
+    .ind-anulado    { background: #6b7280; }
     .indicador { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 </style>
 
@@ -51,12 +52,13 @@
                     <th>Medio</th>
                     <th>Comprobante</th>
                     <th>Observaciones</th>
+                    <th>Acciones</th>
                 </tr>
             </thead>
             <tbody>
                 {% for i in range(1, 13) %}
                 {% set pago = pagos.get(i) %}
-                <tr class="{{ 'table-secondary' if not meses_aplicables.get(i) and not pago else 'table-success' if pago and pago.estado == 'pagado' else 'table-warning' if pago and pago.estado == 'causado' else 'table-danger' if pago and pago.estado == 'vencido' else '' }}">
+                <tr class="{{ 'table-secondary' if (pago and pago.estado == 'anulado') or (not meses_aplicables.get(i) and not pago) else 'table-success' if pago and pago.estado == 'pagado' else 'table-warning' if pago and pago.estado == 'causado' else 'table-danger' if pago and pago.estado == 'vencido' else '' }}">
                     <td class="fw-semibold">{{ meses[i-1] }}</td>
                     <td>
                         {% if pago %}
@@ -84,24 +86,90 @@
                         {% endif %}
                     </td>
                     <td><small>{{ pago.observaciones if pago and pago.observaciones else '' }}</small></td>
+                    <td>
+                        {% if pago and pago.estado != 'anulado' %}
+                        <form method="POST" action="{{ url_for('obligaciones.anular_pago', pago_id=pago.id) }}" onsubmit="return solicitarAnulacion(this, '{{ meses[i-1] }}', {{ anio }})">
+                            <input type="hidden" name="motivo" value="">
+                            <input type="hidden" name="next" value="{{ url_for('obligaciones.detalle', id=obligacion.id, anio=anio) }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger py-0">Anular</button>
+                        </form>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
             <tfoot class="table-light">
+                {% set pagos_vigentes = pagos.values()|rejectattr('estado', 'equalto', 'anulado')|list %}
                 <tr class="fw-bold">
                     <td>TOTAL</td>
                     <td></td>
                     <td></td>
-                    <td>${{ "{:,.0f}".format(pagos.values()|selectattr('valor_causado')|map(attribute='valor_causado')|map('float')|sum) }}</td>
+                    <td>${{ "{:,.0f}".format(pagos_vigentes|selectattr('valor_causado')|map(attribute='valor_causado')|map('float')|sum) }}</td>
                     <td></td>
                     <td></td>
-                    <td>${{ "{:,.0f}".format(pagos.values()|selectattr('valor_pagado')|map(attribute='valor_pagado')|map('float')|sum) }}</td>
-                    <td>${{ "{:,.0f}".format(pagos.values()|selectattr('componente_capital')|map(attribute='componente_capital')|map('float')|sum) }}</td>
-                    <td>${{ "{:,.0f}".format(pagos.values()|selectattr('componente_interes')|map(attribute='componente_interes')|map('float')|sum) }}</td>
-                    <td colspan="3"></td>
+                    <td>${{ "{:,.0f}".format(pagos_vigentes|selectattr('valor_pagado')|map(attribute='valor_pagado')|map('float')|sum) }}</td>
+                    <td>${{ "{:,.0f}".format(pagos_vigentes|selectattr('componente_capital')|map(attribute='componente_capital')|map('float')|sum) }}</td>
+                    <td>${{ "{:,.0f}".format(pagos_vigentes|selectattr('componente_interes')|map(attribute='componente_interes')|map('float')|sum) }}</td>
+                    <td colspan="4"></td>
                 </tr>
             </tfoot>
         </table>
     </div>
 </div>
+
+<div class="card mt-3">
+    <div class="card-header bg-light fw-semibold">Historial de ajustes y anulaciones</div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Mes</th>
+                    <th>Accion</th>
+                    <th>Estado previo</th>
+                    <th>Valor pagado</th>
+                    <th>Capital</th>
+                    <th>Interes</th>
+                    <th>Motivo</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in historial_pagos %}
+                <tr>
+                    <td>{{ item.created_at.strftime('%d/%m/%Y %H:%M') if item.created_at else '-' }}</td>
+                    <td>{{ meses[item.mes - 1] }} {{ item.anio }}</td>
+                    <td>{{ item.accion.replace('_', ' ')|capitalize }}</td>
+                    <td>{{ item.estado.replace('_', ' ')|capitalize if item.estado else '-' }}</td>
+                    <td>{{ "${:,.0f}".format(item.valor_pagado) if item.valor_pagado else '-' }}</td>
+                    <td>{{ "${:,.0f}".format(item.componente_capital) if item.componente_capital else '-' }}</td>
+                    <td>{{ "${:,.0f}".format(item.componente_interes) if item.componente_interes else '-' }}</td>
+                    <td><small>{{ item.motivo or item.observaciones or '' }}</small></td>
+                </tr>
+                {% endfor %}
+                {% if not historial_pagos %}
+                <tr><td colspan="8" class="text-center text-muted py-3">No hay ajustes ni anulaciones registradas.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function solicitarAnulacion(form, mesNombre, anio) {
+    const motivo = window.prompt('Motivo de anulacion para ' + mesNombre + ' ' + anio + ':');
+    if (motivo === null) {
+        return false;
+    }
+    if (!motivo.trim()) {
+        window.alert('Debe indicar el motivo de la anulacion.');
+        return false;
+    }
+    form.querySelector('input[name=\"motivo\"]').value = motivo.trim();
+    return window.confirm('Se anulara el pago y se conservara el historial. Desea continuar?');
+}
+</script>
 {% endblock %}

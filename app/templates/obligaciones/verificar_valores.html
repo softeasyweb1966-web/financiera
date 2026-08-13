@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Verificar Valores Obligaciones{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h5 class="fw-bold mb-0"><i class="bi bi-search text-warning"></i> Verificacion de valores</h5>
+        <small class="text-muted">Compara el valor guardado, el estimado usado por la app y el ultimo pago de referencia.</small>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('obligaciones.lista', anio=anio) }}" class="btn btn-outline-secondary btn-sm">Volver a obligaciones</a>
+        <a href="{{ url_for('obligaciones.pagos', anio=anio) }}" class="btn btn-outline-primary btn-sm">Pagos {{ anio }}</a>
+    </div>
+</div>
+
+<div class="alert alert-light small">
+    Si ve alertas de x10 o x100, normalmente significa que el valor guardado quedo inflado frente al ultimo pago real.
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Obligacion</th>
+                    <th>Modalidad</th>
+                    <th>Capital</th>
+                    <th>Saldo</th>
+                    <th>Cuota guardada</th>
+                    <th>Estimado app</th>
+                    <th>Fuente</th>
+                    <th>Ultimo pago</th>
+                    <th>Relacion</th>
+                    <th>Alerta</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in filas %}
+                {% set o = item.obligacion %}
+                <tr class="{{ 'table-warning' if item.alerta else '' }}">
+                    <td>
+                        <strong>{{ o.tercero.nombre }}</strong>
+                        {% if o.titular %}
+                        <br><small class="text-muted">{{ o.titular }}</small>
+                        {% endif %}
+                        {% if o.referencia %}
+                        <br><small class="text-muted">Ref: {{ o.referencia }}</small>
+                        {% endif %}
+                    </td>
+                    <td>{{ o.modalidad.replace('_', ' ')|title }}</td>
+                    <td>${{ "{:,.0f}".format(o.capital_inicial) if o.capital_inicial is not none else '-' }}</td>
+                    <td>${{ "{:,.0f}".format(o.saldo_actual) if o.saldo_actual is not none else '-' }}</td>
+                    <td>${{ "{:,.0f}".format(item.cuota_guardada) if item.cuota_guardada is not none else '-' }}</td>
+                    <td class="fw-semibold">${{ "{:,.0f}".format(item.estimado) if item.estimado else '-' }}</td>
+                    <td><small>{{ item.fuente.replace('_', ' ')|capitalize }}</small></td>
+                    <td>
+                        {% if item.ultimo_pago %}
+                        ${{ "{:,.0f}".format(item.ultimo_pagado) if item.ultimo_pagado else '-' }}
+                        <br><small class="text-muted">{{ meses[item.ultimo_pago.mes - 1] }} {{ item.ultimo_pago.anio }}</small>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if item.ratio is not none %}
+                        {{ "{:,.2f}".format(item.ratio) }}x
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if item.alerta %}
+                        <small class="text-warning fw-semibold">{{ item.alerta }}</small>
+                        {% else %}
+                        <small class="text-muted">Sin alerta</small>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

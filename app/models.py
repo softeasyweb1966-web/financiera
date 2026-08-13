@@ -464,7 +464,7 @@ class PagoObligacion(db.Model):
     comprobante_nombre = db.Column(db.String(255))
     comprobante_mime = db.Column(db.String(120))
     comprobante_archivo = db.Column(db.LargeBinary)
-    # Estados: sin_causar, causado, pagado, vencido, parcial
+    # Estados: sin_causar, causado, pagado, vencido, parcial, anulado
     estado = db.Column(db.String(20), default='sin_causar')
     registrado_por = db.Column(db.String(100))
     observaciones = db.Column(db.Text)
@@ -476,6 +476,36 @@ class PagoObligacion(db.Model):
     __table_args__ = (
         db.UniqueConstraint('obligacion_id', 'anio', 'mes', name='uq_pago_obligacion_mes'),
     )
+
+
+class HistorialPagoObligacion(db.Model):
+    """Bitácora de ajustes y anulaciones de pagos de obligaciones."""
+    __tablename__ = 'historial_pagos_obligaciones'
+
+    id = db.Column(db.Integer, primary_key=True)
+    pago_obligacion_id = db.Column(db.Integer, db.ForeignKey('pagos_obligaciones.id'))
+    obligacion_id = db.Column(db.Integer, db.ForeignKey('obligaciones.id'), nullable=False)
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    accion = db.Column(db.String(20), nullable=False)  # ajuste, anulacion
+    motivo = db.Column(db.Text)
+    estado = db.Column(db.String(20))
+    valor_causado = db.Column(db.Numeric(14, 2))
+    fecha_causacion = db.Column(db.Date)
+    valor_pagado = db.Column(db.Numeric(14, 2))
+    componente_capital = db.Column(db.Numeric(14, 2))
+    componente_interes = db.Column(db.Numeric(14, 2))
+    numero_cuota = db.Column(db.Integer)
+    dia_pago_reportado = db.Column(db.Integer)
+    fecha_pago = db.Column(db.Date)
+    medio_pago_id = db.Column(db.Integer, db.ForeignKey('medios_pago.id'))
+    comprobante_nombre = db.Column(db.String(255))
+    observaciones = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    pago = db.relationship('PagoObligacion')
+    obligacion = db.relationship('Obligacion')
+    medio_pago = db.relationship('MedioPago')
 
 
 class RegistroNomina(db.Model):

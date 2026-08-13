@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
 from app import db
 from app.models import (
-    Obligacion, PagoObligacion, Refinanciacion, AbonoCapitalObligacion,
+    Obligacion, PagoObligacion, HistorialPagoObligacion, Refinanciacion, AbonoCapitalObligacion,
     Tercero, Concepto, Categoria, MedioPago
 )
 from app.conceptos_estado import cargar_historial_conceptos, concepto_activo_en_periodo
@@ -50,6 +50,68 @@ def _valor_estimado_obligacion(obligacion, ultimo_pago=None):
     if ultimo_pago and ultimo_pago.valor_pagado:
         return float(ultimo_pago.valor_pagado)
     return 0
+
+
+def _fuente_valor_estimado_obligacion(obligacion, ultimo_pago=None):
+    if obligacion.valor_cuota_fija:
+        return 'cuota_fija'
+    if obligacion.valor_cuota_capital is not None or obligacion.valor_cuota_interes is not None:
+        return 'desglose'
+    if obligacion.interes_mensual_calculado:
+        return 'interes_mensual'
+    if obligacion.cuota_francesa_calculada:
+        return 'cuota_francesa'
+    if ultimo_pago and ultimo_pago.valor_pagado:
+        return 'ultimo_pago'
+    return 'sin_dato'
+
+
+def _registrar_historial_pago_obligacion(pago, accion, motivo=None):
+    historial = HistorialPagoObligacion(
+        pago_obligacion_id=pago.id,
+        obligacion_id=pago.obligacion_id,
+        anio=pago.anio,
+        mes=pago.mes,
+        accion=accion,
+        motivo=motivo,
+        estado=pago.estado,
+        valor_causado=pago.valor_causado,
+        fecha_causacion=pago.fecha_causacion,
+        valor_pagado=pago.valor_pagado,
+        componente_capital=pago.componente_capital,
+        componente_interes=pago.componente_interes,
+        numero_cuota=pago.numero_cuota,
+        dia_pago_reportado=pago.dia_pago_reportado,
+        fecha_pago=pago.fecha_pago,
+        medio_pago_id=pago.medio_pago_id,
+        comprobante_nombre=pago.comprobante_nombre,
+        observaciones=pago.observaciones,
+    )
+    db.session.add(historial)
+
+
+def _revertir_impacto_pago(obligacion, pago):
+    if not obligacion or pago.estado != 'pagado' or not pago.componente_capital:
+        return
+
+    if obligacion.saldo_actual is not None:
+        obligacion.saldo_actual = float(obligacion.saldo_actual) + float(pago.componente_capital)
+    obligacion.cuotas_pagadas = max((obligacion.cuotas_pagadas or 0) - 1, 0)
+
+
+def _aplicar_impacto_pago(obligacion, pago):
+    if not obligacion or pago.estado != 'pagado' or not pago.componente_capital:
+        return
+
+    if obligacion.saldo_actual is not None:
+        obligacion.saldo_actual = float(obligacion.saldo_actual) - float(pago.componente_capital)
+    obligacion.cuotas_pagadas = (obligacion.cuotas_pagadas or 0) + 1
+
+
+def _estado_visible_pago(pago):
+    if not pago:
+        return 'sin_causar'
+    return 'sin_causar' if pago.estado == 'anulado' else pago.estado
 
 
 def _resolver_dia_pago(dia_valor, fecha_pago_valor=None):
@@ -413,6 +475,65 @@ def lista():
                            obligaciones=obligaciones, anio=anio, meses=MESES)
 
 
+@obligaciones_bp.route('/verificar-valores')
+def verificar_valores():
+    anio = request.args.get('anio', date.today().year, type=int)
+    obligaciones = Obligacion.query.filter_by(activo=True).order_by(Obligacion.dia_limite_pago, Obligacion.id).all()
+
+    filas = []
+    for obligacion in obligaciones:
+        ultimo_pago = PagoObligacion.query.filter(
+            PagoObligacion.obligacion_id == obligacion.id,
+            PagoObligacion.estado.in_(['pagado', 'parcial']),
+            PagoObligacion.valor_pagado.isnot(None),
+            PagoObligacion.estado != 'anulado',
+            db.or_(
+                PagoObligacion.anio < anio,
+                db.and_(PagoObligacion.anio == anio, PagoObligacion.mes <= date.today().month)
+            )
+        ).order_by(
+            PagoObligacion.anio.desc(),
+            PagoObligacion.mes.desc(),
+            PagoObligacion.id.desc()
+        ).first()
+
+        cuota_guardada = None
+        if obligacion.valor_cuota_fija is not None:
+            cuota_guardada = float(obligacion.valor_cuota_fija)
+        elif obligacion.valor_cuota_capital is not None or obligacion.valor_cuota_interes is not None:
+            cuota_guardada = float(obligacion.valor_cuota_capital or 0) + float(obligacion.valor_cuota_interes or 0)
+
+        ultimo_pagado = float(ultimo_pago.valor_pagado or 0) if ultimo_pago else 0
+        estimado = _valor_estimado_obligacion(obligacion, ultimo_pago)
+        fuente = _fuente_valor_estimado_obligacion(obligacion, ultimo_pago)
+        ratio = (estimado / ultimo_pagado) if estimado and ultimo_pagado else None
+
+        alerta = ''
+        if ratio is not None:
+            if abs(ratio - 10) < 0.2:
+                alerta = 'Posible inflacion x10 frente al ultimo pago'
+            elif abs(ratio - 100) < 2:
+                alerta = 'Posible inflacion x100 frente al ultimo pago'
+            elif ratio > 3:
+                alerta = 'Estimado muy superior al ultimo pago'
+        elif estimado and not ultimo_pagado and fuente in ('cuota_fija', 'desglose'):
+            alerta = 'Verificar contra soporte, no hay pago historico para comparar'
+
+        filas.append({
+            'obligacion': obligacion,
+            'cuota_guardada': cuota_guardada,
+            'estimado': estimado,
+            'fuente': fuente,
+            'ultimo_pago': ultimo_pago,
+            'ultimo_pagado': ultimo_pagado,
+            'ratio': ratio,
+            'alerta': alerta,
+        })
+
+    return render_template('obligaciones/verificar_valores.html',
+                           filas=filas, anio=anio, meses=MESES)
+
+
 @obligaciones_bp.route('/nueva', methods=['GET', 'POST'])
 def nueva():
     if request.method == 'POST':
@@ -675,7 +796,8 @@ def pagos(anio=None, mes=None):
     ).filter(
         PagoObligacion.obligacion_id.in_(obligacion_ids),
         PagoObligacion.anio == anio,
-        PagoObligacion.mes == mes
+        PagoObligacion.mes == mes,
+        PagoObligacion.estado != 'anulado'
     ).scalar() if obligacion_ids else 0
 
     # Totales del mes para el resumen detallado
@@ -694,9 +816,10 @@ def pagos(anio=None, mes=None):
         if cuota_estimado > 0:
             total_estimado_items += 1
         pago = pagos_dict.get(o.id)
-        estado_item = pago.estado if pago else 'sin_causar'
-        valor_causado = float(pago.valor_causado or 0) if pago else 0
-        valor_pagado = float(pago.valor_pagado or 0) if pago else 0
+        estado_item = _estado_visible_pago(pago)
+        pago_anulado = bool(pago and pago.estado == 'anulado')
+        valor_causado = 0 if pago_anulado else (float(pago.valor_causado or 0) if pago else 0)
+        valor_pagado = 0 if pago_anulado else (float(pago.valor_pagado or 0) if pago else 0)
 
         if valor_causado > 0:
             total_causado_items += 1
@@ -762,11 +885,12 @@ def pagos(anio=None, mes=None):
     obligaciones_mes = []
     for o in obligaciones:
         pago = pagos_dict.get(o.id)
-        estado = pago.estado if pago else 'sin_causar'
+        estado = _estado_visible_pago(pago)
+        pago_anulado = bool(pago and pago.estado == 'anulado')
 
         # Valor cuota esperada
         cuota_esperada = _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
-        if pago:
+        if pago and not pago_anulado:
             if pago.valor_pagado:
                 valor_mostrar = float(pago.valor_pagado)
             elif pago.valor_causado:
@@ -775,7 +899,7 @@ def pagos(anio=None, mes=None):
                 valor_mostrar = cuota_esperada
         else:
             valor_mostrar = cuota_esperada
-        valor_causado = float(pago.valor_causado or 0) if pago else 0
+        valor_causado = 0 if pago_anulado else (float(pago.valor_causado or 0) if pago else 0)
 
         # Días restantes
         dias_restantes = None
@@ -870,6 +994,14 @@ def pagos(anio=None, mes=None):
                 else:
                     resumen_dias_texto = f'Por vencer en {dias_restantes}d'
                     resumen_dias_clase = 'text-warning'
+        elif pago_anulado:
+            resumen_estado = 'Anulado'
+            resumen_fecha_label = 'Registro previo'
+            resumen_fecha = (pago.fecha_pago or pago.fecha_causacion) if pago else None
+            resumen_valor_label = 'Valor estimado'
+            resumen_valor = cuota_esperada
+            resumen_dias_texto = 'Registro anulado'
+            resumen_dias_clase = 'text-muted'
         elif dias_restantes is not None:
             resumen_dias_texto = f'Por vencer en {dias_restantes}d' if dias_restantes >= 0 else f'Vencido {abs(dias_restantes)}d'
             resumen_dias_clase = 'text-warning' if dias_restantes >= 0 else 'text-danger'
@@ -888,12 +1020,13 @@ def pagos(anio=None, mes=None):
             'fecha_limite_actual': fecha_limite_actual,
             'etiqueta_fecha': etiqueta_fecha,
             'esta_vencido': esta_vencido,
-            'es_estimado': not pago or not (pago.valor_causado or pago.valor_pagado),
+            'es_estimado': pago_anulado or not pago or not (pago.valor_causado or pago.valor_pagado),
             'capital_pagado_total': capital_pagado_total,
             'interes_pagado_total': interes_pagado_total,
             'pendiente_total': pendiente_total,
             'fecha_ultimo_pago': fecha_ultimo_pago,
             'dias_ultimo_pago': dias_ultimo_pago,
+            'pago_anulado': pago_anulado,
             'resumen_estado': resumen_estado,
             'resumen_fecha_label': resumen_fecha_label,
             'resumen_fecha': resumen_fecha,
@@ -1023,11 +1156,13 @@ def registrar_pago():
             return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
 
     if pago:
+        _registrar_historial_pago_obligacion(pago, 'ajuste', observaciones or None)
+        _revertir_impacto_pago(obligacion, pago)
         if accion == 'causar':
             pago.valor_causado = valor_causado
             pago.dia_pago_reportado = dia_pago_reportado
             pago.fecha_causacion = date.today()
-            if pago.estado == 'sin_causar':
+            if pago.estado in ('sin_causar', 'anulado'):
                 pago.estado = 'causado'
         else:
             pago.valor_pagado = valor_pagado
@@ -1073,11 +1208,8 @@ def registrar_pago():
         _aplicar_dia_pago_obligacion(obligacion, dia_pago_reportado)
 
     # Actualizar saldo y cuotas de la obligación si se pagó
-    if accion == 'pagar' and estado == 'pagado' and componente_capital:
-        obligacion = Obligacion.query.get(obligacion_id)
-        if obligacion and obligacion.saldo_actual:
-            obligacion.saldo_actual = float(obligacion.saldo_actual) - float(componente_capital)
-            obligacion.cuotas_pagadas = (obligacion.cuotas_pagadas or 0) + 1
+    if accion == 'pagar':
+        _aplicar_impacto_pago(obligacion, pago)
 
     db.session.commit()
     flash('Registro actualizado.', 'success')
@@ -1120,6 +1252,29 @@ def actualizar_comprobante(pago_id):
     return redirect(url_for('obligaciones.pagos', anio=pago.anio, mes=pago.mes))
 
 
+@obligaciones_bp.route('/pago/<int:pago_id>/anular', methods=['POST'])
+def anular_pago(pago_id):
+    pago = PagoObligacion.query.get_or_404(pago_id)
+    motivo = (request.form.get('motivo') or '').strip()
+    if not motivo:
+        flash('Debe indicar el motivo de la anulacion.', 'danger')
+        return redirect(request.form.get('next') or url_for('obligaciones.pagos', anio=pago.anio, mes=pago.mes))
+
+    if pago.estado == 'anulado':
+        flash('Este pago ya estaba anulado.', 'warning')
+        return redirect(request.form.get('next') or url_for('obligaciones.pagos', anio=pago.anio, mes=pago.mes))
+
+    _registrar_historial_pago_obligacion(pago, 'anulacion', motivo)
+    _revertir_impacto_pago(pago.obligacion, pago)
+    pago.estado = 'anulado'
+    marca = f'ANULADO {date.today().strftime("%d/%m/%Y")}: {motivo}'
+    pago.observaciones = f'{pago.observaciones}\n{marca}'.strip() if pago.observaciones else marca
+
+    db.session.commit()
+    flash('Pago anulado conservando el historial.', 'success')
+    return redirect(request.form.get('next') or url_for('obligaciones.pagos', anio=pago.anio, mes=pago.mes))
+
+
 @obligaciones_bp.route('/detalle/<int:id>')
 def detalle(id):
     """Vista detalle de una obligación: historial de todos los meses del año"""
@@ -1127,12 +1282,17 @@ def detalle(id):
     anio = request.args.get('anio', date.today().year, type=int)
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
     pagos = PagoObligacion.query.filter_by(obligacion_id=id, anio=anio).order_by(PagoObligacion.mes).all()
+    historial_pagos = HistorialPagoObligacion.query.filter_by(obligacion_id=id, anio=anio).order_by(
+        HistorialPagoObligacion.created_at.desc(),
+        HistorialPagoObligacion.id.desc()
+    ).all()
     pagos_dict = {p.mes: p for p in pagos}
     meses_aplicables = {mes: _obligacion_aplica_mes(obligacion, anio, mes) for mes in range(1, 13)}
     return render_template('obligaciones/detalle.html',
                            obligacion=obligacion, anio=anio,
                            meses=MESES, pagos=pagos_dict, medios=medios,
-                           meses_aplicables=meses_aplicables)
+                           meses_aplicables=meses_aplicables,
+                           historial_pagos=historial_pagos)
 
 
 # ==================== REFINANCIACIONES ====================

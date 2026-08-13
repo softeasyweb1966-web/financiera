@@ -109,7 +109,19 @@
             if (!unsigned) return { raw: '', formatted: '' };
 
             if (scale === 0) {
+                const lastDot = unsigned.lastIndexOf('.');
+                const lastComma = unsigned.lastIndexOf(',');
+                const separatorIndex = Math.max(lastDot, lastComma);
+
                 let integerDigits = unsigned.replace(/\D/g, '');
+                if (separatorIndex >= 0) {
+                    const tail = unsigned.slice(separatorIndex + 1).replace(/\D/g, '');
+                    const head = unsigned.slice(0, separatorIndex).replace(/\D/g, '');
+                    if (tail.length > 0 && tail.length <= 2) {
+                        integerDigits = head || '0';
+                    }
+                }
+
                 integerDigits = integerDigits.replace(/^0+(?=\d)/, '') || '0';
                 const formattedInteger = integerDigits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
                 const raw = (negative ? '-' : '') + integerDigits;
