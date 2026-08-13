@@ -452,8 +452,8 @@ def _valor_deuda_periodo_obligacion(obligacion, pago, anio, mes, ultimo_pago=Non
         valor_pagado = float(pago.valor_pagado or 0)
         return max(valor_causado - valor_pagado, 0)
 
-    if estado_visible in ['pendiente', 'causado', 'vencido']:
-        return float(pago.valor_causado or pago.valor_pagado or cuota_base or 0)
+    if estado_visible in ['pendiente', 'causado', 'vencido', 'sin_causar']:
+        return float(pago.valor_causado or cuota_base or 0)
 
     return 0
 
@@ -915,7 +915,7 @@ def pagos(anio=None, mes=None):
             for obligacion_id, capital_pagado, interes_pagado in totales_pago_rows
         }
 
-    # Pendientes de meses anteriores (pendiente, causado, vencido, parcial)
+    # Pendientes de meses anteriores (pendiente, causado, vencido, parcial, sin_causar)
     pendientes_anteriores = []
     total_deuda_anterior = 0
     saldo_anterior_por_obligacion = {}
@@ -934,7 +934,7 @@ def pagos(anio=None, mes=None):
                 o, d.anio, d.mes, ultimos_pagos_dict.get(o.id)
             )
             estado_visible_anterior = _estado_visible_pago(d, cuota_periodo)
-            if estado_visible_anterior not in ['pendiente', 'causado', 'vencido', 'parcial']:
+            if estado_visible_anterior not in ['pendiente', 'causado', 'vencido', 'parcial', 'sin_causar']:
                 continue
             valor_deuda = _valor_deuda_periodo_obligacion(
                 o, d, d.anio, d.mes, ultimos_pagos_dict.get(o.id)
@@ -971,7 +971,7 @@ def pagos(anio=None, mes=None):
                 continue
 
             pago_existente = pagos_anteriores_map.get((anio, mes_revision))
-            if pago_existente and pago_existente.estado != 'anulado':
+            if pago_existente:
                 continue
 
             cuota_base = _valor_deuda_periodo_obligacion(
