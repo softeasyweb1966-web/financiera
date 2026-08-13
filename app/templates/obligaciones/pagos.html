@@ -366,9 +366,6 @@
                     <small class="text-warning d-block">cuota causada - pendiente de pago</small>
                 {% elif item.estado == 'parcial' %}
                     <small style="color:#8b5cf6" class="d-block">pago parcial</small>
-                    {% if item.saldo_cuota_pendiente %}
-                    <small style="color:#8b5cf6" class="d-block">Saldo pendiente de esta cuota: ${{ "{:,.0f}".format(item.saldo_cuota_pendiente) }}</small>
-                    {% endif %}
                 {% elif item.pago_anulado %}
                     <small class="text-muted d-block">registro anterior anulado</small>
                 {% endif %}
@@ -384,6 +381,12 @@
                 <small class="text-muted d-block">
                     {{ item.etiqueta_fecha }}: {{ item.fecha_referencia.strftime('%d/%m/%Y') if item.fecha_referencia else '-' }}
                 </small>
+                {% if item.saldo_anterior > 0 %}
+                <small class="text-danger d-block">Saldo anterior: ${{ "{:,.0f}".format(item.saldo_anterior) }}</small>
+                {% endif %}
+                {% if item.saldo_cuota_pendiente > 0 %}
+                <small style="color:#8b5cf6" class="d-block">Saldo pendiente cuota actual: ${{ "{:,.0f}".format(item.saldo_cuota_pendiente) }}</small>
+                {% endif %}
                 <small class="text-muted d-block">Saldo actual: <strong>${{ "{:,.0f}".format(o.saldo_actual) if o.saldo_actual else '-' }}</strong></small>
                 {% if o.cuotas_pendientes is not none %}
                 <small class="text-muted d-block">Cuotas pendientes: <strong>{{ o.cuotas_pendientes }}</strong></small>

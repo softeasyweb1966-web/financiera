@@ -880,6 +880,7 @@ def pagos(anio=None, mes=None):
     # Pendientes de meses anteriores (pendiente, causado, vencido, parcial)
     pendientes_anteriores = []
     total_deuda_anterior = 0
+    saldo_anterior_por_obligacion = {}
     for o in obligaciones:
         pagos_hasta_mes = pagos_hasta_mes_por_obligacion.get(o.id, {})
         pagos_anteriores = [
@@ -895,6 +896,7 @@ def pagos(anio=None, mes=None):
                 o, d, d.anio, d.mes, ultimos_pagos_dict.get(o.id)
             )
             total_deuda_anterior += valor_deuda
+            saldo_anterior_por_obligacion[o.id] = saldo_anterior_por_obligacion.get(o.id, 0) + valor_deuda
             pendientes_anteriores.append({
                 'obligacion': o,
                 'pago': d,
@@ -923,6 +925,7 @@ def pagos(anio=None, mes=None):
                 continue
 
             total_deuda_anterior += cuota_base
+            saldo_anterior_por_obligacion[o.id] = saldo_anterior_por_obligacion.get(o.id, 0) + cuota_base
             pendientes_anteriores.append({
                 'obligacion': o,
                 'pago': pago_existente,
@@ -1224,6 +1227,7 @@ def pagos(anio=None, mes=None):
             'capital_pagado_total': capital_pagado_total,
             'interes_pagado_total': interes_pagado_total,
             'pendiente_total': pendiente_total,
+            'saldo_anterior': saldo_anterior_por_obligacion.get(o.id, 0),
             'fecha_ultimo_pago': fecha_ultimo_pago,
             'dias_ultimo_pago': dias_ultimo_pago,
             'pago_anulado': pago_anulado,
