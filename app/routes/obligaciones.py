@@ -1456,12 +1456,20 @@ def anular_pago(pago_id):
 
     _registrar_historial_pago_obligacion(pago, 'anulacion', motivo)
     _revertir_impacto_pago(pago.obligacion, pago)
-    pago.estado = 'anulado'
+    pago.estado = 'causado' if pago.valor_causado else 'sin_causar'
+    pago.valor_pagado = None
+    pago.componente_capital = None
+    pago.componente_interes = None
+    pago.fecha_pago = None
+    pago.medio_pago_id = None
+    pago.comprobante_nombre = None
+    pago.comprobante_mime = None
+    pago.comprobante_archivo = None
     marca = f'ANULADO {date.today().strftime("%d/%m/%Y")}: {motivo}'
     pago.observaciones = f'{pago.observaciones}\n{marca}'.strip() if pago.observaciones else marca
 
     db.session.commit()
-    flash('Pago anulado conservando el historial.', 'success')
+    flash('Pago anulado. La cuota volvio a estado pendiente y el historial se conservo.', 'success')
     return redirect(request.form.get('next') or url_for('obligaciones.pagos', anio=pago.anio, mes=pago.mes))
 
 
