@@ -114,10 +114,21 @@ def _aplicar_impacto_pago(obligacion, pago):
     obligacion.cuotas_pagadas = (obligacion.cuotas_pagadas or 0) + 1
 
 
-def _estado_visible_pago(pago):
+def _estado_visible_pago(pago, cuota_referencia=None):
     if not pago:
         return 'sin_causar'
-    return 'sin_causar' if pago.estado == 'anulado' else pago.estado
+    if pago.estado == 'anulado':
+        return 'sin_causar'
+
+    valor_pagado = _float_or_none(pago.valor_pagado) or 0
+    valor_causado = _float_or_none(pago.valor_causado)
+    base = valor_causado if valor_causado is not None and valor_causado > 0 else (_float_or_none(cuota_referencia) or 0)
+
+    # Corrige registros que quedaron como "pagado" aunque el valor no cubrio la cuota completa.
+    if pago.estado == 'pagado' and base > 0 and valor_pagado > 0 and valor_pagado + 1 < base:
+        return 'parcial'
+
+    return pago.estado
 
 
 def _resolver_dia_pago(dia_valor, fecha_pago_valor=None):
@@ -405,16 +416,17 @@ def _periodos_hasta_obligacion(obligacion, anio_hasta, mes_hasta):
 
 def _valor_deuda_periodo_obligacion(obligacion, pago, anio, mes, ultimo_pago=None):
     cuota_base = _valor_programado_mes_obligacion(obligacion, anio, mes, ultimo_pago)
+    estado_visible = _estado_visible_pago(pago, cuota_base)
 
     if not pago or pago.estado == 'anulado':
         return float(cuota_base or 0)
 
-    if pago.estado == 'parcial':
+    if estado_visible == 'parcial':
         valor_causado = float(pago.valor_causado or cuota_base or 0)
         valor_pagado = float(pago.valor_pagado or 0)
         return max(valor_causado - valor_pagado, 0)
 
-    if pago.estado in ['pendiente', 'causado', 'vencido']:
+    if estado_visible in ['pendiente', 'causado', 'vencido']:
         return float(pago.valor_causado or pago.valor_pagado or cuota_base or 0)
 
     return 0
@@ -892,7 +904,11 @@ def pagos(anio=None, mes=None):
         pagos_anteriores_map = {(p.anio, p.mes): p for p in pagos_anteriores}
 
         for d in pagos_anteriores:
-            if d.estado not in ['pendiente', 'causado', 'vencido', 'parcial']:
+            cuota_periodo = _valor_programado_mes_obligacion(
+                o, d.anio, d.mes, ultimos_pagos_dict.get(o.id)
+            )
+            estado_visible_anterior = _estado_visible_pago(d, cuota_periodo)
+            if estado_visible_anterior not in ['pendiente', 'causado', 'vencido', 'parcial']:
                 continue
             valor_deuda = _valor_deuda_periodo_obligacion(
                 o, d, d.anio, d.mes, ultimos_pagos_dict.get(o.id)
@@ -903,7 +919,7 @@ def pagos(anio=None, mes=None):
             valor_abonado_periodo = float(d.valor_pagado or 0)
             total_deuda_anterior += valor_deuda
             saldo_anterior_por_obligacion[o.id] = saldo_anterior_por_obligacion.get(o.id, 0) + valor_deuda
-            if d.estado == 'parcial':
+            if estado_visible_anterior == 'parcial':
                 saldo_anterior_parcial_por_obligacion[o.id] = saldo_anterior_parcial_por_obligacion.get(o.id, 0) + valor_deuda
             else:
                 saldo_anterior_cuotas_por_obligacion[o.id] = saldo_anterior_cuotas_por_obligacion.get(o.id, 0) + valor_deuda
@@ -913,10 +929,10 @@ def pagos(anio=None, mes=None):
                 'mes_nombre': MESES[d.mes - 1],
                 'anio': d.anio,
                 'valor_deuda': valor_deuda,
-                'es_parcial': d.estado == 'parcial',
+                'es_parcial': estado_visible_anterior == 'parcial',
                 'valor_cuota': valor_cuota_periodo,
                 'valor_abonado': valor_abonado_periodo,
-                'descripcion': 'Saldo restante por abono parcial' if d.estado == 'parcial' else 'Cuota pendiente',
+                'descripcion': 'Saldo restante por abono parcial' if estado_visible_anterior == 'parcial' else 'Cuota pendiente',
             })
 
         fecha_inicio = _coerce_date(o.fecha_inicio)
@@ -1088,8 +1104,9 @@ def pagos(anio=None, mes=None):
     # Tarjetas por obligación
     obligaciones_mes = []
     for o in obligaciones:
+        cuota_esperada = _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
         pago = pagos_dict.get(o.id)
-        estado = _estado_visible_pago(pago)
+        estado = _estado_visible_pago(pago, cuota_esperada)
         pago_anulado = bool(pago and pago.estado == 'anulado')
         resumen_vencido = _resumen_vencido_obligacion(
             o,
@@ -1101,7 +1118,6 @@ def pagos(anio=None, mes=None):
         )
 
         # Valor cuota esperada
-        cuota_esperada = _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
         if pago and not pago_anulado:
             if pago.valor_pagado:
                 valor_mostrar = float(pago.valor_pagado)
@@ -1389,6 +1405,18 @@ def registrar_pago():
         elif (componente_capital_num is None) ^ (componente_interes_num is None):
             flash('Si registra capital o interes, debe diligenciar ambos valores.', 'danger')
             return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
+
+        base_estado = valor_causado_num
+        if base_estado is None and pago and pago.valor_causado is not None:
+            base_estado = float(pago.valor_causado or 0)
+        if base_estado is None:
+            base_estado = _valor_programado_mes_obligacion(obligacion, anio, mes)
+
+        if estado in ('pagado', 'parcial') and valor_pagado_num is not None and valor_pagado_num > 0:
+            if base_estado and valor_pagado_num + 1 < base_estado:
+                estado = 'parcial'
+            elif estado == 'parcial' and (not base_estado or valor_pagado_num + 1 >= base_estado):
+                estado = 'pagado'
 
     if pago:
         _registrar_historial_pago_obligacion(pago, 'ajuste', observaciones or None)
