@@ -1169,6 +1169,8 @@ def pagos(anio=None, mes=None):
 
         # Días restantes
         dias_restantes = None
+        fecha_proxima_cuota = None
+        dias_proxima_cuota = None
         fechas_programadas_mes = _fechas_programadas_obligacion(o, anio, mes)
         fecha_limite_actual = fechas_programadas_mes[0] if fechas_programadas_mes else None
         esta_vencido = bool(estado != 'pagado' and resumen_vencido['total_vencido'] > 0)
@@ -1193,6 +1195,12 @@ def pagos(anio=None, mes=None):
             etiqueta_fecha = 'Fecha pactada'
 
         dias_restantes = (fecha_referencia - hoy).days if fecha_referencia else None
+        fecha_proxima_cuota = _siguiente_fecha_programada(o, hoy - timedelta(days=1))
+        if fecha_proxima_cuota:
+            dias_proxima_cuota = (fecha_proxima_cuota - hoy).days
+            if dias_proxima_cuota < 0:
+                fecha_proxima_cuota = None
+                dias_proxima_cuota = None
 
         if esta_vencido and resumen_vencido['fecha_mora_mas_antigua']:
             fecha_referencia = resumen_vencido['fecha_mora_mas_antigua']
@@ -1314,6 +1322,8 @@ def pagos(anio=None, mes=None):
             'saldo_anterior_cuotas': saldo_anterior_cuotas,
             'cuota_esperada': cuota_esperada,
             'dias_restantes': dias_restantes,
+            'fecha_proxima_cuota': fecha_proxima_cuota,
+            'dias_proxima_cuota': dias_proxima_cuota,
             'tipo_pago': tipo_pago,
             'fecha_referencia': fecha_referencia,
             'fecha_limite_actual': fecha_limite_actual,

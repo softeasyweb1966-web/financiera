@@ -335,11 +335,22 @@
                 </div>
                 <div class="text-end">
                     <span class="indicador ind-{{ 'informativo' if item.es_informativo else item.estado_visual }}"></span>
-                    {% if item.dias_restantes is not none %}
-                        {% if item.dias_restantes > 5 %}
+                    {% if item.esta_vencido %}
+                        {% if item.dias_restantes is not none %}
+                            <br><span class="dias-badge dias-vencido">{{ item.dias_restantes }}d</span>
+                            {% if item.fecha_referencia %}
+                            <small class="text-muted d-block">{{ item.fecha_referencia.strftime('%d/%m') }}</small>
+                            {% endif %}
+                        {% endif %}
+                        {% if item.dias_proxima_cuota is not none %}
+                            <br><span class="dias-badge dias-ok">{{ item.dias_proxima_cuota }}d</span>
+                            {% if item.fecha_proxima_cuota %}
+                            <small class="text-muted d-block">{{ item.fecha_proxima_cuota.strftime('%d/%m') }}</small>
+                            {% endif %}
+                        {% endif %}
+                    {% elif item.dias_restantes is not none %}
+                        {% if item.dias_restantes >= 0 %}
                             <br><span class="dias-badge dias-ok">{{ item.dias_restantes }}d</span>
-                        {% elif item.dias_restantes >= 0 %}
-                            <br><span class="dias-badge dias-alerta">{{ item.dias_restantes }}d</span>
                         {% else %}
                             <br><span class="dias-badge dias-vencido">{{ item.dias_restantes }}d</span>
                         {% endif %}
