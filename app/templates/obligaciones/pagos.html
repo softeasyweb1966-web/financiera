@@ -366,6 +366,9 @@
                     <small class="text-warning d-block">cuota causada - pendiente de pago</small>
                 {% elif item.estado == 'parcial' %}
                     <small style="color:#8b5cf6" class="d-block">pago parcial</small>
+                    {% if item.saldo_cuota_pendiente %}
+                    <small style="color:#8b5cf6" class="d-block">Saldo pendiente de esta cuota: ${{ "{:,.0f}".format(item.saldo_cuota_pendiente) }}</small>
+                    {% endif %}
                 {% elif item.pago_anulado %}
                     <small class="text-muted d-block">registro anterior anulado</small>
                 {% endif %}

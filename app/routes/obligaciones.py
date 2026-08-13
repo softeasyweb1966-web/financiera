@@ -49,6 +49,8 @@ def _valor_estimado_obligacion(obligacion, ultimo_pago=None):
         return obligacion.interes_mensual_calculado
     if obligacion.cuota_francesa_calculada:
         return obligacion.cuota_francesa_calculada
+    if ultimo_pago and ultimo_pago.valor_causado:
+        return float(ultimo_pago.valor_causado)
     if ultimo_pago and ultimo_pago.valor_pagado:
         return float(ultimo_pago.valor_pagado)
     return 0
@@ -63,6 +65,8 @@ def _fuente_valor_estimado_obligacion(obligacion, ultimo_pago=None):
         return 'interes_mensual'
     if obligacion.cuota_francesa_calculada:
         return 'cuota_francesa'
+    if ultimo_pago and ultimo_pago.valor_causado:
+        return 'ultimo_causado'
     if ultimo_pago and ultimo_pago.valor_pagado:
         return 'ultimo_pago'
     return 'sin_dato'
@@ -834,7 +838,11 @@ def pagos(anio=None, mes=None):
     if obligacion_ids:
         pagos_historicos = PagoObligacion.query.filter(
             PagoObligacion.obligacion_id.in_(obligacion_ids),
-            PagoObligacion.valor_pagado.isnot(None),
+            db.or_(
+                PagoObligacion.valor_pagado.isnot(None),
+                PagoObligacion.valor_causado.isnot(None),
+            ),
+            PagoObligacion.estado != 'anulado',
             db.or_(
                 PagoObligacion.anio < anio,
                 db.and_(PagoObligacion.anio == anio, PagoObligacion.mes <= mes)
@@ -1082,6 +1090,7 @@ def pagos(anio=None, mes=None):
         else:
             valor_mostrar = cuota_esperada
         valor_causado = 0 if pago_anulado else (float(pago.valor_causado or 0) if pago else 0)
+        saldo_cuota_pendiente = max((valor_causado or cuota_esperada or 0) - float(pago.valor_pagado or 0), 0) if pago and estado == 'parcial' else 0
 
         # Días restantes
         dias_restantes = None
@@ -1200,6 +1209,7 @@ def pagos(anio=None, mes=None):
             'estado_visual': estado_visual,
             'valor_mostrar': valor_mostrar,
             'valor_causado': valor_causado,
+            'saldo_cuota_pendiente': saldo_cuota_pendiente,
             'cuota_esperada': cuota_esperada,
             'dias_restantes': dias_restantes,
             'tipo_pago': tipo_pago,
