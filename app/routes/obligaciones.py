@@ -108,6 +108,34 @@ def _rango_mes(anio, mes):
     return date(anio, mes, 1), date(anio, mes, ultimo_dia)
 
 
+def _mes_intersecta_rango(fecha_inicio, fecha_final, anio, mes):
+    inicio_mes, fin_mes = _rango_mes(anio, mes)
+    if fecha_inicio and fecha_inicio > fin_mes:
+        return False
+    if fecha_final and fecha_final < inicio_mes:
+        return False
+    return True
+
+
+def _ajustar_fecha_al_rango_mes(fecha_programada, fecha_inicio, fecha_final, anio, mes):
+    if not fecha_programada:
+        return None
+
+    inicio_mes, fin_mes = _rango_mes(anio, mes)
+    fecha_ajustada = fecha_programada
+
+    if fecha_inicio and inicio_mes <= fecha_inicio <= fin_mes and fecha_ajustada < fecha_inicio:
+        fecha_ajustada = fecha_inicio
+
+    if fecha_final and inicio_mes <= fecha_final <= fin_mes and fecha_ajustada > fecha_final:
+        fecha_ajustada = fecha_final
+
+    if fecha_ajustada < inicio_mes or fecha_ajustada > fin_mes:
+        return None
+
+    return fecha_ajustada
+
+
 def _coerce_date(valor):
     if not valor:
         return None
@@ -154,9 +182,7 @@ def _fechas_programadas_obligacion(obligacion, anio, mes):
         return []
 
     if obligacion.modalidad == 'cadena' and fecha_inicio:
-        if fecha_final and fecha_final < inicio_mes:
-            return []
-        if fecha_inicio > fin_mes:
+        if not _mes_intersecta_rango(fecha_inicio, fecha_final, anio, mes):
             return []
 
         frecuencia = (obligacion.frecuencia_pago or 'mensual').lower()
@@ -172,27 +198,25 @@ def _fechas_programadas_obligacion(obligacion, anio, mes):
 
         dia_base = dia_limite_pago or fecha_inicio.day
         dia = min(dia_base, fin_mes.day)
-        fecha_mes = date(anio, mes, dia)
-        if fecha_mes < fecha_inicio:
-            return []
-        if fecha_final and fecha_mes > fecha_final:
-            return []
-        return [fecha_mes]
+        fecha_mes = _ajustar_fecha_al_rango_mes(
+            date(anio, mes, dia), fecha_inicio, fecha_final, anio, mes
+        )
+        return [fecha_mes] if fecha_mes else []
 
     if dia_limite_pago:
-        if fecha_inicio and fecha_inicio > fin_mes:
-            return []
-        if fecha_final and fecha_final < inicio_mes:
+        if not _mes_intersecta_rango(fecha_inicio, fecha_final, anio, mes):
             return []
         try:
-            fecha_mes = date(anio, mes, min(dia_limite_pago, fin_mes.day))
+            fecha_mes = _ajustar_fecha_al_rango_mes(
+                date(anio, mes, min(dia_limite_pago, fin_mes.day)),
+                fecha_inicio,
+                fecha_final,
+                anio,
+                mes,
+            )
         except ValueError:
             return []
-        if fecha_inicio and fecha_mes < fecha_inicio:
-            return []
-        if fecha_final and fecha_mes > fecha_final:
-            return []
-        return [fecha_mes]
+        return [fecha_mes] if fecha_mes else []
     return []
 
 
