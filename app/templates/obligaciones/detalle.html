@@ -63,12 +63,16 @@
             <tbody>
                 {% for i in range(1, 13) %}
                 {% set pago = pagos.get(i) %}
-                <tr class="{{ 'table-secondary' if (pago and pago.estado == 'anulado') or (not meses_aplicables.get(i) and not pago) else 'table-success' if pago and pago.estado == 'pagado' else 'table-warning' if pago and pago.estado == 'causado' else 'table-danger' if pago and pago.estado == 'vencido' else '' }}">
+                {% set programado = programacion_mensual.get(i) %}
+                {% set usa_tabla = usa_tabla_por_mes.get(i) %}
+                <tr class="{{ 'table-secondary' if (pago and pago.estado == 'anulado') or (not meses_aplicables.get(i) and not pago) else 'table-success' if pago and pago.estado == 'pagado' else 'table-warning' if pago and pago.estado == 'causado' else 'table-danger' if pago and pago.estado == 'vencido' else 'table-info' if usa_tabla and not pago else '' }}">
                     <td class="fw-semibold">{{ meses[i-1] }}</td>
                     <td>
                         {% if pago %}
                             <span class="indicador ind-{{ pago.estado }}"></span>
                             {{ pago.estado.replace('_', ' ')|title }}
+                        {% elif usa_tabla %}
+                            <span class="text-info">Programado</span>
                         {% elif not meses_aplicables.get(i) %}
                             <span class="text-muted">No aplica</span>
                         {% else %}
@@ -76,14 +80,14 @@
                         {% endif %}
                     </td>
                     <td>{{ pago.fecha_causacion.strftime('%d/%m/%Y') if pago and pago.fecha_causacion else '-' }}</td>
-                    <td>{{ "${:,.0f}".format(pago.valor_causado) if pago and pago.valor_causado else '-' }}</td>
-                    <td>{{ pago.dia_pago_reportado if pago and pago.dia_pago_reportado else '-' }}</td>
-                    <td>{{ pago.fecha_pago.strftime('%d/%m/%Y') if pago and pago.fecha_pago else '-' }}</td>
+                    <td>{{ "${:,.0f}".format(pago.valor_causado) if pago and pago.valor_causado else ("${:,.0f}".format(programado.total) if usa_tabla and programado and programado.total else '-') }}</td>
+                    <td>{{ pago.dia_pago_reportado if pago and pago.dia_pago_reportado else (programado.fecha_pago.day if usa_tabla and programado and programado.fecha_pago else '-') }}</td>
+                    <td>{{ pago.fecha_pago.strftime('%d/%m/%Y') if pago and pago.fecha_pago else (programado.fecha_pago.strftime('%d/%m/%Y') if usa_tabla and programado and programado.fecha_pago else '-') }}</td>
                     <td class="fw-bold">{{ "${:,.0f}".format(pago.valor_pagado) if pago and pago.valor_pagado else '-' }}</td>
-                    <td>{{ "${:,.0f}".format(pago.componente_capital) if pago and pago.componente_capital else '-' }}</td>
-                    <td>{{ "${:,.0f}".format(pago.componente_interes) if pago and pago.componente_interes else '-' }}</td>
-                    <td>{{ "${:,.0f}".format(pago.componente_seguro_vida) if pago and pago.componente_seguro_vida else '-' }}</td>
-                    <td>{{ "${:,.0f}".format(pago.componente_otros) if pago and pago.componente_otros else '-' }}</td>
+                    <td>{{ "${:,.0f}".format(pago.componente_capital) if pago and pago.componente_capital else ("${:,.0f}".format(programado.capital) if usa_tabla and programado and programado.capital else '-') }}</td>
+                    <td>{{ "${:,.0f}".format(pago.componente_interes) if pago and pago.componente_interes else ("${:,.0f}".format(programado.interes) if usa_tabla and programado and programado.interes else '-') }}</td>
+                    <td>{{ "${:,.0f}".format(pago.componente_seguro_vida) if pago and pago.componente_seguro_vida else ("${:,.0f}".format(programado.seguro_vida) if usa_tabla and programado and programado.seguro_vida else '-') }}</td>
+                    <td>{{ "${:,.0f}".format(pago.componente_otros) if pago and pago.componente_otros else ("${:,.0f}".format(programado.otros) if usa_tabla and programado and programado.otros is not none else '-') }}</td>
                     <td>{{ pago.medio_pago.nombre if pago and pago.medio_pago else '-' }}</td>
                     <td>
                         {% if pago and pago.comprobante_archivo %}
@@ -92,7 +96,7 @@
                         -
                         {% endif %}
                     </td>
-                    <td><small>{{ pago.observaciones if pago and pago.observaciones else '' }}</small></td>
+                    <td><small>{{ pago.observaciones if pago and pago.observaciones else ('Programado segun tabla de amortizacion' if usa_tabla else '') }}</small></td>
                     <td>
                         {% if pago and pago.estado != 'anulado' %}
                         <button type="button"

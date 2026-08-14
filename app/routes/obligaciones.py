@@ -2094,11 +2094,21 @@ def detalle(id):
     ).all()
     pagos_dict = {p.mes: p for p in pagos}
     meses_aplicables = {mes: _obligacion_aplica_mes(obligacion, anio, mes) for mes in range(1, 13)}
+    usa_tabla_por_mes = {
+        mes: _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes)
+        for mes in range(1, 13)
+    }
+    programacion_mensual = {
+        mes: _componentes_programados_periodo(obligacion, anio, mes)
+        for mes in range(1, 13)
+    }
     amortizaciones = obligacion.amortizaciones.order_by(AmortizacionObligacion.fecha_pago.asc()).all()
     return render_template('obligaciones/detalle.html',
                            obligacion=obligacion, anio=anio,
                            meses=MESES, pagos=pagos_dict, medios=medios,
                            meses_aplicables=meses_aplicables,
+                           usa_tabla_por_mes=usa_tabla_por_mes,
+                           programacion_mensual=programacion_mensual,
                            historial_pagos=historial_pagos,
                            amortizaciones=amortizaciones)
 
