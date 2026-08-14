@@ -254,7 +254,7 @@
                                             {{ p.medio_pago_id if p.medio_pago_id else "null" }},
                                             {{ (p.observaciones or "")|tojson }},
                                             {{ "true" if obligacion.requiere_desglose_pago or p.componente_capital is not none or p.componente_interes is not none else "false" }},
-                                            {{ "true" if p.componente_seguro_vida is not none or p.componente_otros is not none or obligacion.modalidad == 'bancario_tabla_amortizacion' else "false" }}
+                                            {{ "true" if p.componente_seguro_vida is not none or p.componente_otros is not none or obligacion.modalidad in ['credito_con_amortizacion', 'bancario_tabla_amortizacion'] else "false" }}
                                         )'>
                                     Ajustar
                                 </button>

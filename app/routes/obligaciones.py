@@ -21,7 +21,7 @@ MAX_COMPROBANTE_SIZE = 5 * 1024 * 1024
 
 MODALIDADES = [
     ('bancario_cuota_fija', 'Bancario cuota fija'),
-    ('bancario_tabla_amortizacion', 'Bancario con tabla de amortizacion'),
+    ('credito_con_amortizacion', 'Credito con amortizacion'),
     ('solo_interes', 'Solo interés mensual (capital al final)'),
     ('cadena', 'Cadena (cuota fija entre personas)'),
     ('pago_total_pactado', 'Pago total pactado'),
@@ -29,6 +29,10 @@ MODALIDADES = [
 ]
 
 MODALIDAD_LABELS = dict(MODALIDADES)
+
+
+def _es_modalidad_amortizacion(modalidad):
+    return modalidad in ('credito_con_amortizacion', 'bancario_tabla_amortizacion')
 
 
 def _tabla_amortizacion_map(obligacion):
@@ -43,7 +47,7 @@ def _tabla_amortizacion_map(obligacion):
 
 
 def _fila_amortizacion_periodo(obligacion, anio, mes):
-    if not obligacion or obligacion.modalidad != 'bancario_tabla_amortizacion':
+    if not obligacion or not _es_modalidad_amortizacion(obligacion.modalidad):
         return None
     return _tabla_amortizacion_map(obligacion).get((anio, mes))
 
@@ -60,7 +64,7 @@ def _valor_total_amortizacion(fila):
 
 
 def _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes):
-    if not obligacion or obligacion.modalidad != 'bancario_tabla_amortizacion':
+    if not obligacion or not _es_modalidad_amortizacion(obligacion.modalidad):
         return False
 
     periodo = date(anio, mes, 1)
@@ -204,7 +208,7 @@ def _conceptos_activos_categoria(nombre_categoria, anio, mes):
 
 
 def _valor_estimado_obligacion(obligacion, ultimo_pago=None):
-    if obligacion.modalidad == 'bancario_tabla_amortizacion':
+    if _es_modalidad_amortizacion(obligacion.modalidad):
         fecha_inicio_tabla = _coerce_date(obligacion.fecha_inicio_amortizacion)
         periodo_hoy = date.today().replace(day=1)
         if not fecha_inicio_tabla or periodo_hoy >= fecha_inicio_tabla.replace(day=1):
@@ -231,7 +235,7 @@ def _valor_estimado_obligacion(obligacion, ultimo_pago=None):
 
 def _fuente_valor_estimado_obligacion(obligacion, ultimo_pago=None):
     if (
-        obligacion.modalidad == 'bancario_tabla_amortizacion'
+        _es_modalidad_amortizacion(obligacion.modalidad)
         and obligacion.amortizaciones.count() > 0
         and (
             not _coerce_date(obligacion.fecha_inicio_amortizacion)
@@ -501,7 +505,7 @@ def _fechas_programadas_obligacion(obligacion, anio, mes):
 def _siguiente_fecha_programada(obligacion, desde_fecha):
     fecha_inicio_tabla = _coerce_date(obligacion.fecha_inicio_amortizacion)
     if (
-        obligacion.modalidad == 'bancario_tabla_amortizacion'
+        _es_modalidad_amortizacion(obligacion.modalidad)
         and (not fecha_inicio_tabla or desde_fecha >= fecha_inicio_tabla.replace(day=1))
     ):
         filas = obligacion.amortizaciones.order_by(AmortizacionObligacion.fecha_pago.asc()).all()
@@ -816,7 +820,7 @@ def _date_or_none(valor):
 
 
 def _validar_desglose_cuota_form(modalidad, requiere_desglose, valor_cuota_fija, valor_cuota_capital, valor_cuota_interes):
-    if modalidad == 'bancario_tabla_amortizacion':
+    if _es_modalidad_amortizacion(modalidad):
         return None
 
     total = _float_or_none(valor_cuota_fija)
@@ -918,7 +922,7 @@ def nueva():
             return redirect(request.url)
 
         filas_amortizacion = []
-        if modalidad == 'bancario_tabla_amortizacion':
+        if _es_modalidad_amortizacion(modalidad):
             if not tabla_amortizacion_texto:
                 flash('Debe pegar la tabla de amortizacion para esta modalidad.', 'danger')
                 return redirect(request.url)
@@ -936,7 +940,7 @@ def nueva():
         requiere_desglose_pago = (
             request.form.get('requiere_desglose_pago') == 'on'
             or tiene_desglose_cuota
-            or modalidad == 'bancario_tabla_amortizacion'
+            or _es_modalidad_amortizacion(modalidad)
         )
         error_desglose = _validar_desglose_cuota_form(
             modalidad,
@@ -999,7 +1003,7 @@ def nueva():
         )
         db.session.add(obligacion)
         db.session.flush()
-        if modalidad == 'bancario_tabla_amortizacion':
+        if _es_modalidad_amortizacion(modalidad):
             _guardar_tabla_amortizacion(obligacion, filas_amortizacion)
         db.session.commit()
         flash('Obligación creada correctamente.', 'success')
@@ -1027,12 +1031,12 @@ def editar(id):
             return redirect(request.url)
 
         filas_amortizacion = None
-        if modalidad == 'bancario_tabla_amortizacion' and tabla_amortizacion_texto:
+        if _es_modalidad_amortizacion(modalidad) and tabla_amortizacion_texto:
             filas_amortizacion, error_tabla = _parsear_tabla_amortizacion(tabla_amortizacion_texto)
             if error_tabla:
                 flash(error_tabla, 'danger')
                 return redirect(request.url)
-        elif modalidad == 'bancario_tabla_amortizacion' and obligacion.amortizaciones.count() == 0:
+        elif _es_modalidad_amortizacion(modalidad) and obligacion.amortizaciones.count() == 0:
             flash('Debe cargar la tabla de amortizacion para esta modalidad.', 'danger')
             return redirect(request.url)
 
@@ -1043,7 +1047,7 @@ def editar(id):
         requiere_desglose_pago = (
             request.form.get('requiere_desglose_pago') == 'on'
             or tiene_desglose_cuota
-            or modalidad == 'bancario_tabla_amortizacion'
+            or _es_modalidad_amortizacion(modalidad)
         )
         error_desglose = _validar_desglose_cuota_form(
             modalidad,
@@ -1074,7 +1078,7 @@ def editar(id):
             flash(error_soporte, 'danger')
             return redirect(request.url)
 
-        if modalidad == 'bancario_tabla_amortizacion' and not fecha_inicio_amortizacion:
+        if _es_modalidad_amortizacion(modalidad) and not fecha_inicio_amortizacion:
             if filas_amortizacion:
                 fecha_inicio_amortizacion = filas_amortizacion[0]['fecha_pago'].replace(day=1)
             else:
@@ -1097,7 +1101,7 @@ def editar(id):
         obligacion.fecha_inicio = request.form.get('fecha_inicio') or None
         obligacion.fecha_vencimiento = request.form.get('fecha_vencimiento') or None
         obligacion.fecha_recibe = request.form.get('fecha_recibe') or None
-        obligacion.fecha_inicio_amortizacion = fecha_inicio_amortizacion if modalidad == 'bancario_tabla_amortizacion' else None
+        obligacion.fecha_inicio_amortizacion = fecha_inicio_amortizacion if _es_modalidad_amortizacion(modalidad) else None
         obligacion.titular = request.form.get('titular', '').strip()
         obligacion.referencia = request.form.get('referencia', '').strip()
         obligacion.frecuencia_pago = request.form.get('frecuencia_pago', 'mensual')
@@ -1110,7 +1114,7 @@ def editar(id):
             obligacion.soporte_amortizacion_nombre = soporte_nombre
             obligacion.soporte_amortizacion_mime = soporte_mime
             obligacion.soporte_amortizacion_archivo = soporte_archivo
-        if modalidad != 'bancario_tabla_amortizacion':
+        if not _es_modalidad_amortizacion(modalidad):
             AmortizacionObligacion.query.filter_by(obligacion_id=obligacion.id).delete()
         elif filas_amortizacion:
             if not obligacion.fecha_vencimiento:
@@ -1734,6 +1738,7 @@ def pagos(anio=None, mes=None):
 def _color_modalidad(mod):
     colores = {
         'bancario_cuota_fija': '#2563eb',
+        'credito_con_amortizacion': '#0f766e',
         'bancario_tabla_amortizacion': '#0f766e',
         'solo_interes': '#f59e0b',
         'cadena': '#8b5cf6',

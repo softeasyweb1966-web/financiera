@@ -10,7 +10,7 @@
             <div class="alert alert-light small mb-3 py-2">
                 <i class="bi bi-info-circle text-primary"></i>
                 <strong>Modalidades:</strong>
-                Bancario (cuota fija mensual) - Bancario con tabla de amortizacion - Solo interes (paga interes mensual, devuelve capital al final) -
+                Bancario (cuota fija mensual) - Credito con amortizacion - Solo interes (paga interes mensual, devuelve capital al final) -
                 Cadena (cuota fija entre personas) - Pago total (se paga todo cuando se pacte) -
                 Corto plazo (prestamo a dias: 8, 15, 30 dias).
                 <br><strong>Cadena:</strong> use fecha inicio, fecha final, fecha en que recibe y frecuencia mensual o quincenal.
@@ -50,7 +50,7 @@
                         <select name="modalidad" id="modalidad" class="form-select" required onchange="toggleCampos()">
                             <option value="">Seleccione...</option>
                             {% for val, label in modalidades %}
-                            <option value="{{ val }}" {{ 'selected' if obligacion and obligacion.modalidad == val else '' }}>{{ label }}</option>
+                            <option value="{{ val }}" {{ 'selected' if obligacion and (obligacion.modalidad == val or (val == 'credito_con_amortizacion' and obligacion.modalidad == 'bancario_tabla_amortizacion')) else '' }}>{{ label }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -238,7 +238,7 @@ function toggleCampos() {
     const fechaInicioTabla = document.getElementById('fecha_inicio_amortizacion');
     const tablaAmortizacion = document.getElementById('tabla_amortizacion');
     const mostrarDesglose = requiereDesglose.checked;
-    const esTablaAmortizacion = mod === 'bancario_tabla_amortizacion';
+    const esTablaAmortizacion = mod === 'credito_con_amortizacion' || mod === 'bancario_tabla_amortizacion';
 
     plazoDias.style.display = 'none';
     plazoMeses.style.display = 'block';
@@ -263,7 +263,7 @@ function toggleCampos() {
         plazoMeses.style.display = 'none';
         cuotas.style.display = mostrarDesglose ? 'block' : 'none';
         cuotaFija.style.display = 'block';
-    } else if (mod === 'bancario_tabla_amortizacion') {
+    } else if (esTablaAmortizacion) {
         cuotaFija.style.display = 'none';
     } else if (mod === 'solo_interes') {
         cuotas.style.display = 'none';

@@ -271,7 +271,7 @@ class Obligacion(db.Model):
     tercero_id = db.Column(db.Integer, db.ForeignKey('terceros.id'), nullable=False)
     concepto_id = db.Column(db.Integer, db.ForeignKey('conceptos.id'), nullable=False)
     modalidad = db.Column(db.String(30), nullable=False)
-    # Modalidades: solo_interes, cadena, pago_total_pactado, bancario_cuota_fija, bancario_tabla_amortizacion
+    # Modalidades: solo_interes, cadena, pago_total_pactado, bancario_cuota_fija, credito_con_amortizacion
     capital_inicial = db.Column(db.Numeric(14, 2))
     saldo_actual = db.Column(db.Numeric(14, 2))
     tasa_interes_mensual = db.Column(db.Numeric(6, 4))  # Ej: 1.5% = 1.5000

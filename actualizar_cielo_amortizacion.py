@@ -73,7 +73,7 @@ def main():
                 )
             )
 
-        obligacion.modalidad = 'bancario_tabla_amortizacion'
+        obligacion.modalidad = 'credito_con_amortizacion'
         obligacion.fecha_inicio_amortizacion = date(2026, 9, 1)
         obligacion.fecha_vencimiento = date(2029, 9, 4)
         obligacion.dia_limite_pago = 4
