@@ -449,6 +449,18 @@
                 {% if o.requiere_desglose_pago %}
                 <small class="text-primary d-block">Esta obligacion pide cuota con capital e interes.</small>
                 {% endif %}
+                {% if item.usa_tabla_amortizacion %}
+                <small class="text-info d-block">Capital programado: ${{ "{:,.0f}".format(item.programado_capital or 0) }}</small>
+                <small class="text-info d-block">Interes programado: ${{ "{:,.0f}".format(item.programado_interes or 0) }}</small>
+                <small class="text-info d-block">Seguro vida: ${{ "{:,.0f}".format(item.programado_seguro_vida or 0) }}</small>
+                <small class="text-info d-block">Otros: ${{ "{:,.0f}".format(item.programado_otros or 0) }}</small>
+                {% if item.programado_tasa_namv is not none %}
+                <small class="text-muted d-block">Tasa NAMV: {{ "{:.4f}".format(item.programado_tasa_namv) }}%</small>
+                {% endif %}
+                {% if item.programado_saldo_capital is not none %}
+                <small class="text-muted d-block">Saldo segun tabla: ${{ "{:,.0f}".format(item.programado_saldo_capital or 0) }}</small>
+                {% endif %}
+                {% endif %}
                 {% if o.modalidad == 'cadena' %}
                 <small class="text-muted d-block">Recibe: {{ o.fecha_recibe.strftime('%d/%m/%Y') if o.fecha_recibe else '-' }}</small>
                 {% endif %}
@@ -463,12 +475,12 @@
             <div class="mt-2 d-flex gap-1 flex-wrap">
                 {% if item.estado != 'pagado' and not item.es_informativo %}
                 <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick='prepararPago({{ o.id }}, {{ nombre_modal|tojson }}, {{ mes }}, {{ item.valor_pago_sugerido or item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }})'>
+                        onclick='prepararPago({{ o.id }}, {{ nombre_modal|tojson }}, {{ mes }}, {{ item.valor_pago_sugerido or item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ item.programado_capital or 0 }}, {{ item.programado_interes or 0 }}, {{ item.programado_seguro_vida or 0 }}, {{ item.programado_otros or 0 }}, {{ "true" if item.usa_tabla_amortizacion else "false" }})'>
                     <i class="bi bi-check-lg"></i> Pagar
                 </button>
                 {% if item.estado == 'sin_causar' or item.estado == 'pendiente' %}
                 <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#modalPago"
-                        onclick='prepararCausar({{ o.id }}, {{ nombre_modal|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ o.valor_cuota_capital or 0 }}, {{ o.valor_cuota_interes or 0 }}, {{ o.dia_limite_pago if o.dia_limite_pago is not none else (item.fecha_limite_actual.day if item.fecha_limite_actual else "null") }})'>
+                        onclick='prepararCausar({{ o.id }}, {{ nombre_modal|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ item.programado_capital or 0 }}, {{ item.programado_interes or 0 }}, {{ item.programado_seguro_vida or 0 }}, {{ item.programado_otros or 0 }}, {{ "true" if item.usa_tabla_amortizacion else "false" }}, {{ o.dia_limite_pago if o.dia_limite_pago is not none else (item.fecha_limite_actual.day if item.fecha_limite_actual else "null") }})'>
                     <i class="bi bi-pencil"></i> Causar
                 </button>
                 {% endif %}
@@ -649,6 +661,7 @@
                     </div>
                     <div id="seccion-causar" style="display:none">
                         <p class="small text-muted mb-2">Confirme el valor de la cuota para este mes. La fecha de causacion se asigna automaticamente.</p>
+                        <p class="small text-info mb-2" id="texto_causacion_tabla" style="display:none;">Para esta modalidad, la causacion se toma directamente de la tabla de amortizacion del periodo.</p>
                         <div class="row">
                             <div class="col-md-7 mb-2">
                                 <label class="form-label">Valor a causar (cuota)</label>
@@ -674,17 +687,24 @@
                             </div>
                         </div>
                         <div class="row" id="seccion-desglose" style="display:none;">
-                            <div class="col-4 mb-2">
+                            <div class="col-3 mb-2">
                                 <label class="form-label">Capital</label>
                                 <input type="text" name="componente_capital" id="pago_capital" class="form-control form-control-sm js-money">
                             </div>
-                            <div class="col-4 mb-2">
+                            <div class="col-3 mb-2">
                                 <label class="form-label">Interes</label>
                                 <input type="text" name="componente_interes" id="pago_interes" class="form-control form-control-sm js-money">
                             </div>
-                            <div class="col-4 mb-2"></div>
+                            <div class="col-3 mb-2" id="grupo_pago_seguro_vida" style="display:none;">
+                                <label class="form-label">Seguro vida</label>
+                                <input type="text" name="componente_seguro_vida" id="pago_seguro_vida" class="form-control form-control-sm js-money">
+                            </div>
+                            <div class="col-3 mb-2" id="grupo_pago_otros" style="display:none;">
+                                <label class="form-label">Otros</label>
+                                <input type="text" name="componente_otros" id="pago_otros" class="form-control form-control-sm js-money">
+                            </div>
                         </div>
-                        <small id="texto_desglose" class="text-muted d-block mb-2" style="display:none;">Ingrese la cuota pagada y discrimine cuanto corresponde a capital y cuanto a interes.</small>
+                        <small id="texto_desglose" class="text-muted d-block mb-2" style="display:none;">Ingrese la cuota pagada y discrimine cuanto corresponde a cada componente.</small>
                         <div class="row">
                             <div class="col-6 mb-2">
                                 <label class="form-label">Fecha pago</label>
@@ -733,19 +753,28 @@
 <script>
 const mesesObligaciones = {{ meses|tojson }};
 
-function toggleDesglose(requiereDesglose) {
+function toggleDesglose(requiereDesglose, usaTablaAmortizacion = false) {
     const visible = !!requiereDesglose;
     document.getElementById('seccion-desglose').style.display = visible ? 'flex' : 'none';
     document.getElementById('texto_desglose').style.display = visible ? 'block' : 'none';
     document.getElementById('pago_capital').required = visible;
     document.getElementById('pago_interes').required = visible;
+    document.getElementById('grupo_pago_seguro_vida').style.display = visible && usaTablaAmortizacion ? 'block' : 'none';
+    document.getElementById('grupo_pago_otros').style.display = visible && usaTablaAmortizacion ? 'block' : 'none';
+    document.getElementById('pago_seguro_vida').required = visible && usaTablaAmortizacion;
+    document.getElementById('pago_otros').required = visible && usaTablaAmortizacion;
+    document.getElementById('texto_desglose').textContent = usaTablaAmortizacion
+        ? 'Ingrese la cuota pagada y discrimine capital, interes, seguro vida y otros.'
+        : 'Ingrese la cuota pagada y discrimine cuanto corresponde a capital y cuanto a interes.';
     if (!visible) {
         window.FinancieraMoney.setValue(document.getElementById('pago_capital'), '');
         window.FinancieraMoney.setValue(document.getElementById('pago_interes'), '');
+        window.FinancieraMoney.setValue(document.getElementById('pago_seguro_vida'), '');
+        window.FinancieraMoney.setValue(document.getElementById('pago_otros'), '');
     }
 }
 
-function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres) {
+function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres, valorSeguroVida, valorOtros, usaTablaAmortizacion) {
     const periodo = mesesObligaciones[mes - 1] + ' {{ anio }}';
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
@@ -754,6 +783,8 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
     window.FinancieraMoney.setValue(document.getElementById('pago_valor'), valorEsperado || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_capital'), valorCapital || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_seguro_vida'), valorSeguroVida || '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_otros'), valorOtros || '');
     document.getElementById('pago_fecha_pago').value = '';
     document.getElementById('causar_dia_reportado').value = '';
     document.getElementById('pago_accion').value = 'pagar';
@@ -761,10 +792,13 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
     document.getElementById('pago_titulo').textContent = 'Pagar - ' + nombre + ' - ' + periodo;
     document.getElementById('seccion-causar').style.display = 'none';
     document.getElementById('seccion-pagar').style.display = 'block';
-    toggleDesglose(requiereDesglose);
+    document.getElementById('pago_valor_causado2').readOnly = !!usaTablaAmortizacion;
+    document.getElementById('pago_valor').readOnly = false;
+    document.getElementById('texto_causacion_tabla').style.display = 'none';
+    toggleDesglose(requiereDesglose, usaTablaAmortizacion);
 }
 
-function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres, diaBase) {
+function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres, valorSeguroVida, valorOtros, usaTablaAmortizacion, diaBase) {
     const periodo = mesesObligaciones[mes - 1] + ' {{ anio }}';
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
@@ -772,12 +806,17 @@ function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorC
     window.FinancieraMoney.setValue(document.getElementById('pago_valor_causado'), valorEsperado || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_capital'), valorCapital || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_seguro_vida'), valorSeguroVida || '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_otros'), valorOtros || '');
     document.getElementById('causar_dia_reportado').value = diaBase || '';
     document.getElementById('pago_accion').value = 'causar';
     document.getElementById('pago_titulo').textContent = 'Causar - ' + nombre + ' - ' + periodo;
     document.getElementById('seccion-causar').style.display = 'block';
     document.getElementById('seccion-pagar').style.display = 'none';
-    toggleDesglose(false);
+    document.getElementById('pago_valor_causado').readOnly = !!usaTablaAmortizacion;
+    document.getElementById('causar_dia_reportado').readOnly = !!usaTablaAmortizacion;
+    document.getElementById('texto_causacion_tabla').style.display = usaTablaAmortizacion ? 'block' : 'none';
+    toggleDesglose(false, usaTablaAmortizacion);
 }
 
 function prepararComprobante(pagoId, nombre, tieneComprobante) {

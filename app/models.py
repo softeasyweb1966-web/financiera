@@ -271,7 +271,7 @@ class Obligacion(db.Model):
     tercero_id = db.Column(db.Integer, db.ForeignKey('terceros.id'), nullable=False)
     concepto_id = db.Column(db.Integer, db.ForeignKey('conceptos.id'), nullable=False)
     modalidad = db.Column(db.String(30), nullable=False)
-    # Modalidades: solo_interes, cadena, pago_total_pactado, bancario_cuota_fija
+    # Modalidades: solo_interes, cadena, pago_total_pactado, bancario_cuota_fija, bancario_tabla_amortizacion
     capital_inicial = db.Column(db.Numeric(14, 2))
     saldo_actual = db.Column(db.Numeric(14, 2))
     tasa_interes_mensual = db.Column(db.Numeric(6, 4))  # Ej: 1.5% = 1.5000
@@ -285,9 +285,13 @@ class Obligacion(db.Model):
     fecha_inicio = db.Column(db.Date)
     fecha_vencimiento = db.Column(db.Date)
     fecha_recibe = db.Column(db.Date)
+    fecha_inicio_amortizacion = db.Column(db.Date)
     fecha_finalizacion = db.Column(db.Date)
     titular = db.Column(db.String(150))
     referencia = db.Column(db.String(50))
+    soporte_amortizacion_nombre = db.Column(db.String(255))
+    soporte_amortizacion_mime = db.Column(db.String(120))
+    soporte_amortizacion_archivo = db.Column(db.LargeBinary)
     frecuencia_pago = db.Column(db.String(20), default='mensual')  # mensual, quincenal
     requiere_desglose_pago = db.Column(db.Boolean, default=False)
     dia_limite_pago = db.Column(db.Integer)
@@ -300,6 +304,12 @@ class Obligacion(db.Model):
     tercero = db.relationship('Tercero', backref='obligaciones')
     concepto = db.relationship('Concepto', backref='obligaciones')
     pagos = db.relationship('PagoObligacion', backref='obligacion', lazy='dynamic')
+    amortizaciones = db.relationship(
+        'AmortizacionObligacion',
+        backref='obligacion',
+        lazy='dynamic',
+        order_by='AmortizacionObligacion.fecha_pago.asc()'
+    )
     refinanciaciones = db.relationship('Refinanciacion', backref='obligacion', lazy='dynamic',
                                        order_by='Refinanciacion.fecha_refinanciacion.desc()')
 
@@ -329,6 +339,34 @@ class Obligacion(db.Model):
 
     def __repr__(self):
         return f'<Obligacion {self.tercero.nombre if self.tercero else "?"} - {self.modalidad}>'
+
+
+class AmortizacionObligacion(db.Model):
+    """Tabla de amortización mensual asociada a una obligación."""
+    __tablename__ = 'amortizaciones_obligaciones'
+
+    id = db.Column(db.Integer, primary_key=True)
+    obligacion_id = db.Column(db.Integer, db.ForeignKey('obligaciones.id'), nullable=False)
+    fecha_pago = db.Column(db.Date, nullable=False)
+    capital = db.Column(db.Numeric(14, 2), nullable=False)
+    intereses = db.Column(db.Numeric(14, 2), nullable=False)
+    seguro_vida = db.Column(db.Numeric(14, 2), default=0)
+    otros = db.Column(db.Numeric(14, 2), default=0)
+    tasa_namv = db.Column(db.Numeric(8, 4))
+    saldo_capital = db.Column(db.Numeric(14, 2))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('obligacion_id', 'fecha_pago', name='uq_amortizacion_obligacion_fecha'),
+    )
+
+    @property
+    def valor_cuota_total(self):
+        return float(self.capital or 0) + float(self.intereses or 0) + float(self.seguro_vida or 0) + float(self.otros or 0)
+
+    def __repr__(self):
+        return f'<AmortizacionObligacion {self.obligacion_id} - {self.fecha_pago}>'
 
 
 class Refinanciacion(db.Model):
@@ -457,6 +495,8 @@ class PagoObligacion(db.Model):
     valor_pagado = db.Column(db.Numeric(14, 2))     # Valor efectivamente pagado
     componente_capital = db.Column(db.Numeric(14, 2))
     componente_interes = db.Column(db.Numeric(14, 2))
+    componente_seguro_vida = db.Column(db.Numeric(14, 2))
+    componente_otros = db.Column(db.Numeric(14, 2))
     numero_cuota = db.Column(db.Integer)
     dia_pago_reportado = db.Column(db.Integer)
     fecha_pago = db.Column(db.Date)
@@ -495,6 +535,8 @@ class HistorialPagoObligacion(db.Model):
     valor_pagado = db.Column(db.Numeric(14, 2))
     componente_capital = db.Column(db.Numeric(14, 2))
     componente_interes = db.Column(db.Numeric(14, 2))
+    componente_seguro_vida = db.Column(db.Numeric(14, 2))
+    componente_otros = db.Column(db.Numeric(14, 2))
     numero_cuota = db.Column(db.Integer)
     dia_pago_reportado = db.Column(db.Integer)
     fecha_pago = db.Column(db.Date)

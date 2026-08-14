@@ -226,6 +226,10 @@
                                 {% if p.componente_capital or p.componente_interes %}
                                 <small class="text-muted d-block">Cap: ${{ "{:,.0f}".format(p.componente_capital or 0) }}</small>
                                 <small class="text-muted d-block">Int: ${{ "{:,.0f}".format(p.componente_interes or 0) }}</small>
+                                {% if p.componente_seguro_vida or p.componente_otros %}
+                                <small class="text-muted d-block">Seg: ${{ "{:,.0f}".format(p.componente_seguro_vida or 0) }}</small>
+                                <small class="text-muted d-block">Otr: ${{ "{:,.0f}".format(p.componente_otros or 0) }}</small>
+                                {% endif %}
                                 {% else %}
                                 -
                                 {% endif %}
@@ -245,9 +249,12 @@
                                             {{ ("{:,.0f}".format(p.valor_causado or 0))|tojson if p.valor_causado else '""' }},
                                             {{ ("{:,.0f}".format(p.componente_capital or 0))|tojson if p.componente_capital is not none else '""' }},
                                             {{ ("{:,.0f}".format(p.componente_interes or 0))|tojson if p.componente_interes is not none else '""' }},
+                                            {{ ("{:,.0f}".format(p.componente_seguro_vida or 0))|tojson if p.componente_seguro_vida is not none else '""' }},
+                                            {{ ("{:,.0f}".format(p.componente_otros or 0))|tojson if p.componente_otros is not none else '""' }},
                                             {{ p.medio_pago_id if p.medio_pago_id else "null" }},
                                             {{ (p.observaciones or "")|tojson }},
-                                            {{ "true" if obligacion.requiere_desglose_pago or p.componente_capital is not none or p.componente_interes is not none else "false" }}
+                                            {{ "true" if obligacion.requiere_desglose_pago or p.componente_capital is not none or p.componente_interes is not none else "false" }},
+                                            {{ "true" if p.componente_seguro_vida is not none or p.componente_otros is not none or obligacion.modalidad == 'bancario_tabla_amortizacion' else "false" }}
                                         )'>
                                     Ajustar
                                 </button>
@@ -384,6 +391,10 @@
                                 {% if h.componente_capital or h.componente_interes %}
                                 <small class="text-muted d-block">Cap: ${{ "{:,.0f}".format(h.componente_capital or 0) }}</small>
                                 <small class="text-muted d-block">Int: ${{ "{:,.0f}".format(h.componente_interes or 0) }}</small>
+                                {% if h.componente_seguro_vida or h.componente_otros %}
+                                <small class="text-muted d-block">Seg: ${{ "{:,.0f}".format(h.componente_seguro_vida or 0) }}</small>
+                                <small class="text-muted d-block">Otr: ${{ "{:,.0f}".format(h.componente_otros or 0) }}</small>
+                                {% endif %}
                                 {% else %}
                                 -
                                 {% endif %}
@@ -428,13 +439,21 @@
                         <div class="form-text">Opcional. Si lo deja igual, se conserva el valor causado existente.</div>
                     </div>
                     <div class="row g-2" id="ajuste_desglose_wrapper">
-                        <div class="col-6">
+                        <div class="col-3">
                             <label class="form-label">Capital</label>
                             <input type="text" name="componente_capital" id="ajuste_capital" class="form-control form-control-sm js-money">
                         </div>
-                        <div class="col-6">
+                        <div class="col-3">
                             <label class="form-label">Interes</label>
                             <input type="text" name="componente_interes" id="ajuste_interes" class="form-control form-control-sm js-money">
+                        </div>
+                        <div class="col-3" id="ajuste_seguro_wrapper" style="display:none;">
+                            <label class="form-label">Seguro vida</label>
+                            <input type="text" name="componente_seguro_vida" id="ajuste_seguro_vida" class="form-control form-control-sm js-money">
+                        </div>
+                        <div class="col-3" id="ajuste_otros_wrapper" style="display:none;">
+                            <label class="form-label">Otros</label>
+                            <input type="text" name="componente_otros" id="ajuste_otros" class="form-control form-control-sm js-money">
                         </div>
                     </div>
                     <div class="mb-2 mt-2">
@@ -468,7 +487,7 @@
 <script>
 const ajustePagoBaseUrl = {{ url_for('obligaciones.ajustar_pago_cancelado', pago_id=0)|tojson }};
 
-function prepararAjustePago(pagoId, periodo, valorPagado, fechaPago, valorCausado, capital, interes, medioPagoId, observaciones, requiereDesglose) {
+function prepararAjustePago(pagoId, periodo, valorPagado, fechaPago, valorCausado, capital, interes, seguroVida, otros, medioPagoId, observaciones, requiereDesglose, usaSeguros) {
     document.getElementById('formAjustePago').action = ajustePagoBaseUrl.replace('/0/ajustar', '/' + pagoId + '/ajustar');
     document.getElementById('ajustePagoTitulo').textContent = 'Ajustar cuota cancelada - ' + periodo;
     document.getElementById('ajuste_fecha_pago').value = fechaPago || '';
@@ -476,10 +495,14 @@ function prepararAjustePago(pagoId, periodo, valorPagado, fechaPago, valorCausad
     document.getElementById('ajuste_valor_causado').value = valorCausado || '';
     document.getElementById('ajuste_capital').value = capital || '';
     document.getElementById('ajuste_interes').value = interes || '';
+    document.getElementById('ajuste_seguro_vida').value = seguroVida || '';
+    document.getElementById('ajuste_otros').value = otros || '';
     document.getElementById('ajuste_medio_pago').value = medioPagoId || '';
     document.getElementById('ajuste_observaciones').value = observaciones || '';
     document.getElementById('ajuste_motivo').value = '';
     document.getElementById('ajuste_desglose_wrapper').style.display = requiereDesglose ? '' : 'none';
+    document.getElementById('ajuste_seguro_wrapper').style.display = requiereDesglose && usaSeguros ? '' : 'none';
+    document.getElementById('ajuste_otros_wrapper').style.display = requiereDesglose && usaSeguros ? '' : 'none';
 }
 </script>
 {% endblock %}

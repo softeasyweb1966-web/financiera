@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
 from app import db
 from app.models import (
-    Obligacion, PagoObligacion, HistorialPagoObligacion, Refinanciacion, AbonoCapitalObligacion,
+    Obligacion, AmortizacionObligacion, PagoObligacion, HistorialPagoObligacion, Refinanciacion, AbonoCapitalObligacion,
     Tercero, Concepto, Categoria, MedioPago
 )
 from app.conceptos_estado import cargar_historial_conceptos, concepto_activo_en_periodo
@@ -21,6 +21,7 @@ MAX_COMPROBANTE_SIZE = 5 * 1024 * 1024
 
 MODALIDADES = [
     ('bancario_cuota_fija', 'Bancario cuota fija'),
+    ('bancario_tabla_amortizacion', 'Bancario con tabla de amortizacion'),
     ('solo_interes', 'Solo interés mensual (capital al final)'),
     ('cadena', 'Cadena (cuota fija entre personas)'),
     ('pago_total_pactado', 'Pago total pactado'),
@@ -28,6 +29,168 @@ MODALIDADES = [
 ]
 
 MODALIDAD_LABELS = dict(MODALIDADES)
+
+
+def _tabla_amortizacion_map(obligacion):
+    cache = getattr(obligacion, '_tabla_amortizacion_cache', None)
+    if cache is None:
+        cache = {}
+        for fila in obligacion.amortizaciones.all():
+            if fila.fecha_pago:
+                cache[(fila.fecha_pago.year, fila.fecha_pago.month)] = fila
+        setattr(obligacion, '_tabla_amortizacion_cache', cache)
+    return cache
+
+
+def _fila_amortizacion_periodo(obligacion, anio, mes):
+    if not obligacion or obligacion.modalidad != 'bancario_tabla_amortizacion':
+        return None
+    return _tabla_amortizacion_map(obligacion).get((anio, mes))
+
+
+def _valor_total_amortizacion(fila):
+    if not fila:
+        return 0
+    return (
+        float(fila.capital or 0)
+        + float(fila.intereses or 0)
+        + float(fila.seguro_vida or 0)
+        + float(fila.otros or 0)
+    )
+
+
+def _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes):
+    if not obligacion or obligacion.modalidad != 'bancario_tabla_amortizacion':
+        return False
+
+    periodo = date(anio, mes, 1)
+    fecha_inicio_tabla = _coerce_date(obligacion.fecha_inicio_amortizacion)
+    if fecha_inicio_tabla and periodo < fecha_inicio_tabla.replace(day=1):
+        return False
+
+    return _fila_amortizacion_periodo(obligacion, anio, mes) is not None
+
+
+def _componentes_programados_periodo(obligacion, anio, mes):
+    fila = _fila_amortizacion_periodo(obligacion, anio, mes)
+    if fila and _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes):
+        return {
+            'capital': float(fila.capital or 0),
+            'interes': float(fila.intereses or 0),
+            'seguro_vida': float(fila.seguro_vida or 0),
+            'otros': float(fila.otros or 0),
+            'total': _valor_total_amortizacion(fila),
+            'tasa_namv': float(fila.tasa_namv or 0) if fila.tasa_namv is not None else None,
+            'saldo_capital': float(fila.saldo_capital or 0) if fila.saldo_capital is not None else None,
+            'fecha_pago': fila.fecha_pago,
+        }
+
+    total = 0
+    if obligacion.valor_cuota_capital is not None or obligacion.valor_cuota_interes is not None:
+        total = float(obligacion.valor_cuota_capital or 0) + float(obligacion.valor_cuota_interes or 0)
+    elif obligacion.valor_cuota_fija is not None:
+        total = float(obligacion.valor_cuota_fija or 0)
+
+    return {
+        'capital': float(obligacion.valor_cuota_capital or 0),
+        'interes': float(obligacion.valor_cuota_interes or 0),
+        'seguro_vida': 0,
+        'otros': 0,
+        'total': total,
+        'tasa_namv': None,
+        'saldo_capital': None,
+        'fecha_pago': None,
+    }
+
+
+def _componentes_pago_total(
+    componente_capital_num,
+    componente_interes_num,
+    componente_seguro_vida_num,
+    componente_otros_num,
+):
+    return (
+        float(componente_capital_num or 0)
+        + float(componente_interes_num or 0)
+        + float(componente_seguro_vida_num or 0)
+        + float(componente_otros_num or 0)
+    )
+
+
+def _parsear_tabla_amortizacion(texto):
+    filas = []
+    periodos = set()
+
+    for indice, linea_original in enumerate((texto or '').splitlines(), start=1):
+        linea = ' '.join(linea_original.strip().split())
+        if not linea:
+            continue
+        if 'FECHA' in linea.upper() and 'PAGO' in linea.upper():
+            continue
+
+        tokens = re.findall(r'\d{2}/\d{2}/\d{4}|\$?-?[\d,]+(?:\.\d+)?%?', linea)
+        if len(tokens) not in (6, 7):
+            return None, f'La linea {indice} no tiene el formato esperado para la tabla de amortizacion.'
+
+        fecha_pago = _coerce_date(tokens[0])
+        if not fecha_pago:
+            return None, f'La fecha de la linea {indice} no es valida.'
+
+        if len(tokens) == 6:
+            capital_token, intereses_token, seguro_token, tasa_token, saldo_token = tokens[1:]
+            otros_token = '0'
+        else:
+            capital_token, intereses_token, seguro_token, otros_token, tasa_token, saldo_token = tokens[1:]
+
+        periodo = (fecha_pago.year, fecha_pago.month)
+        if periodo in periodos:
+            return None, f'La tabla tiene mas de una cuota para {fecha_pago.strftime("%m/%Y")}.'
+        periodos.add(periodo)
+
+        tasa_limpia = str(tasa_token).replace('%', '').strip()
+        filas.append({
+            'fecha_pago': fecha_pago,
+            'capital': _money_raw_or_none(capital_token),
+            'intereses': _money_raw_or_none(intereses_token),
+            'seguro_vida': _money_raw_or_none(seguro_token) or '0',
+            'otros': _money_raw_or_none(otros_token) or '0',
+            'tasa_namv': _money_raw_or_none(tasa_limpia, scale=4),
+            'saldo_capital': _money_raw_or_none(saldo_token),
+        })
+
+    filas.sort(key=lambda item: item['fecha_pago'])
+    return filas, None
+
+
+def _serializar_tabla_amortizacion(obligacion):
+    if not obligacion:
+        return ''
+
+    filas = obligacion.amortizaciones.order_by(AmortizacionObligacion.fecha_pago.asc()).all()
+    if not filas:
+        return ''
+
+    lineas = ['FECHA PAGO\tCAPITAL\tINTERESES\tSEGURO VIDA\tOTROS\tTASA NAMV\tSALDO CAPITAL']
+    for fila in filas:
+        lineas.append(
+            '\t'.join([
+                fila.fecha_pago.strftime('%d/%m/%Y'),
+                f'${float(fila.capital or 0):,.2f}',
+                f'${float(fila.intereses or 0):,.2f}',
+                f'${float(fila.seguro_vida or 0):,.2f}',
+                f'${float(fila.otros or 0):,.2f}',
+                f'{float(fila.tasa_namv or 0):.4f}%',
+                f'${float(fila.saldo_capital or 0):,.2f}',
+            ])
+        )
+    return '\n'.join(lineas)
+
+
+def _guardar_tabla_amortizacion(obligacion, filas):
+    AmortizacionObligacion.query.filter_by(obligacion_id=obligacion.id).delete()
+    for fila in filas:
+        db.session.add(AmortizacionObligacion(obligacion_id=obligacion.id, **fila))
+    setattr(obligacion, '_tabla_amortizacion_cache', None)
 
 
 def _conceptos_activos_categoria(nombre_categoria, anio, mes):
@@ -41,6 +204,16 @@ def _conceptos_activos_categoria(nombre_categoria, anio, mes):
 
 
 def _valor_estimado_obligacion(obligacion, ultimo_pago=None):
+    if obligacion.modalidad == 'bancario_tabla_amortizacion':
+        fecha_inicio_tabla = _coerce_date(obligacion.fecha_inicio_amortizacion)
+        periodo_hoy = date.today().replace(day=1)
+        if not fecha_inicio_tabla or periodo_hoy >= fecha_inicio_tabla.replace(day=1):
+            tabla = _tabla_amortizacion_map(obligacion)
+            fila = tabla.get((date.today().year, date.today().month))
+            if not fila and tabla:
+                fila = tabla.get(min(tabla.keys()))
+            if fila:
+                return _valor_total_amortizacion(fila)
     if obligacion.valor_cuota_fija:
         return float(obligacion.valor_cuota_fija)
     if obligacion.valor_cuota_capital is not None or obligacion.valor_cuota_interes is not None:
@@ -57,6 +230,15 @@ def _valor_estimado_obligacion(obligacion, ultimo_pago=None):
 
 
 def _fuente_valor_estimado_obligacion(obligacion, ultimo_pago=None):
+    if (
+        obligacion.modalidad == 'bancario_tabla_amortizacion'
+        and obligacion.amortizaciones.count() > 0
+        and (
+            not _coerce_date(obligacion.fecha_inicio_amortizacion)
+            or date.today().replace(day=1) >= _coerce_date(obligacion.fecha_inicio_amortizacion).replace(day=1)
+        )
+    ):
+        return 'tabla_amortizacion'
     if obligacion.valor_cuota_fija:
         return 'cuota_fija'
     if obligacion.valor_cuota_capital is not None or obligacion.valor_cuota_interes is not None:
@@ -86,6 +268,8 @@ def _registrar_historial_pago_obligacion(pago, accion, motivo=None):
         valor_pagado=pago.valor_pagado,
         componente_capital=pago.componente_capital,
         componente_interes=pago.componente_interes,
+        componente_seguro_vida=pago.componente_seguro_vida,
+        componente_otros=pago.componente_otros,
         numero_cuota=pago.numero_cuota,
         dia_pago_reportado=pago.dia_pago_reportado,
         fecha_pago=pago.fecha_pago,
@@ -263,6 +447,10 @@ def _obligacion_operativa_en_periodo(obligacion, anio, mes):
 
 def _fechas_programadas_obligacion(obligacion, anio, mes):
     inicio_mes, fin_mes = _rango_mes(anio, mes)
+    if _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes):
+        fila = _fila_amortizacion_periodo(obligacion, anio, mes)
+        return [fila.fecha_pago] if fila and fila.fecha_pago else []
+
     fecha_inicio = _coerce_date(obligacion.fecha_inicio)
     fecha_final = _coerce_date(obligacion.fecha_vencimiento)
     dia_base_programado = _dia_base_obligacion(obligacion, fecha_inicio)
@@ -311,6 +499,17 @@ def _fechas_programadas_obligacion(obligacion, anio, mes):
 
 
 def _siguiente_fecha_programada(obligacion, desde_fecha):
+    fecha_inicio_tabla = _coerce_date(obligacion.fecha_inicio_amortizacion)
+    if (
+        obligacion.modalidad == 'bancario_tabla_amortizacion'
+        and (not fecha_inicio_tabla or desde_fecha >= fecha_inicio_tabla.replace(day=1))
+    ):
+        filas = obligacion.amortizaciones.order_by(AmortizacionObligacion.fecha_pago.asc()).all()
+        for fila in filas:
+            if fila.fecha_pago and fila.fecha_pago > desde_fecha:
+                return fila.fecha_pago
+        return None
+
     fecha_inicio = _coerce_date(obligacion.fecha_inicio)
     fecha_final = _coerce_date(obligacion.fecha_vencimiento)
     dia_base_programado = _dia_base_obligacion(obligacion, fecha_inicio)
@@ -411,6 +610,10 @@ def _es_pactado_informativo_mes(obligacion, anio, mes):
 
 
 def _valor_programado_mes_obligacion(obligacion, anio, mes, ultimo_pago=None):
+    if _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes):
+        fila = _fila_amortizacion_periodo(obligacion, anio, mes)
+        return _valor_total_amortizacion(fila)
+
     base = _valor_estimado_obligacion(obligacion, ultimo_pago)
     if base <= 0:
         return 0
@@ -612,7 +815,10 @@ def _date_or_none(valor):
         return None
 
 
-def _validar_desglose_cuota_form(requiere_desglose, valor_cuota_fija, valor_cuota_capital, valor_cuota_interes):
+def _validar_desglose_cuota_form(modalidad, requiere_desglose, valor_cuota_fija, valor_cuota_capital, valor_cuota_interes):
+    if modalidad == 'bancario_tabla_amortizacion':
+        return None
+
     total = _float_or_none(valor_cuota_fija)
     capital = _float_or_none(valor_cuota_capital)
     interes = _float_or_none(valor_cuota_interes)
@@ -703,12 +909,37 @@ def verificar_valores():
 @obligaciones_bp.route('/nueva', methods=['GET', 'POST'])
 def nueva():
     if request.method == 'POST':
+        modalidad = request.form['modalidad']
+        tabla_amortizacion_texto = (request.form.get('tabla_amortizacion') or '').strip()
+        fecha_inicio_amortizacion_valor = request.form.get('fecha_inicio_amortizacion') or None
+        fecha_inicio_amortizacion = _date_or_none(fecha_inicio_amortizacion_valor)
+        if fecha_inicio_amortizacion_valor and fecha_inicio_amortizacion is None:
+            flash('La fecha desde la cual aplica la tabla de amortizacion no es valida.', 'danger')
+            return redirect(request.url)
+
+        filas_amortizacion = []
+        if modalidad == 'bancario_tabla_amortizacion':
+            if not tabla_amortizacion_texto:
+                flash('Debe pegar la tabla de amortizacion para esta modalidad.', 'danger')
+                return redirect(request.url)
+            filas_amortizacion, error_tabla = _parsear_tabla_amortizacion(tabla_amortizacion_texto)
+            if error_tabla:
+                flash(error_tabla, 'danger')
+                return redirect(request.url)
+            if not fecha_inicio_amortizacion and filas_amortizacion:
+                fecha_inicio_amortizacion = filas_amortizacion[0]['fecha_pago'].replace(day=1)
+
         tiene_desglose_cuota = any(
             _float_or_none(request.form.get(campo)) is not None
             for campo in ('valor_cuota_capital', 'valor_cuota_interes')
         )
-        requiere_desglose_pago = request.form.get('requiere_desglose_pago') == 'on' or tiene_desglose_cuota
+        requiere_desglose_pago = (
+            request.form.get('requiere_desglose_pago') == 'on'
+            or tiene_desglose_cuota
+            or modalidad == 'bancario_tabla_amortizacion'
+        )
         error_desglose = _validar_desglose_cuota_form(
+            modalidad,
             requiere_desglose_pago,
             request.form.get('valor_cuota_fija'),
             request.form.get('valor_cuota_capital'),
@@ -718,31 +949,58 @@ def nueva():
             flash(error_desglose, 'danger')
             return redirect(request.url)
 
+        soporte_nombre, soporte_mime, soporte_archivo, error_soporte = _leer_comprobante(
+            request.files.get('soporte_amortizacion')
+        )
+        if error_soporte:
+            flash(error_soporte, 'danger')
+            return redirect(request.url)
+
+        fecha_inicio = request.form.get('fecha_inicio') or (
+            filas_amortizacion[0]['fecha_pago'].isoformat() if filas_amortizacion else None
+        )
+        fecha_vencimiento = request.form.get('fecha_vencimiento') or (
+            filas_amortizacion[-1]['fecha_pago'].isoformat() if filas_amortizacion else None
+        )
+        cuotas_totales = request.form.get('cuotas_totales') or (
+            len(filas_amortizacion) if filas_amortizacion else None
+        )
+        dia_limite_pago = request.form.get('dia_limite_pago') or (
+            filas_amortizacion[0]['fecha_pago'].day if filas_amortizacion else None
+        )
+
         obligacion = Obligacion(
             tercero_id=request.form['tercero_id'],
             concepto_id=request.form['concepto_id'],
-            modalidad=request.form['modalidad'],
+            modalidad=modalidad,
             capital_inicial=_money_raw_or_none(request.form.get('capital_inicial')),
             saldo_actual=_money_raw_or_none(request.form.get('saldo_actual')) or _money_raw_or_none(request.form.get('capital_inicial')),
             tasa_interes_mensual=request.form.get('tasa_interes_mensual') or None,
             plazo_meses=request.form.get('plazo_meses') or None,
             plazo_dias=request.form.get('plazo_dias') or None,
-            cuotas_totales=request.form.get('cuotas_totales') or None,
+            cuotas_totales=cuotas_totales,
             valor_cuota_fija=_money_raw_or_none(request.form.get('valor_cuota_fija')),
             valor_cuota_capital=_money_raw_or_none(request.form.get('valor_cuota_capital')),
             valor_cuota_interes=_money_raw_or_none(request.form.get('valor_cuota_interes')),
-            fecha_inicio=request.form.get('fecha_inicio') or None,
-            fecha_vencimiento=request.form.get('fecha_vencimiento') or None,
+            fecha_inicio=fecha_inicio,
+            fecha_vencimiento=fecha_vencimiento,
             fecha_recibe=request.form.get('fecha_recibe') or None,
+            fecha_inicio_amortizacion=fecha_inicio_amortizacion,
             titular=request.form.get('titular', '').strip(),
             referencia=request.form.get('referencia', '').strip(),
+            soporte_amortizacion_nombre=soporte_nombre,
+            soporte_amortizacion_mime=soporte_mime,
+            soporte_amortizacion_archivo=soporte_archivo,
             frecuencia_pago=request.form.get('frecuencia_pago', 'mensual'),
             requiere_desglose_pago=requiere_desglose_pago,
-            dia_limite_pago=request.form.get('dia_limite_pago') or None,
+            dia_limite_pago=dia_limite_pago,
             estado=request.form.get('estado', 'activo'),
             observaciones=request.form.get('observaciones', '').strip()
         )
         db.session.add(obligacion)
+        db.session.flush()
+        if modalidad == 'bancario_tabla_amortizacion':
+            _guardar_tabla_amortizacion(obligacion, filas_amortizacion)
         db.session.commit()
         flash('Obligación creada correctamente.', 'success')
         return redirect(url_for('obligaciones.lista'))
@@ -752,19 +1010,43 @@ def nueva():
     medios = MedioPago.query.filter_by(activo=True).all()
     return render_template('obligaciones/form.html', obligacion=None,
                            conceptos=conceptos, terceros=terceros,
-                           modalidades=MODALIDADES, medios=medios, hoy=date.today())
+                           modalidades=MODALIDADES, medios=medios, hoy=date.today(),
+                           tabla_amortizacion_texto='')
 
 
 @obligaciones_bp.route('/<int:id>/editar', methods=['GET', 'POST'])
 def editar(id):
     obligacion = Obligacion.query.get_or_404(id)
     if request.method == 'POST':
+        modalidad = request.form['modalidad']
+        tabla_amortizacion_texto = (request.form.get('tabla_amortizacion') or '').strip()
+        fecha_inicio_amortizacion_valor = request.form.get('fecha_inicio_amortizacion') or None
+        fecha_inicio_amortizacion = _date_or_none(fecha_inicio_amortizacion_valor)
+        if fecha_inicio_amortizacion_valor and fecha_inicio_amortizacion is None:
+            flash('La fecha desde la cual aplica la tabla de amortizacion no es valida.', 'danger')
+            return redirect(request.url)
+
+        filas_amortizacion = None
+        if modalidad == 'bancario_tabla_amortizacion' and tabla_amortizacion_texto:
+            filas_amortizacion, error_tabla = _parsear_tabla_amortizacion(tabla_amortizacion_texto)
+            if error_tabla:
+                flash(error_tabla, 'danger')
+                return redirect(request.url)
+        elif modalidad == 'bancario_tabla_amortizacion' and obligacion.amortizaciones.count() == 0:
+            flash('Debe cargar la tabla de amortizacion para esta modalidad.', 'danger')
+            return redirect(request.url)
+
         tiene_desglose_cuota = any(
             _float_or_none(request.form.get(campo)) is not None
             for campo in ('valor_cuota_capital', 'valor_cuota_interes')
         )
-        requiere_desglose_pago = request.form.get('requiere_desglose_pago') == 'on' or tiene_desglose_cuota
+        requiere_desglose_pago = (
+            request.form.get('requiere_desglose_pago') == 'on'
+            or tiene_desglose_cuota
+            or modalidad == 'bancario_tabla_amortizacion'
+        )
         error_desglose = _validar_desglose_cuota_form(
+            modalidad,
             requiere_desglose_pago,
             request.form.get('valor_cuota_fija'),
             request.form.get('valor_cuota_capital'),
@@ -785,21 +1067,37 @@ def editar(id):
             flash('La fecha de finalizacion no es valida.', 'danger')
             return redirect(request.url)
 
+        soporte_nombre, soporte_mime, soporte_archivo, error_soporte = _leer_comprobante(
+            request.files.get('soporte_amortizacion')
+        )
+        if error_soporte:
+            flash(error_soporte, 'danger')
+            return redirect(request.url)
+
+        if modalidad == 'bancario_tabla_amortizacion' and not fecha_inicio_amortizacion:
+            if filas_amortizacion:
+                fecha_inicio_amortizacion = filas_amortizacion[0]['fecha_pago'].replace(day=1)
+            else:
+                fecha_inicio_amortizacion = obligacion.fecha_inicio_amortizacion
+
         obligacion.tercero_id = request.form['tercero_id']
         obligacion.concepto_id = request.form['concepto_id']
-        obligacion.modalidad = request.form['modalidad']
+        obligacion.modalidad = modalidad
         obligacion.capital_inicial = _money_raw_or_none(request.form.get('capital_inicial'))
         obligacion.saldo_actual = 0 if finalizar_obligacion else _money_raw_or_none(request.form.get('saldo_actual'))
         obligacion.tasa_interes_mensual = request.form.get('tasa_interes_mensual') or None
         obligacion.plazo_meses = request.form.get('plazo_meses') or None
         obligacion.plazo_dias = request.form.get('plazo_dias') or None
-        obligacion.cuotas_totales = request.form.get('cuotas_totales') or None
+        obligacion.cuotas_totales = request.form.get('cuotas_totales') or (
+            len(filas_amortizacion) if filas_amortizacion else obligacion.cuotas_totales
+        )
         obligacion.valor_cuota_fija = _money_raw_or_none(request.form.get('valor_cuota_fija'))
         obligacion.valor_cuota_capital = _money_raw_or_none(request.form.get('valor_cuota_capital'))
         obligacion.valor_cuota_interes = _money_raw_or_none(request.form.get('valor_cuota_interes'))
         obligacion.fecha_inicio = request.form.get('fecha_inicio') or None
         obligacion.fecha_vencimiento = request.form.get('fecha_vencimiento') or None
         obligacion.fecha_recibe = request.form.get('fecha_recibe') or None
+        obligacion.fecha_inicio_amortizacion = fecha_inicio_amortizacion if modalidad == 'bancario_tabla_amortizacion' else None
         obligacion.titular = request.form.get('titular', '').strip()
         obligacion.referencia = request.form.get('referencia', '').strip()
         obligacion.frecuencia_pago = request.form.get('frecuencia_pago', 'mensual')
@@ -808,6 +1106,18 @@ def editar(id):
         obligacion.estado = 'finalizado' if finalizar_obligacion else estado_solicitado
         obligacion.fecha_finalizacion = (fecha_finalizacion or date.today()) if finalizar_obligacion else None
         obligacion.observaciones = request.form.get('observaciones', '').strip()
+        if soporte_archivo:
+            obligacion.soporte_amortizacion_nombre = soporte_nombre
+            obligacion.soporte_amortizacion_mime = soporte_mime
+            obligacion.soporte_amortizacion_archivo = soporte_archivo
+        if modalidad != 'bancario_tabla_amortizacion':
+            AmortizacionObligacion.query.filter_by(obligacion_id=obligacion.id).delete()
+        elif filas_amortizacion:
+            if not obligacion.fecha_vencimiento:
+                obligacion.fecha_vencimiento = filas_amortizacion[-1]['fecha_pago']
+            if not obligacion.dia_limite_pago:
+                obligacion.dia_limite_pago = filas_amortizacion[0]['fecha_pago'].day
+            _guardar_tabla_amortizacion(obligacion, filas_amortizacion)
         if finalizar_obligacion and obligacion.cuotas_totales is not None:
             obligacion.cuotas_totales = obligacion.cuotas_pagadas or 0
         db.session.commit()
@@ -821,7 +1131,8 @@ def editar(id):
     medios = MedioPago.query.filter_by(activo=True).all()
     return render_template('obligaciones/form.html', obligacion=obligacion,
                            conceptos=conceptos, terceros=terceros,
-                           modalidades=MODALIDADES, medios=medios, hoy=date.today())
+                           modalidades=MODALIDADES, medios=medios, hoy=date.today(),
+                           tabla_amortizacion_texto=_serializar_tabla_amortizacion(obligacion))
 
 
 @obligaciones_bp.route('/pagos')
@@ -901,7 +1212,9 @@ def pagos(anio=None, mes=None):
         totales_pago_rows = db.session.query(
             PagoObligacion.obligacion_id,
             func.coalesce(func.sum(PagoObligacion.componente_capital), 0).label('capital_pagado'),
-            func.coalesce(func.sum(PagoObligacion.componente_interes), 0).label('interes_pagado')
+            func.coalesce(func.sum(PagoObligacion.componente_interes), 0).label('interes_pagado'),
+            func.coalesce(func.sum(PagoObligacion.componente_seguro_vida), 0).label('seguro_pagado'),
+            func.coalesce(func.sum(PagoObligacion.componente_otros), 0).label('otros_pagado')
         ).filter(
             PagoObligacion.obligacion_id.in_(obligacion_ids),
             PagoObligacion.estado.in_(['pagado', 'parcial'])
@@ -911,8 +1224,10 @@ def pagos(anio=None, mes=None):
             obligacion_id: {
                 'capital_pagado': float(capital_pagado or 0),
                 'interes_pagado': float(interes_pagado or 0),
+                'seguro_pagado': float(seguro_pagado or 0),
+                'otros_pagado': float(otros_pagado or 0),
             }
-            for obligacion_id, capital_pagado, interes_pagado in totales_pago_rows
+            for obligacion_id, capital_pagado, interes_pagado, seguro_pagado, otros_pagado in totales_pago_rows
         }
 
     # Pendientes de meses anteriores (pendiente, causado, vencido, parcial, sin_causar)
@@ -1058,6 +1373,7 @@ def pagos(anio=None, mes=None):
     items_mes_actual = []
     for o in obligaciones:
         es_pactado_informativo = _es_pactado_informativo_mes(o, anio, mes)
+        componentes_programados = _componentes_programados_periodo(o, anio, mes)
         cuota_estimado = 0 if es_pactado_informativo else _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
         total_estimado_mes += cuota_estimado
         if cuota_estimado > 0:
@@ -1088,7 +1404,12 @@ def pagos(anio=None, mes=None):
             'es_informativo': es_pactado_informativo,
             'valor_causado': valor_causado,
             'cuota_esperada': cuota_estimado,
-            'valor_pagado': valor_pagado
+            'valor_pagado': valor_pagado,
+            'usa_tabla_amortizacion': _obligacion_usa_tabla_amortizacion_en_periodo(o, anio, mes),
+            'programado_capital': componentes_programados['capital'],
+            'programado_interes': componentes_programados['interes'],
+            'programado_seguro_vida': componentes_programados['seguro_vida'],
+            'programado_otros': componentes_programados['otros'],
         })
 
     esperado_mes = float(causado_mes_actual) + sin_causar_mes
@@ -1135,6 +1456,7 @@ def pagos(anio=None, mes=None):
     for o in obligaciones:
         es_informativo = _es_pactado_informativo_mes(o, anio, mes)
         cuota_esperada = _valor_programado_mes_obligacion(o, anio, mes, ultimos_pagos_dict.get(o.id))
+        componentes_programados = _componentes_programados_periodo(o, anio, mes)
         valor_referencia_card = _valor_estimado_obligacion(o, ultimos_pagos_dict.get(o.id)) if es_informativo else cuota_esperada
         pago = pagos_dict.get(o.id)
         estado = _estado_visible_pago(pago, cuota_esperada or valor_referencia_card)
@@ -1221,6 +1543,8 @@ def pagos(anio=None, mes=None):
         totales_pago = totales_pago_dict.get(o.id, {})
         capital_pagado_total = float(totales_pago.get('capital_pagado', 0))
         interes_pagado_total = float(totales_pago.get('interes_pagado', 0))
+        seguro_pagado_total = float(totales_pago.get('seguro_pagado', 0))
+        otros_pagado_total = float(totales_pago.get('otros_pagado', 0))
         pendiente_total = _saldo_pendiente_total_obligacion(o, capital_pagado_total)
         fecha_ultimo_pago = _fecha_ultimo_pago_estimada(o, fecha_referencia)
         dias_ultimo_pago = (fecha_ultimo_pago - hoy).days if fecha_ultimo_pago else None
@@ -1335,11 +1659,20 @@ def pagos(anio=None, mes=None):
             'es_estimado': (pago_anulado or not pago or not (pago.valor_causado or pago.valor_pagado)) and not esta_vencido,
             'capital_pagado_total': capital_pagado_total,
             'interes_pagado_total': interes_pagado_total,
+            'seguro_pagado_total': seguro_pagado_total,
+            'otros_pagado_total': otros_pagado_total,
             'pendiente_total': pendiente_total,
             'saldo_anterior': saldo_anterior_por_obligacion.get(o.id, 0),
             'fecha_ultimo_pago': fecha_ultimo_pago,
             'dias_ultimo_pago': dias_ultimo_pago,
             'pago_anulado': pago_anulado,
+            'usa_tabla_amortizacion': _obligacion_usa_tabla_amortizacion_en_periodo(o, anio, mes),
+            'programado_capital': componentes_programados['capital'],
+            'programado_interes': componentes_programados['interes'],
+            'programado_seguro_vida': componentes_programados['seguro_vida'],
+            'programado_otros': componentes_programados['otros'],
+            'programado_tasa_namv': componentes_programados['tasa_namv'],
+            'programado_saldo_capital': componentes_programados['saldo_capital'],
             'resumen_estado': resumen_estado,
             'resumen_fecha_label': resumen_fecha_label,
             'resumen_fecha': resumen_fecha,
@@ -1401,6 +1734,7 @@ def pagos(anio=None, mes=None):
 def _color_modalidad(mod):
     colores = {
         'bancario_cuota_fija': '#2563eb',
+        'bancario_tabla_amortizacion': '#0f766e',
         'solo_interes': '#f59e0b',
         'cadena': '#8b5cf6',
         'pago_total_pactado': '#059669',
@@ -1414,17 +1748,24 @@ def registrar_pago():
     anio = int(request.form['anio'])
     mes = int(request.form['mes'])
     obligacion = Obligacion.query.get_or_404(obligacion_id)
+    usa_tabla_amortizacion = _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes)
+    fila_amortizacion = _fila_amortizacion_periodo(obligacion, anio, mes)
     accion = request.form.get('accion', 'pagar')  # causar o pagar
     valor_causado = _money_raw_or_none(request.form.get('valor_causado'))
     valor_pagado = _money_raw_or_none(request.form.get('valor_pagado'))
     componente_capital = _money_raw_or_none(request.form.get('componente_capital'))
     componente_interes = _money_raw_or_none(request.form.get('componente_interes'))
+    componente_seguro_vida = _money_raw_or_none(request.form.get('componente_seguro_vida'))
+    componente_otros = _money_raw_or_none(request.form.get('componente_otros'))
     estado = request.form.get('estado', 'pagado')
     medio_pago_id = request.form.get('medio_pago_id') or None
     fecha_pago = request.form.get('fecha_pago') or None
     dia_pago_reportado, error_dia = _resolver_dia_pago(
         request.form.get('dia_pago_reportado')
     )
+    if usa_tabla_amortizacion and fila_amortizacion:
+        valor_causado = _money_raw_or_none(_valor_total_amortizacion(fila_amortizacion))
+        dia_pago_reportado = fila_amortizacion.fecha_pago.day
     if accion == 'causar' and error_dia:
         flash(error_dia, 'danger')
         return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
@@ -1444,6 +1785,22 @@ def registrar_pago():
     valor_pagado_num = _float_or_none(valor_pagado)
     componente_capital_num = _float_or_none(componente_capital)
     componente_interes_num = _float_or_none(componente_interes)
+    componente_seguro_vida_num = _float_or_none(componente_seguro_vida)
+    componente_otros_num = _float_or_none(componente_otros)
+
+    if usa_tabla_amortizacion and fila_amortizacion:
+        if componente_capital_num is None:
+            componente_capital = _money_raw_or_none(fila_amortizacion.capital)
+            componente_capital_num = _float_or_none(componente_capital)
+        if componente_interes_num is None:
+            componente_interes = _money_raw_or_none(fila_amortizacion.intereses)
+            componente_interes_num = _float_or_none(componente_interes)
+        if componente_seguro_vida_num is None:
+            componente_seguro_vida = _money_raw_or_none(fila_amortizacion.seguro_vida or 0)
+            componente_seguro_vida_num = _float_or_none(componente_seguro_vida)
+        if componente_otros_num is None:
+            componente_otros = _money_raw_or_none(fila_amortizacion.otros or 0)
+            componente_otros_num = _float_or_none(componente_otros)
 
     pago = PagoObligacion.query.filter_by(
         obligacion_id=obligacion_id, anio=anio, mes=mes
@@ -1460,11 +1817,16 @@ def registrar_pago():
                 return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
 
             base_comparacion = valor_pagado_num if valor_pagado_num is not None else valor_causado_num
-            total_componentes = (componente_capital_num or 0) + (componente_interes_num or 0)
+            total_componentes = _componentes_pago_total(
+                componente_capital_num,
+                componente_interes_num,
+                componente_seguro_vida_num,
+                componente_otros_num,
+            )
             if base_comparacion is not None and abs(total_componentes - base_comparacion) > 1:
-                flash('La suma de capital e interes debe coincidir con la cuota pagada.', 'danger')
+                flash('La suma de capital, interes, seguro y otros debe coincidir con la cuota pagada.', 'danger')
                 return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
-        elif (componente_capital_num is None) ^ (componente_interes_num is None):
+        elif ((componente_capital_num is None) ^ (componente_interes_num is None)):
             flash('Si registra capital o interes, debe diligenciar ambos valores.', 'danger')
             return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
 
@@ -1493,6 +1855,8 @@ def registrar_pago():
             pago.valor_pagado = valor_pagado
             pago.componente_capital = componente_capital
             pago.componente_interes = componente_interes
+            pago.componente_seguro_vida = componente_seguro_vida
+            pago.componente_otros = componente_otros
             pago.estado = estado
             pago.medio_pago_id = medio_pago_id
             pago.fecha_pago = fecha_pago
@@ -1520,6 +1884,8 @@ def registrar_pago():
                 valor_causado=valor_causado, valor_pagado=valor_pagado,
                 componente_capital=componente_capital,
                 componente_interes=componente_interes,
+                componente_seguro_vida=componente_seguro_vida,
+                componente_otros=componente_otros,
                 numero_cuota=numero_cuota,
                 estado=estado, medio_pago_id=medio_pago_id,
                 fecha_pago=fecha_pago, observaciones=observaciones,
@@ -1529,7 +1895,7 @@ def registrar_pago():
             )
         db.session.add(pago)
 
-    if accion == 'causar' and dia_pago_reportado:
+    if accion == 'causar' and dia_pago_reportado and not usa_tabla_amortizacion:
         _aplicar_dia_pago_obligacion(obligacion, dia_pago_reportado)
 
     # Actualizar saldo y cuotas de la obligación si se pagó
@@ -1577,6 +1943,21 @@ def actualizar_comprobante(pago_id):
     return redirect(url_for('obligaciones.pagos', anio=pago.anio, mes=pago.mes))
 
 
+@obligaciones_bp.route('/<int:id>/soporte-amortizacion')
+def descargar_soporte_amortizacion(id):
+    obligacion = Obligacion.query.get_or_404(id)
+    if not obligacion.soporte_amortizacion_archivo:
+        flash('Esta obligacion no tiene soporte de amortizacion adjunto.', 'warning')
+        return redirect(request.referrer or url_for('obligaciones.editar', id=id))
+
+    return send_file(
+        BytesIO(obligacion.soporte_amortizacion_archivo),
+        mimetype=obligacion.soporte_amortizacion_mime or 'application/octet-stream',
+        download_name=obligacion.soporte_amortizacion_nombre or f'amortizacion_obligacion_{id}.pdf',
+        as_attachment=False
+    )
+
+
 @obligaciones_bp.route('/pago/<int:pago_id>/anular', methods=['POST'])
 def anular_pago(pago_id):
     pago = PagoObligacion.query.get_or_404(pago_id)
@@ -1595,6 +1976,8 @@ def anular_pago(pago_id):
     pago.valor_pagado = None
     pago.componente_capital = None
     pago.componente_interes = None
+    pago.componente_seguro_vida = None
+    pago.componente_otros = None
     pago.fecha_pago = None
     pago.medio_pago_id = None
     pago.comprobante_nombre = None
@@ -1626,6 +2009,8 @@ def ajustar_pago_cancelado(pago_id):
     valor_causado = _money_raw_or_none(request.form.get('valor_causado'))
     componente_capital = _money_raw_or_none(request.form.get('componente_capital'))
     componente_interes = _money_raw_or_none(request.form.get('componente_interes'))
+    componente_seguro_vida = _money_raw_or_none(request.form.get('componente_seguro_vida'))
+    componente_otros = _money_raw_or_none(request.form.get('componente_otros'))
     medio_pago_id = request.form.get('medio_pago_id') or None
     fecha_pago = _date_or_none(request.form.get('fecha_pago'))
     observaciones = (request.form.get('observaciones') or '').strip()
@@ -1634,6 +2019,8 @@ def ajustar_pago_cancelado(pago_id):
     valor_causado_num = _float_or_none(valor_causado)
     componente_capital_num = _float_or_none(componente_capital)
     componente_interes_num = _float_or_none(componente_interes)
+    componente_seguro_vida_num = _float_or_none(componente_seguro_vida)
+    componente_otros_num = _float_or_none(componente_otros)
 
     if valor_pagado_num is None or valor_pagado_num <= 0:
         flash('El valor pagado ajustado debe ser mayor que cero.', 'danger')
@@ -1647,15 +2034,24 @@ def ajustar_pago_cancelado(pago_id):
         obligacion.requiere_desglose_pago
         or pago.componente_capital is not None
         or pago.componente_interes is not None
+        or pago.componente_seguro_vida is not None
+        or pago.componente_otros is not None
         or componente_capital_num is not None
         or componente_interes_num is not None
+        or componente_seguro_vida_num is not None
+        or componente_otros_num is not None
     )
     if requiere_desglose:
         if componente_capital_num is None or componente_interes_num is None:
             flash('Esta cuota requiere ajustar capital e interes junto con el valor pagado.', 'danger')
             return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
-        if abs((componente_capital_num or 0) + (componente_interes_num or 0) - valor_pagado_num) > 1:
-            flash('La suma de capital e interes debe coincidir con el valor pagado ajustado.', 'danger')
+        if abs(_componentes_pago_total(
+            componente_capital_num,
+            componente_interes_num,
+            componente_seguro_vida_num,
+            componente_otros_num,
+        ) - valor_pagado_num) > 1:
+            flash('La suma de capital, interes, seguro y otros debe coincidir con el valor pagado ajustado.', 'danger')
             return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
 
     _registrar_historial_pago_obligacion(pago, 'ajuste', motivo)
@@ -1670,6 +2066,8 @@ def ajustar_pago_cancelado(pago_id):
     if requiere_desglose:
         pago.componente_capital = componente_capital
         pago.componente_interes = componente_interes
+        pago.componente_seguro_vida = componente_seguro_vida
+        pago.componente_otros = componente_otros
 
     _aplicar_impacto_pago(obligacion, pago)
 
@@ -1691,11 +2089,13 @@ def detalle(id):
     ).all()
     pagos_dict = {p.mes: p for p in pagos}
     meses_aplicables = {mes: _obligacion_aplica_mes(obligacion, anio, mes) for mes in range(1, 13)}
+    amortizaciones = obligacion.amortizaciones.order_by(AmortizacionObligacion.fecha_pago.asc()).all()
     return render_template('obligaciones/detalle.html',
                            obligacion=obligacion, anio=anio,
                            meses=MESES, pagos=pagos_dict, medios=medios,
                            meses_aplicables=meses_aplicables,
-                           historial_pagos=historial_pagos)
+                           historial_pagos=historial_pagos,
+                           amortizaciones=amortizaciones)
 
 
 # ==================== REFINANCIACIONES ====================
@@ -1854,6 +2254,7 @@ def refinanciar(id):
     nuevo_valor_cuota_capital = request.form.get('nuevo_valor_cuota_capital')
     nuevo_valor_cuota_interes = request.form.get('nuevo_valor_cuota_interes')
     error_desglose = _validar_desglose_cuota_form(
+        obligacion.modalidad,
         bool(_float_or_none(nuevo_valor_cuota_capital) is not None or _float_or_none(nuevo_valor_cuota_interes) is not None),
         nuevo_valor_cuota,
         nuevo_valor_cuota_capital,

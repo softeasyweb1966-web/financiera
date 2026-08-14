@@ -10,16 +10,17 @@
             <div class="alert alert-light small mb-3 py-2">
                 <i class="bi bi-info-circle text-primary"></i>
                 <strong>Modalidades:</strong>
-                Bancario (cuota fija mensual) - Solo interes (paga interes mensual, devuelve capital al final) -
+                Bancario (cuota fija mensual) - Bancario con tabla de amortizacion - Solo interes (paga interes mensual, devuelve capital al final) -
                 Cadena (cuota fija entre personas) - Pago total (se paga todo cuando se pacte) -
                 Corto plazo (prestamo a dias: 8, 15, 30 dias).
                 <br><strong>Cadena:</strong> use fecha inicio, fecha final, fecha en que recibe y frecuencia mensual o quincenal.
+                <br><strong>Tabla de amortizacion:</strong> defina desde que fecha aplica y pegue las filas de la tabla. Desde ese corte la causacion se toma directo de la tabla.
                 <br>Si no encuentra el concepto o tercero, creelos desde
                 <a href="{{ url_for('catalogos.conceptos') }}">Conceptos</a> o
                 <a href="{{ url_for('terceros.nuevo') }}">Terceros</a>.
             </div>
 
-            <form method="POST">
+            <form method="POST" enctype="multipart/form-data">
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Acreedor (Tercero) *</label>
@@ -155,6 +156,35 @@
                     </div>
                 </div>
 
+                <div id="bloque_tabla_amortizacion" style="display:none;">
+                    <div class="alert alert-info small py-2">
+                        La modalidad con tabla de amortizacion toma el valor causado de cada mes directamente de la tabla cargada.
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Aplicar tabla desde</label>
+                            <input type="date" name="fecha_inicio_amortizacion" id="fecha_inicio_amortizacion" class="form-control" value="{{ obligacion.fecha_inicio_amortizacion if obligacion and obligacion.fecha_inicio_amortizacion else '' }}">
+                            <div class="form-text">Ejemplo para este caso: 2026-09-01.</div>
+                        </div>
+                        <div class="col-md-8 mb-3">
+                            <label class="form-label">PDF soporte de amortizacion</label>
+                            <input type="file" name="soporte_amortizacion" class="form-control" accept=".pdf,image/*">
+                            <div class="form-text">
+                                {% if obligacion and obligacion.soporte_amortizacion_archivo %}
+                                Soporte actual disponible. <a href="{{ url_for('obligaciones.descargar_soporte_amortizacion', id=obligacion.id) }}">Ver documento</a>.
+                                {% else %}
+                                Puede adjuntar el PDF o una imagen con la tabla.
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tabla de amortizacion</label>
+                        <textarea name="tabla_amortizacion" id="tabla_amortizacion" class="form-control" rows="10" placeholder="FECHA PAGO&#10;CAPITAL&#10;INTERESES&#10;SEGURO VIDA&#10;OTROS&#10;TASA NAMV&#10;SALDO CAPITAL">{{ tabla_amortizacion_texto or '' }}</textarea>
+                        <div class="form-text">Pegue las filas de Excel o del PDF. Si la columna OTROS no aplica, puede dejarla en cero u omitirla.</div>
+                    </div>
+                </div>
+
                 {% if obligacion %}
                 <div class="row">
                     <div class="col-md-4 mb-3">
@@ -204,20 +234,37 @@ function toggleCampos() {
     const frecuenciaPago = document.getElementById('campo_frecuencia_pago');
     const filaDesgloseCuota = document.getElementById('fila_desglose_cuota');
     const requiereDesglose = document.getElementById('requiere_desglose_pago');
+    const bloqueTabla = document.getElementById('bloque_tabla_amortizacion');
+    const fechaInicioTabla = document.getElementById('fecha_inicio_amortizacion');
+    const tablaAmortizacion = document.getElementById('tabla_amortizacion');
     const mostrarDesglose = requiereDesglose.checked;
+    const esTablaAmortizacion = mod === 'bancario_tabla_amortizacion';
 
     plazoDias.style.display = 'none';
     plazoMeses.style.display = 'block';
     cuotas.style.display = 'block';
     cuotaFija.style.display = 'block';
     frecuenciaPago.style.display = mod === 'cadena' ? 'block' : 'none';
-    filaDesgloseCuota.style.display = mostrarDesglose ? 'flex' : 'none';
+    filaDesgloseCuota.style.display = mostrarDesglose && !esTablaAmortizacion ? 'flex' : 'none';
+    bloqueTabla.style.display = esTablaAmortizacion ? 'block' : 'none';
+    requiereDesglose.disabled = esTablaAmortizacion;
+    if (esTablaAmortizacion) {
+        requiereDesglose.checked = true;
+        cuotaFija.style.display = 'none';
+        fechaInicioTabla.required = true;
+        tablaAmortizacion.required = true;
+    } else {
+        fechaInicioTabla.required = false;
+        tablaAmortizacion.required = false;
+    }
 
     if (mod === 'prestamo_corto_plazo') {
         plazoDias.style.display = 'block';
         plazoMeses.style.display = 'none';
         cuotas.style.display = mostrarDesglose ? 'block' : 'none';
         cuotaFija.style.display = 'block';
+    } else if (mod === 'bancario_tabla_amortizacion') {
+        cuotaFija.style.display = 'none';
     } else if (mod === 'solo_interes') {
         cuotas.style.display = 'none';
         cuotaFija.style.display = 'block';
