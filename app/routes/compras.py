@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from app import db
 from app.models import Compra, ConceptoCompra, ProductoCompra, Tercero, MedioPago
 from datetime import datetime, date
@@ -240,3 +240,43 @@ def marcar_pagado(id):
     db.session.commit()
     flash('Compra marcada como pagada.', 'success')
     return redirect(url_for('compras.lista', anio=compra.fecha.year, mes=compra.fecha.month))
+
+
+# ==================== APIs para crear inline ====================
+
+@compras_bp.route('/api/crear-concepto', methods=['POST'])
+def api_crear_concepto():
+    data = request.get_json()
+    nombre = (data.get('nombre') or '').strip()
+    descripcion = (data.get('descripcion') or '').strip()
+
+    if not nombre:
+        return jsonify({'error': 'El nombre es requerido'}), 400
+
+    existente = ConceptoCompra.query.filter_by(nombre=nombre).first()
+    if existente:
+        return jsonify({'error': f'Ya existe un concepto con el nombre "{nombre}"'}), 400
+
+    concepto = ConceptoCompra(nombre=nombre, descripcion=descripcion or None)
+    db.session.add(concepto)
+    db.session.commit()
+    return jsonify({'id': concepto.id, 'nombre': concepto.nombre})
+
+
+@compras_bp.route('/api/crear-item', methods=['POST'])
+def api_crear_item():
+    data = request.get_json()
+    nombre = (data.get('nombre') or '').strip()
+    concepto_compra_id = data.get('concepto_compra_id')
+
+    if not nombre or not concepto_compra_id:
+        return jsonify({'error': 'Nombre y concepto son requeridos'}), 400
+
+    existente = ProductoCompra.query.filter_by(nombre=nombre, concepto_compra_id=concepto_compra_id).first()
+    if existente:
+        return jsonify({'error': f'Ya existe un item "{nombre}" en ese concepto'}), 400
+
+    item = ProductoCompra(nombre=nombre, concepto_compra_id=int(concepto_compra_id))
+    db.session.add(item)
+    db.session.commit()
+    return jsonify({'id': item.id, 'nombre': item.nombre, 'concepto_compra_id': item.concepto_compra_id})

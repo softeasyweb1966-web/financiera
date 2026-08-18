@@ -14,21 +14,31 @@
                     </div>
                     <div class="col-12 col-md-4">
                         <label class="form-label">Concepto *</label>
-                        <select name="concepto_compra_id" id="concepto_compra_id" class="form-select" required>
-                            <option value="">Seleccione...</option>
-                            {% for c in conceptos %}
-                            <option value="{{ c.id }}" {{ 'selected' if compra and compra.concepto_compra_id == c.id else '' }}>{{ c.nombre }}</option>
-                            {% endfor %}
-                        </select>
+                        <div class="input-group">
+                            <select name="concepto_compra_id" id="concepto_compra_id" class="form-select" required>
+                                <option value="">Seleccione...</option>
+                                {% for c in conceptos %}
+                                <option value="{{ c.id }}" {{ 'selected' if compra and compra.concepto_compra_id == c.id else '' }}>{{ c.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" class="btn btn-outline-success" title="Crear concepto" data-bs-toggle="modal" data-bs-target="#modalNuevoConcepto">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="col-12 col-md-4">
                         <label class="form-label">Item</label>
-                        <select name="producto_compra_id" id="producto_compra_id" class="form-select">
-                            <option value="">-- Sin catalogar --</option>
-                            {% for p in productos %}
-                            <option value="{{ p.id }}" data-concepto="{{ p.concepto_compra_id }}" {{ 'selected' if compra and compra.producto_compra_id == p.id else '' }}>{{ p.nombre }}</option>
-                            {% endfor %}
-                        </select>
+                        <div class="input-group">
+                            <select name="producto_compra_id" id="producto_compra_id" class="form-select">
+                                <option value="">-- Sin catalogar --</option>
+                                {% for p in productos %}
+                                <option value="{{ p.id }}" data-concepto="{{ p.concepto_compra_id }}" {{ 'selected' if compra and compra.producto_compra_id == p.id else '' }}>{{ p.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" class="btn btn-outline-success" title="Crear item" data-bs-toggle="modal" data-bs-target="#modalNuevoItem">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
                         <div class="form-text">Ayuda a analizar en qué item se está comprando más.</div>
                     </div>
 
@@ -86,6 +96,65 @@
         </div>
     </div>
 </div>
+
+<!-- Modal Nuevo Concepto -->
+<div class="modal fade" id="modalNuevoConcepto" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form id="formNuevoConcepto">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold"><i class="bi bi-plus-lg text-success"></i> Nuevo concepto de compra</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label">Nombre *</label>
+                        <input type="text" id="nuevo_concepto_nombre" class="form-control" required placeholder="Ej: Medicamentos, Herramientas...">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Descripción</label>
+                        <input type="text" id="nuevo_concepto_desc" class="form-control form-control-sm" placeholder="Opcional">
+                    </div>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="button" class="btn btn-success btn-sm" onclick="crearConcepto()"><i class="bi bi-check"></i> Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nuevo Item -->
+<div class="modal fade" id="modalNuevoItem" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form id="formNuevoItem">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold"><i class="bi bi-plus-lg text-success"></i> Nuevo item</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label">Concepto padre *</label>
+                        <select id="nuevo_item_concepto" class="form-select form-select-sm" required>
+                            <option value="">Seleccione...</option>
+                            {% for c in conceptos %}
+                            <option value="{{ c.id }}">{{ c.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Nombre del item *</label>
+                        <input type="text" id="nuevo_item_nombre" class="form-control" required placeholder="Ej: Guantes, Toner, Monitor...">
+                    </div>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="button" class="btn btn-success btn-sm" onclick="crearItem()"><i class="bi bi-check"></i> Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -106,8 +175,67 @@ function filtrarProductosCompra() {
     }
 }
 
+function crearConcepto() {
+    const nombre = document.getElementById('nuevo_concepto_nombre').value.trim();
+    const desc = document.getElementById('nuevo_concepto_desc').value.trim();
+    if (!nombre) { alert('Ingrese un nombre'); return; }
+
+    fetch('/compras/api/crear-concepto', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({nombre: nombre, descripcion: desc})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) { alert(data.error); return; }
+        // Agregar al select de conceptos
+        const select = document.getElementById('concepto_compra_id');
+        const option = new Option(data.nombre, data.id, true, true);
+        select.add(option);
+        // También al select del modal de items
+        const selectItem = document.getElementById('nuevo_item_concepto');
+        selectItem.add(new Option(data.nombre, data.id));
+        // Cerrar modal
+        bootstrap.Modal.getInstance(document.getElementById('modalNuevoConcepto')).hide();
+        document.getElementById('nuevo_concepto_nombre').value = '';
+        document.getElementById('nuevo_concepto_desc').value = '';
+        filtrarProductosCompra();
+    })
+    .catch(err => alert('Error: ' + err));
+}
+
+function crearItem() {
+    const conceptoId = document.getElementById('nuevo_item_concepto').value;
+    const nombre = document.getElementById('nuevo_item_nombre').value.trim();
+    if (!conceptoId || !nombre) { alert('Complete concepto y nombre'); return; }
+
+    fetch('/compras/api/crear-item', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({concepto_compra_id: conceptoId, nombre: nombre})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) { alert(data.error); return; }
+        // Agregar al select de items
+        const select = document.getElementById('producto_compra_id');
+        const option = new Option(data.nombre, data.id, true, true);
+        option.dataset.concepto = data.concepto_compra_id;
+        select.add(option);
+        // Cerrar modal
+        bootstrap.Modal.getInstance(document.getElementById('modalNuevoItem')).hide();
+        document.getElementById('nuevo_item_nombre').value = '';
+        filtrarProductosCompra();
+    })
+    .catch(err => alert('Error: ' + err));
+}
+
 document.addEventListener('DOMContentLoaded', function () {
-    document.getElementById('concepto_compra_id').addEventListener('change', filtrarProductosCompra);
+    document.getElementById('concepto_compra_id').addEventListener('change', function() {
+        filtrarProductosCompra();
+        // Preseleccionar concepto en modal de items
+        document.getElementById('nuevo_item_concepto').value = this.value;
+    });
     filtrarProductosCompra();
 });
 </script>
