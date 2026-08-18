@@ -788,7 +788,7 @@
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-secondary py-2 px-3 small mb-3">
-                        Marque las cuotas viejas que desea cubrir. El sistema distribuye el valor en orden y deja la ultima como parcial si no alcanza.
+                        Primero digite el valor total. El sistema marcara desde la cuota mas vieja hasta donde alcance y luego usted puede ajustar que cuotas desea pagar o abonar.
                     </div>
                     <div class="row">
                         <div class="col-md-4 mb-2">
@@ -810,7 +810,7 @@
                     <div class="d-flex justify-content-between align-items-center mt-2 mb-2">
                         <strong class="small">Cuotas pendientes seleccionables</strong>
                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="marcarHastaAlcanceSaldosAnteriores()">
-                            <i class="bi bi-magic"></i> Marcar hasta donde alcance
+                            <i class="bi bi-magic"></i> Sugerir segun valor
                         </button>
                     </div>
                     <div id="saldos_items" class="border rounded p-2" style="max-height:320px; overflow:auto;"></div>
@@ -993,7 +993,7 @@ function renderSaldosAnteriores() {
             <label class="d-block border rounded p-2 mb-2 saldo-item-row">
                 <div class="d-flex justify-content-between align-items-start gap-2">
                     <div class="form-check mb-0">
-                        <input class="form-check-input saldo-check" type="checkbox" id="saldo-check-${index}" data-index="${index}" checked>
+                        <input class="form-check-input saldo-check" type="checkbox" id="saldo-check-${index}" data-index="${index}">
                         <span class="form-check-label">
                             <strong>${item.periodo}</strong>
                             <div class="small">${String(item.modalidad || '').split('_').join(' ')}</div>
@@ -1052,19 +1052,30 @@ function recalcularSaldosAnteriores() {
     document.getElementById('btn_guardar_saldos_anteriores').disabled = totalAplicado <= 0 || (valorTotal - totalAplicado) > 1;
 }
 
-function marcarHastaAlcanceSaldosAnteriores() {
+function autoSeleccionarSaldosAnterioresPorValor() {
     const valorTotal = window.FinancieraMoney.parse(document.getElementById('saldos_valor_total').value);
     let restante = valorTotal;
     document.querySelectorAll('.saldo-check').forEach(function(check) {
         const index = Number(check.dataset.index);
         const item = saldosAnterioresActuales[index];
+        const valorDeuda = Number(item.valor_deuda || 0);
+
+        if (valorTotal <= 0) {
+            check.checked = false;
+            return;
+        }
+
         if (restante > 0) {
             check.checked = true;
-            restante -= Number(item.valor_deuda || 0);
+            restante -= valorDeuda;
         } else {
             check.checked = false;
         }
     });
+}
+
+function marcarHastaAlcanceSaldosAnteriores() {
+    autoSeleccionarSaldosAnterioresPorValor();
     recalcularSaldosAnteriores();
 }
 
@@ -1081,7 +1092,10 @@ function prepararSaldosAnteriores(id, nombre, payload) {
     recalcularSaldosAnteriores();
 }
 
-document.getElementById('saldos_valor_total').addEventListener('input', recalcularSaldosAnteriores);
+document.getElementById('saldos_valor_total').addEventListener('input', function() {
+    autoSeleccionarSaldosAnterioresPorValor();
+    recalcularSaldosAnteriores();
+});
 document.getElementById('pago_valor_causado2').addEventListener('input', actualizarExcedentePago);
 document.getElementById('pago_valor').addEventListener('input', actualizarExcedentePago);
 document.getElementById('pago_otros').addEventListener('input', function() {
