@@ -99,7 +99,7 @@
                                 onclick='abrirCambioEstadoNomina({{ e.id }}, {{ e.nombre|tojson }}, {{ (e.estado or "activo")|tojson }})'>
                             <i class="bi bi-arrow-repeat"></i>
                         </button>
-                        <form method="POST" action="{{ url_for('nomina.eliminar', id=e.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar este empleado del catálogo?');">
+                        <form method="POST" action="{{ url_for('nomina.eliminar', id=e.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar este empleado y todo su historial de nómina?');">
                             <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                         </form>
                     </td>
@@ -156,7 +156,7 @@
             </div>
 
             <div class="mt-3">
-                <form method="POST" action="{{ url_for('nomina.eliminar', id=e.id) }}" onsubmit="return confirm('¿Eliminar este empleado del catálogo?');">
+                <form method="POST" action="{{ url_for('nomina.eliminar', id=e.id) }}" onsubmit="return confirm('¿Eliminar este empleado y todo su historial de nómina?');">
                     <button type="submit" class="btn btn-sm btn-outline-danger w-100"><i class="bi bi-trash"></i> Eliminar</button>
                 </form>
             </div>

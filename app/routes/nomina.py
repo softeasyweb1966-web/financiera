@@ -470,20 +470,19 @@ def cambiar_estado(id):
 @nomina_bp.route('/<int:id>/eliminar', methods=['POST'])
 def eliminar(id):
     empleado = Empleado.query.get_or_404(id)
-    tiene_historial = RegistroNomina.query.filter_by(empleado_id=empleado.id).first() is not None
-    tiene_saldos_anteriores = SaldoAnteriorNomina.query.filter_by(empleado_id=empleado.id).first() is not None
-    if tiene_historial or tiene_saldos_anteriores:
-        flash(
-            f'No se puede eliminar a "{empleado.nombre}" porque ya tiene historial en nomina o saldos anteriores cargados. '
-            'Cambie su estado a inactivo o retirado.',
-            'danger'
-        )
-        return redirect(url_for('nomina.lista'))
-
     nombre = empleado.nombre
+    registros_eliminados = RegistroNomina.query.filter_by(empleado_id=empleado.id).delete(synchronize_session=False)
+    saldos_eliminados = SaldoAnteriorNomina.query.filter_by(empleado_id=empleado.id).delete(synchronize_session=False)
+    historial_eliminado = HistorialEstado.query.filter_by(entidad='empleado', entidad_id=empleado.id).delete(
+        synchronize_session=False
+    )
     db.session.delete(empleado)
     db.session.commit()
-    flash(f'Empleado "{nombre}" eliminado del catalogo.', 'success')
+    flash(
+        f'Empleado "{nombre}" eliminado del catalogo. '
+        f'Se borraron {registros_eliminados} registros de nomina, {saldos_eliminados} saldos anteriores y {historial_eliminado} cambios de estado.',
+        'success'
+    )
     return redirect(url_for('nomina.lista'))
 
 
