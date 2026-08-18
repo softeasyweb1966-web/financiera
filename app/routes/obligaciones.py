@@ -322,21 +322,23 @@ def _registrar_historial_pago_obligacion(pago, accion, motivo=None):
 
 
 def _revertir_impacto_pago(obligacion, pago):
-    if not obligacion or pago.estado != 'pagado' or not pago.componente_capital:
+    if not obligacion or pago.estado not in ('pagado', 'parcial') or not pago.componente_capital:
         return
 
     if obligacion.saldo_actual is not None:
         obligacion.saldo_actual = float(obligacion.saldo_actual) + float(pago.componente_capital)
-    obligacion.cuotas_pagadas = max((obligacion.cuotas_pagadas or 0) - 1, 0)
+    if pago.estado == 'pagado':
+        obligacion.cuotas_pagadas = max((obligacion.cuotas_pagadas or 0) - 1, 0)
 
 
 def _aplicar_impacto_pago(obligacion, pago):
-    if not obligacion or pago.estado != 'pagado' or not pago.componente_capital:
+    if not obligacion or pago.estado not in ('pagado', 'parcial') or not pago.componente_capital:
         return
 
     if obligacion.saldo_actual is not None:
         obligacion.saldo_actual = float(obligacion.saldo_actual) - float(pago.componente_capital)
-    obligacion.cuotas_pagadas = (obligacion.cuotas_pagadas or 0) + 1
+    if pago.estado == 'pagado':
+        obligacion.cuotas_pagadas = (obligacion.cuotas_pagadas or 0) + 1
 
 
 def _estado_visible_pago(pago, cuota_referencia=None):
@@ -2237,8 +2239,7 @@ def pagar_saldos_anteriores():
             db.session.add(pago)
             pagos_por_periodo[(anio_item, mes_item)] = pago
 
-        if nuevo_estado == 'pagado':
-            _aplicar_impacto_pago(obligacion, pago)
+        _aplicar_impacto_pago(obligacion, pago)
         periodos_actualizados += 1
 
     db.session.commit()
