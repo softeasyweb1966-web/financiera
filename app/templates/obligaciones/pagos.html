@@ -247,32 +247,6 @@
     </div>
 </div>
 
-{% if pendientes_anteriores %}
-<div class="alerta-deuda p-3 rounded mb-3">
-    <h6 class="fw-bold text-danger mb-2"><i class="bi bi-exclamation-triangle"></i> Cuotas pendientes de meses anteriores</h6>
-    <div class="row g-2">
-        {% for item in pendientes_anteriores %}
-        <div class="col-12 col-md-6 col-lg-4">
-            <div class="d-flex justify-content-between align-items-center bg-white p-2 rounded small">
-                <div>
-                    <span class="indicador ind-pendiente"></span>
-                    <strong>{{ item.obligacion.tercero.nombre }}</strong>
-                    <br><small class="text-muted">{{ item.mes_nombre }} {{ item.anio }} - {{ item.obligacion.modalidad.replace('_',' ')|title }}</small>
-                    {% if item.descripcion %}
-                    <br><small class="text-muted">{{ item.descripcion }}</small>
-                    {% endif %}
-                    {% if item.es_parcial %}
-                    <br><small style="color:#8b5cf6">Abonado: ${{ "{:,.0f}".format(item.valor_abonado) }} de ${{ "{:,.0f}".format(item.valor_cuota) }}</small>
-                    {% endif %}
-                </div>
-                <span class="text-danger fw-bold">${{ "{:,.0f}".format(item.valor_deuda) }}</span>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
-
 {% if resumen_grupos %}
 <div class="card p-3 mb-3">
     <h6 class="fw-bold mb-2"><i class="bi bi-pie-chart text-primary"></i> Resumen {{ meses[mes-1] }} por modalidad</h6>
