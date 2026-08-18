@@ -9,7 +9,7 @@ migrate = Migrate()
 
 
 def _ensure_schema():
-    from app.models import AmortizacionObligacion, HistorialPagoObligacion
+    from app.models import AmortizacionObligacion, HistorialPagoObligacion, SaldoAnteriorNomina
 
     inspector = inspect(db.engine)
     if not inspector.has_table('tipo_tercero'):
@@ -28,6 +28,10 @@ def _ensure_schema():
             db.session.execute(text('DROP SEQUENCE IF EXISTS amortizaciones_obligaciones_id_seq CASCADE'))
             db.session.commit()
             AmortizacionObligacion.__table__.create(bind=db.engine, checkfirst=True)
+        inspector = inspect(db.engine)
+
+    if not inspector.has_table('saldos_anteriores_nomina'):
+        SaldoAnteriorNomina.__table__.create(bind=db.engine, checkfirst=True)
         inspector = inspect(db.engine)
 
     if inspector.has_table('historial_estados'):

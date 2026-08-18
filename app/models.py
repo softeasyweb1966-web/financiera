@@ -438,6 +438,7 @@ class Empleado(db.Model):
 
     tercero = db.relationship('Tercero', backref='empleado_info')
     registros_nomina = db.relationship('RegistroNomina', backref='empleado', lazy='dynamic')
+    saldos_anteriores_nomina = db.relationship('SaldoAnteriorNomina', backref='empleado', lazy='dynamic')
 
     @property
     def nombre(self):
@@ -445,6 +446,26 @@ class Empleado(db.Model):
 
     def __repr__(self):
         return f'<Empleado {self.nombre} - {self.cargo}>'
+
+
+class SaldoAnteriorNomina(db.Model):
+    """Saldo historico de nomina cargado manualmente por quincena anterior al inicio operativo."""
+    __tablename__ = 'saldos_anteriores_nomina'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False)
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    quincena = db.Column(db.Integer, nullable=False)
+    valor_inicial = db.Column(db.Numeric(14, 2), nullable=False)
+    saldo_pendiente = db.Column(db.Numeric(14, 2), nullable=False)
+    estado = db.Column(db.String(20), default='pendiente')  # pendiente, parcial, pagado, anulado
+    observaciones = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<SaldoAnteriorNomina {self.empleado_id} {self.anio}-{self.mes} Q{self.quincena}>'
 
 
 # ============================================================

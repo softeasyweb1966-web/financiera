@@ -24,12 +24,43 @@
         </small>
     </div>
     <div class="d-flex gap-1">
+        {% if anio > nomina_inicio_anio %}
         <a href="{{ url_for('nomina.detalle', id=empleado.id, anio=anio-1) }}" class="btn btn-outline-secondary btn-sm">← {{ anio-1 }}</a>
+        {% endif %}
         <span class="btn btn-sm btn-primary disabled">{{ anio }}</span>
         <a href="{{ url_for('nomina.detalle', id=empleado.id, anio=anio+1) }}" class="btn btn-outline-secondary btn-sm">{{ anio+1 }} →</a>
         <a href="{{ url_for('nomina.pagos', anio=anio) }}" class="btn btn-outline-secondary btn-sm">← Volver</a>
     </div>
 </div>
+
+{% if saldos_anteriores %}
+<div class="card mb-3">
+    <div class="card-body py-3">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <h6 class="fw-bold mb-0">Saldos anteriores cargados</h6>
+            <small class="text-muted">Corresponden a quincenas anteriores a agosto {{ nomina_inicio_anio }}</small>
+        </div>
+        <div class="row g-2">
+            {% for saldo in saldos_anteriores %}
+            <div class="col-12 col-lg-6">
+                <div class="border rounded p-2 small">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                            <strong>{{ meses[saldo.mes-1] }} {{ saldo.anio }} - Q{{ saldo.quincena }}</strong>
+                            <br><span class="text-muted">{{ saldo.observaciones or 'Sin detalle adicional' }}</span>
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-bold text-danger">${{ "{:,.0f}".format(saldo.saldo_pendiente or 0) }}</div>
+                            <small class="text-muted">{{ saldo.estado or 'pendiente' }}</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div class="card">
     <div class="table-responsive">
@@ -48,7 +79,7 @@
             </thead>
             <tbody>
                 {% set ns = namespace(total_anual=0) %}
-                {% for i in range(1, 13) %}
+                {% for i in meses_habilitados %}
                 {% set registros_q1 = pagos.get((i, 1), []) %}
                 {% set registros_q2 = pagos.get((i, 2), []) %}
                 {% set total_q1 = registros_q1|sum(attribute='valor')|float %}

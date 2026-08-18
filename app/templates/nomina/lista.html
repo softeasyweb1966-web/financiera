@@ -22,6 +22,7 @@
         <small class="text-muted">Catálogo base de empleados para liquidación, pago y futuros desprendibles.</small>
     </div>
     <div class="d-flex gap-2 flex-wrap header-actions">
+        <a href="{{ url_for('nomina.saldos_anteriores') }}" class="btn btn-outline-dark btn-sm"><i class="bi bi-journal-text"></i> Saldos anteriores</a>
         <a href="{{ url_for('nomina.pagos', anio=anio) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-table"></i> Pagos {{ anio }}</a>
         <a href="{{ url_for('nomina.preliquidar', anio=anio) }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-calculator"></i> Preliquidar</a>
         <a href="{{ url_for('nomina.registrar_quincena') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-cash"></i> Registrar quincena</a>

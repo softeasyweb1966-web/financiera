@@ -18,9 +18,14 @@
             <small class="text-muted">Liquidación del periodo. Puede venir cargada desde la preliquidación o registrar directamente.</small>
         </div>
         <div class="d-flex gap-2 flex-wrap liquidacion-actions">
+            <a href="{{ url_for('nomina.saldos_anteriores') }}" class="btn btn-outline-dark btn-sm">Saldos anteriores</a>
             <a href="{{ url_for('nomina.preliquidar', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-warning btn-sm">Volver a preliquidar</a>
             <a href="{{ url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-secondary btn-sm">Volver a pagos</a>
         </div>
+    </div>
+
+    <div class="alert alert-info py-2 mb-3">
+        La nomina operativa inicia desde <strong>agosto {{ nomina_inicio_anio }}</strong>. Los saldos de quincenas anteriores se cargan por separado.
     </div>
 
     {% if preliquidacion_rows %}
@@ -50,7 +55,7 @@
             <div class="col-6 col-md-2">
                 <label class="form-label">Mes</label>
                 <select class="form-select form-select-sm" onchange="location.href='?anio={{ anio }}&mes='+this.value+'&quincena={{ quincena }}'">
-                    {% for i in range(1, 13) %}
+                    {% for i in meses_habilitados %}
                     <option value="{{ i }}" {{ 'selected' if i == mes else '' }}>{{ meses[i-1] }}</option>
                     {% endfor %}
                 </select>

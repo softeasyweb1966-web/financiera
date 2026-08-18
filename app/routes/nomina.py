@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from app import db
 from app.models import (
     Empleado, Tercero, TipoTercero, RegistroNomina,
-    ConceptoNomina, MedioPago, HistorialEstado
+    ConceptoNomina, MedioPago, HistorialEstado, SaldoAnteriorNomina
 )
 from datetime import date, datetime
 import calendar
@@ -27,10 +27,40 @@ ESTADOS_EMPLEADO_LABELS = {
     'retirado': 'Retirado',
     'anulado': 'Anulado',
 }
+NOMINA_INICIO_ANIO = 2026
+NOMINA_INICIO_MES = 8
+NOMINA_INICIO_QUINCENA = 1
 
 
 def _preliquidacion_session_key(anio, mes, quincena):
     return f'nomina_preliquidacion_{anio}_{mes}_{quincena}'
+
+
+def _periodo_nomina_clave(anio, mes, quincena=0):
+    return (anio * 1000) + (mes * 10) + quincena
+
+
+def _meses_habilitados_nomina(anio):
+    if anio < NOMINA_INICIO_ANIO:
+        return []
+    mes_inicial = NOMINA_INICIO_MES if anio == NOMINA_INICIO_ANIO else 1
+    return list(range(mes_inicial, 13))
+
+
+def _normalizar_periodo_nomina(anio, mes, quincena=1):
+    mes = min(max(int(mes or 1), 1), 12)
+    quincena = quincena if quincena in (1, 2) else 1
+    if anio < NOMINA_INICIO_ANIO:
+        return NOMINA_INICIO_ANIO, NOMINA_INICIO_MES, quincena
+    if anio == NOMINA_INICIO_ANIO and mes < NOMINA_INICIO_MES:
+        return anio, NOMINA_INICIO_MES, quincena
+    return anio, mes, quincena
+
+
+def _periodo_es_anterior_al_inicio_nomina(anio, mes, quincena):
+    return _periodo_nomina_clave(anio, mes, quincena) < _periodo_nomina_clave(
+        NOMINA_INICIO_ANIO, NOMINA_INICIO_MES, NOMINA_INICIO_QUINCENA
+    )
 
 
 def _date_or_none(valor):
@@ -82,6 +112,64 @@ def _registrar_cambio_estado_empleado(empleado, nuevo_estado, fecha_cambio, moti
     return True
 
 
+def _saldos_anteriores_manuales_hasta(empleado_id, anio, mes, quincena):
+    return SaldoAnteriorNomina.query.filter(
+        SaldoAnteriorNomina.empleado_id == empleado_id,
+        SaldoAnteriorNomina.estado.in_(['pendiente', 'parcial']),
+        SaldoAnteriorNomina.saldo_pendiente > 0,
+        db.or_(
+            SaldoAnteriorNomina.anio < anio,
+            db.and_(
+                SaldoAnteriorNomina.anio == anio,
+                db.or_(
+                    SaldoAnteriorNomina.mes < mes,
+                    db.and_(
+                        SaldoAnteriorNomina.mes == mes,
+                        SaldoAnteriorNomina.quincena < quincena
+                    )
+                )
+            )
+        )
+    ).order_by(
+        SaldoAnteriorNomina.anio,
+        SaldoAnteriorNomina.mes,
+        SaldoAnteriorNomina.quincena,
+        SaldoAnteriorNomina.id
+    )
+
+
+def _aplicar_saldos_anteriores_manuales(empleado_id, monto):
+    monto_restante = float(monto or 0)
+    total_aplicado = 0
+    if monto_restante <= 0:
+        return 0
+
+    saldos = SaldoAnteriorNomina.query.filter(
+        SaldoAnteriorNomina.empleado_id == empleado_id,
+        SaldoAnteriorNomina.estado.in_(['pendiente', 'parcial']),
+        SaldoAnteriorNomina.saldo_pendiente > 0
+    ).order_by(
+        SaldoAnteriorNomina.anio,
+        SaldoAnteriorNomina.mes,
+        SaldoAnteriorNomina.quincena,
+        SaldoAnteriorNomina.id
+    ).all()
+
+    for saldo in saldos:
+        if monto_restante <= 0:
+            break
+        pendiente = float(saldo.saldo_pendiente or 0)
+        if pendiente <= 0:
+            continue
+        aplicado = min(pendiente, monto_restante)
+        saldo.saldo_pendiente = pendiente - aplicado
+        saldo.estado = 'pagado' if float(saldo.saldo_pendiente or 0) <= 0 else 'parcial'
+        total_aplicado += aplicado
+        monto_restante -= aplicado
+
+    return total_aplicado
+
+
 def _dias_periodo_nomina(anio, mes, quincena):
     dias_mes = calendar.monthrange(anio, mes)[1]
     return 15 if quincena == 1 else max(dias_mes - 15, 0)
@@ -103,8 +191,12 @@ def _valor_periodo_empleado(empleado, anio, mes, quincena, forma_pago=None):
 
 
 def _pendiente_anterior_empleado(empleado, anio, mes, quincena):
-    total = 0
-    for m_check in range(1, mes + 1):
+    total = sum(float(s.saldo_pendiente or 0) for s in _saldos_anteriores_manuales_hasta(empleado.id, anio, mes, quincena).all())
+    meses_habilitados = _meses_habilitados_nomina(anio)
+    if not meses_habilitados:
+        return total
+
+    for m_check in range(meses_habilitados[0], mes + 1):
         q_range = [1, 2] if m_check < mes else list(range(1, quincena))
         for q_check in q_range:
             tiene_registro = RegistroNomina.query.filter_by(
@@ -161,6 +253,8 @@ def lista():
     empleados = Empleado.query.order_by(Empleado.activo.desc(), Empleado.cargo, Empleado.id).all()
     empleados = _ordenar_empleados_catalogo(empleados)
     anio = request.args.get('anio', date.today().year, type=int)
+    if anio < NOMINA_INICIO_ANIO:
+        anio = NOMINA_INICIO_ANIO
     empleados_activos = [e for e in empleados if e.activo]
     return render_template(
         'nomina/lista.html',
@@ -174,6 +268,82 @@ def lista():
         estados_empleado=ESTADOS_EMPLEADO,
         estados_empleado_labels=ESTADOS_EMPLEADO_LABELS,
         today=date.today().strftime('%Y-%m-%d'),
+    )
+
+
+@nomina_bp.route('/saldos-anteriores', methods=['GET', 'POST'])
+def saldos_anteriores():
+    empleados = _ordenar_empleados_catalogo(
+        Empleado.query.order_by(Empleado.activo.desc(), Empleado.cargo, Empleado.id).all()
+    )
+
+    if request.method == 'POST':
+        empleado_id = request.form.get('empleado_id', type=int)
+        anio = request.form.get('anio', type=int)
+        mes = request.form.get('mes', type=int)
+        quincena = request.form.get('quincena', type=int)
+        valor = float(request.form.get('valor') or 0)
+        observaciones = (request.form.get('observaciones') or '').strip()
+
+        empleado = Empleado.query.get(empleado_id) if empleado_id else None
+        if not empleado:
+            flash('Seleccione un empleado valido.', 'danger')
+            return redirect(url_for('nomina.saldos_anteriores'))
+        if not anio or mes not in range(1, 13) or quincena not in (1, 2):
+            flash('Debe indicar anio, mes y quincena validos.', 'danger')
+            return redirect(url_for('nomina.saldos_anteriores'))
+        if valor <= 0:
+            flash('El valor del saldo anterior debe ser mayor a cero.', 'danger')
+            return redirect(url_for('nomina.saldos_anteriores'))
+        if not _periodo_es_anterior_al_inicio_nomina(anio, mes, quincena):
+            flash('Los saldos anteriores manuales solo aplican para quincenas anteriores a agosto 2026.', 'danger')
+            return redirect(url_for('nomina.saldos_anteriores'))
+
+        existente = SaldoAnteriorNomina.query.filter_by(
+            empleado_id=empleado.id,
+            anio=anio,
+            mes=mes,
+            quincena=quincena
+        ).order_by(SaldoAnteriorNomina.id.desc()).first()
+
+        if existente and existente.estado in ('pendiente', 'parcial'):
+            existente.valor_inicial = float(existente.valor_inicial or 0) + valor
+            existente.saldo_pendiente = float(existente.saldo_pendiente or 0) + valor
+            existente.estado = 'pendiente'
+            if observaciones:
+                existente.observaciones = f'{existente.observaciones} | {observaciones}' if existente.observaciones else observaciones
+            flash('Saldo anterior actualizado correctamente.', 'success')
+        else:
+            db.session.add(SaldoAnteriorNomina(
+                empleado_id=empleado.id,
+                anio=anio,
+                mes=mes,
+                quincena=quincena,
+                valor_inicial=valor,
+                saldo_pendiente=valor,
+                estado='pendiente',
+                observaciones=observaciones or None,
+            ))
+            flash('Saldo anterior cargado correctamente.', 'success')
+
+        db.session.commit()
+        return redirect(url_for('nomina.saldos_anteriores'))
+
+    saldos = SaldoAnteriorNomina.query.order_by(
+        SaldoAnteriorNomina.anio,
+        SaldoAnteriorNomina.mes,
+        SaldoAnteriorNomina.quincena,
+        SaldoAnteriorNomina.id
+    ).all()
+    total_pendiente = sum(float(s.saldo_pendiente or 0) for s in saldos if (s.estado or 'pendiente') != 'anulado')
+    return render_template(
+        'nomina/saldos_anteriores.html',
+        empleados=empleados,
+        saldos=saldos,
+        meses=MESES,
+        total_pendiente=total_pendiente,
+        nomina_inicio_anio=NOMINA_INICIO_ANIO,
+        nomina_inicio_mes=NOMINA_INICIO_MES,
     )
 
 
@@ -301,9 +471,10 @@ def cambiar_estado(id):
 def eliminar(id):
     empleado = Empleado.query.get_or_404(id)
     tiene_historial = RegistroNomina.query.filter_by(empleado_id=empleado.id).first() is not None
-    if tiene_historial:
+    tiene_saldos_anteriores = SaldoAnteriorNomina.query.filter_by(empleado_id=empleado.id).first() is not None
+    if tiene_historial or tiene_saldos_anteriores:
         flash(
-            f'No se puede eliminar a "{empleado.nombre}" porque ya tiene registros de nomina. '
+            f'No se puede eliminar a "{empleado.nombre}" porque ya tiene historial en nomina o saldos anteriores cargados. '
             'Cambie su estado a inactivo o retirado.',
             'danger'
         )
@@ -316,6 +487,15 @@ def eliminar(id):
     return redirect(url_for('nomina.lista'))
 
 
+@nomina_bp.route('/saldos-anteriores/<int:id>/eliminar', methods=['POST'])
+def eliminar_saldo_anterior(id):
+    saldo = SaldoAnteriorNomina.query.get_or_404(id)
+    db.session.delete(saldo)
+    db.session.commit()
+    flash('Saldo anterior eliminado.', 'success')
+    return redirect(url_for('nomina.saldos_anteriores'))
+
+
 @nomina_bp.route('/preliquidar', methods=['GET', 'POST'])
 @nomina_bp.route('/preliquidar/<int:anio>/<int:mes>/<int:quincena>', methods=['GET', 'POST'])
 def preliquidar(anio=None, mes=None, quincena=None):
@@ -325,6 +505,8 @@ def preliquidar(anio=None, mes=None, quincena=None):
         mes = request.args.get('mes', date.today().month, type=int)
     if quincena is None:
         quincena = request.args.get('quincena', 1 if date.today().day <= 15 else 2, type=int)
+    anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
+    meses_habilitados = _meses_habilitados_nomina(anio)
 
     empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo).all()
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
@@ -420,12 +602,15 @@ def preliquidar(anio=None, mes=None, quincena=None):
         meses=MESES,
         formas_pago=FORMAS_PAGO,
         formas_pago_labels=FORMAS_PAGO_LABELS,
+        meses_habilitados=meses_habilitados,
         dias_mes=calendar.monthrange(anio, mes)[1],
         dias_periodo=_dias_periodo_nomina(anio, mes, quincena),
         total_estimado=total_estimado,
         total_pendiente=total_pendiente,
         total_novedades_periodo=total_novedades_periodo,
-        total_empleados=len(rows)
+        total_empleados=len(rows),
+        nomina_inicio_anio=NOMINA_INICIO_ANIO,
+        nomina_inicio_mes=NOMINA_INICIO_MES,
     )
 
 
@@ -441,6 +626,8 @@ def pagos(anio=None, mes=None, quincena=None):
     if quincena is None:
         # Default: Q1 si estamos en primera mitad del mes, Q2 si segunda
         quincena = 1 if date.today().day <= 15 else 2
+    anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
+    meses_habilitados = _meses_habilitados_nomina(anio)
 
     empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo).all()
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
@@ -485,9 +672,48 @@ def pagos(anio=None, mes=None, quincena=None):
     # Quincenas sin pagar de periodos anteriores
     pendientes_anteriores = []
     total_deuda_anterior = 0
+
+    saldos_manuales = SaldoAnteriorNomina.query.filter(
+        SaldoAnteriorNomina.estado.in_(['pendiente', 'parcial']),
+        SaldoAnteriorNomina.saldo_pendiente > 0,
+        db.or_(
+            SaldoAnteriorNomina.anio < anio,
+            db.and_(
+                SaldoAnteriorNomina.anio == anio,
+                db.or_(
+                    SaldoAnteriorNomina.mes < mes,
+                    db.and_(
+                        SaldoAnteriorNomina.mes == mes,
+                        SaldoAnteriorNomina.quincena < quincena
+                    )
+                )
+            )
+        )
+    ).order_by(
+        SaldoAnteriorNomina.anio,
+        SaldoAnteriorNomina.mes,
+        SaldoAnteriorNomina.quincena,
+        SaldoAnteriorNomina.id
+    ).all()
+
+    for saldo in saldos_manuales:
+        valor_pendiente = float(saldo.saldo_pendiente or 0)
+        if valor_pendiente <= 0:
+            continue
+        total_deuda_anterior += valor_pendiente
+        pendientes_anteriores.append({
+            'empleado': saldo.empleado,
+            'mes_nombre': MESES[saldo.mes - 1],
+            'anio': saldo.anio,
+            'quincena': saldo.quincena,
+            'valor_esperado': valor_pendiente,
+            'detalle': saldo.observaciones,
+            'manual': True,
+        })
+
     for e in empleados:
         # Check si hay quincenas anteriores sin registros
-        for m_check in range(1, mes + 1):
+        for m_check in range(meses_habilitados[0], mes + 1):
             q_range = [1, 2] if m_check < mes else list(range(1, quincena))
             for q_check in q_range:
                 tiene_registro = RegistroNomina.query.filter_by(
@@ -501,7 +727,9 @@ def pagos(anio=None, mes=None, quincena=None):
                         'mes_nombre': MESES[m_check - 1],
                         'anio': anio,
                         'quincena': q_check,
-                        'valor_esperado': valor_esperado
+                        'valor_esperado': valor_esperado,
+                        'detalle': None,
+                        'manual': False,
                     })
 
     # Resumen por concepto de nómina
@@ -571,6 +799,7 @@ def pagos(anio=None, mes=None, quincena=None):
                            empleados_mes=empleados_mes,
                            pendientes_anteriores=pendientes_anteriores,
                            anio=anio, mes=mes, quincena=quincena, meses=MESES,
+                           meses_habilitados=meses_habilitados,
                            medios=medios, conceptos=conceptos,
                            acum_pagado_anterior=float(acum_pagado_anterior),
                            acum_empleados_detalle=acum_empleados_detalle,
@@ -582,7 +811,9 @@ def pagos(anio=None, mes=None, quincena=None):
                            acum_empleados_dict=acum_empleados_dict,
                            empleados_pagados_count=empleados_pagados_count,
                            empleados_pendientes_count=empleados_pendientes_count,
-                           registros_quincena_count=registros_quincena_count)
+                           registros_quincena_count=registros_quincena_count,
+                           nomina_inicio_anio=NOMINA_INICIO_ANIO,
+                           nomina_inicio_mes=NOMINA_INICIO_MES)
 
 
 @nomina_bp.route('/detalle/<int:id>')
@@ -590,6 +821,8 @@ def detalle(id):
     """Vista detalle de un empleado: historial de pagos del año por quincena"""
     empleado = Empleado.query.get_or_404(id)
     anio = request.args.get('anio', date.today().year, type=int)
+    if anio < NOMINA_INICIO_ANIO:
+        anio = NOMINA_INICIO_ANIO
     registros = RegistroNomina.query.filter_by(empleado_id=id, anio=anio).order_by(
         RegistroNomina.mes, RegistroNomina.quincena, RegistroNomina.created_at
     ).all()
@@ -603,8 +836,15 @@ def detalle(id):
         pagos_dict[key].append(r)
         if key not in causaciones_dict and r.created_at:
             causaciones_dict[key] = r.created_at.date()
+    saldos_anteriores = SaldoAnteriorNomina.query.filter_by(empleado_id=id).order_by(
+        SaldoAnteriorNomina.anio, SaldoAnteriorNomina.mes, SaldoAnteriorNomina.quincena, SaldoAnteriorNomina.id
+    ).all()
     return render_template('nomina/detalle.html', empleado=empleado, anio=anio,
-                           meses=MESES, pagos=pagos_dict, causaciones=causaciones_dict)
+                           meses=MESES, pagos=pagos_dict, causaciones=causaciones_dict,
+                           meses_habilitados=_meses_habilitados_nomina(anio),
+                           saldos_anteriores=saldos_anteriores,
+                           nomina_inicio_anio=NOMINA_INICIO_ANIO,
+                           nomina_inicio_mes=NOMINA_INICIO_MES)
 
 
 @nomina_bp.route('/registrar', methods=['GET', 'POST'])
@@ -613,6 +853,7 @@ def registrar_quincena():
         anio = int(request.form['anio'])
         mes = int(request.form['mes'])
         quincena = int(request.form['quincena'])
+        anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
         medio_pago_id = request.form.get('medio_pago_id') or None
         fecha_pago = request.form.get('fecha_pago') or None
         draft_key = _preliquidacion_session_key(anio, mes, quincena)
@@ -622,9 +863,13 @@ def registrar_quincena():
         empleados_ids = request.form.getlist('empleado_ids')
         count = 0
         for emp_id in empleados_ids:
+            empleado = Empleado.query.get(int(emp_id))
+            if not empleado:
+                continue
             concepto_id = request.form.get(f'concepto_{emp_id}')
             valor = request.form.get(f'valor_{emp_id}')
             registros_a_guardar = {}
+            observaciones_extra = []
 
             if concepto_id and valor:
                 registros_a_guardar[int(concepto_id)] = {
@@ -633,6 +878,7 @@ def registrar_quincena():
                 }
 
             draft_row = draft_rows.get(str(emp_id), {})
+            forma_aplicada = draft_row.get('forma_pago_aplicada', empleado.forma_pago or 'quincenal')
             for novedad in draft_row.get('novedades', []):
                 concepto_novedad_id = int(novedad.get('concepto_id') or 0)
                 if not concepto_novedad_id:
@@ -651,6 +897,15 @@ def registrar_quincena():
                 if novedad.get('justificacion'):
                     registros_a_guardar[concepto_novedad_id]['observaciones'].append(novedad['justificacion'])
 
+            valor_pagado_total = float(valor or 0)
+            base_periodo = float(draft_row.get(
+                'valor_preliquidado',
+                _valor_periodo_empleado(empleado, anio, mes, quincena, forma_aplicada)
+            ))
+            total_novedades = float(draft_row.get('total_novedades', 0))
+            excedente_saldos = max(0, valor_pagado_total - max(0, base_periodo + total_novedades))
+            saldos_aplicados = False
+
             for concepto_guardar_id, data in registros_a_guardar.items():
                 if not data['valor']:
                     continue
@@ -662,6 +917,11 @@ def registrar_quincena():
                     quincena=quincena
                 ).first()
                 if not existe:
+                    if excedente_saldos > 0 and not saldos_aplicados:
+                        aplicado_saldos = _aplicar_saldos_anteriores_manuales(empleado.id, excedente_saldos)
+                        if aplicado_saldos > 0:
+                            observaciones_extra.append(f'Aplico ${aplicado_saldos:,.0f} a saldos anteriores cargados.')
+                        saldos_aplicados = True
                     registro = RegistroNomina(
                         empleado_id=emp_id,
                         concepto_nomina_id=concepto_guardar_id,
@@ -671,7 +931,7 @@ def registrar_quincena():
                         valor=data['valor'],
                         medio_pago_id=medio_pago_id,
                         fecha_pago=fecha_pago,
-                        observaciones=' | '.join(data['observaciones']) if data['observaciones'] else None
+                        observaciones=' | '.join(data['observaciones'] + observaciones_extra) if (data['observaciones'] or observaciones_extra) else None
                     )
                     db.session.add(registro)
                     count += 1
@@ -684,6 +944,7 @@ def registrar_quincena():
     anio = request.args.get('anio', date.today().year, type=int)
     mes = request.args.get('mes', date.today().month, type=int)
     quincena = request.args.get('quincena', 1, type=int)
+    anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
     empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo).all()
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
@@ -695,4 +956,7 @@ def registrar_quincena():
                            medios=medios, anio=anio, mes=mes,
                            quincena=quincena, meses=MESES,
                            formas_pago_labels=FORMAS_PAGO_LABELS,
-                           preliquidacion_rows=draft_rows)
+                           preliquidacion_rows=draft_rows,
+                           meses_habilitados=_meses_habilitados_nomina(anio),
+                           nomina_inicio_anio=NOMINA_INICIO_ANIO,
+                           nomina_inicio_mes=NOMINA_INICIO_MES)
