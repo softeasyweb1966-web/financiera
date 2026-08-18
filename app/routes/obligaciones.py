@@ -1844,12 +1844,18 @@ def pagos(anio=None, mes=None):
     ))
 
     total_items_mes = len(obligaciones_mes)
+    total_saldo_actual = sum(float(o.saldo_actual or 0) for o in obligaciones)
+    obligaciones_activas_total = len(obligaciones)
 
     return render_template('obligaciones/pagos.html',
                            obligaciones_mes=obligaciones_mes,
+                           obligaciones=obligaciones,
                            pendientes_anteriores=pendientes_anteriores,
                            anio=anio, mes=mes, meses=MESES,
                            medios=medios,
+                           total_saldo_actual=total_saldo_actual,
+                           obligaciones_activas_total=obligaciones_activas_total,
+                           cuota_mensual_estimada=total_estimado_mes,
                            acum_pagado_anterior=float(acum_pagado_anterior),
                            acum_obligaciones_detalle=acum_obligaciones_detalle,
                            pagado_mes_actual=float(pagado_mes_actual),
