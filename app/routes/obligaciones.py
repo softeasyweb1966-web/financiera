@@ -132,6 +132,7 @@ def _aplicar_excedente_pago(
     componente_anticipo,
     componente_anticipo_num,
     destino_excedente,
+    otros_incluye_excedente=False,
 ):
     excedente_num = 0
     if (
@@ -143,7 +144,7 @@ def _aplicar_excedente_pago(
         if (destino_excedente or 'mora') == 'anticipo':
             componente_anticipo_num = round(float(componente_anticipo_num or 0) + excedente_num, 2)
             componente_anticipo = _money_raw_or_none(componente_anticipo_num, scale=2)
-        else:
+        elif not otros_incluye_excedente:
             componente_otros_num = round(float(componente_otros_num or 0) + excedente_num, 2)
             componente_otros = _money_raw_or_none(componente_otros_num, scale=2)
 
@@ -1902,6 +1903,7 @@ def registrar_pago():
     componente_otros = _money_raw_or_none(request.form.get('componente_otros'))
     componente_anticipo = _money_raw_or_none(request.form.get('componente_anticipo'))
     destino_excedente = (request.form.get('destino_excedente') or 'mora').strip().lower()
+    otros_incluye_excedente = request.form.get('componente_otros_incluye_excedente') == '1'
     estado = request.form.get('estado', 'pagado')
     medio_pago_id = request.form.get('medio_pago_id') or None
     fecha_pago = request.form.get('fecha_pago') or None
@@ -1934,10 +1936,6 @@ def registrar_pago():
     componente_seguro_vida_num = _float_or_none(componente_seguro_vida)
     componente_otros_num = _float_or_none(componente_otros)
     componente_anticipo_num = _float_or_none(componente_anticipo)
-
-    if detalle_otros and componente_otros_num not in (None, 0):
-        nota_otros = f'Mora/otros: {detalle_otros}'
-        observaciones = f'{observaciones}\n{nota_otros}'.strip() if observaciones else nota_otros
 
     if usa_tabla_amortizacion and fila_amortizacion:
         if componente_capital_num is None:
@@ -1977,6 +1975,7 @@ def registrar_pago():
             componente_anticipo,
             componente_anticipo_num,
             destino_excedente,
+            otros_incluye_excedente=otros_incluye_excedente,
         )
         if excedente_num > 0 and destino_excedente != 'anticipo' and not detalle_otros:
             flash('Si el excedente se aplica a mora / otros, debe registrar el detalle.', 'danger')
@@ -1987,6 +1986,9 @@ def registrar_pago():
                 f'{"anticipo" if destino_excedente == "anticipo" else "mora / otros"}.'
             )
             observaciones = f'{observaciones}\n{nota_excedente}'.strip() if observaciones else nota_excedente
+        if detalle_otros and componente_otros_num not in (None, 0):
+            nota_otros = f'Mora/otros: {detalle_otros}'
+            observaciones = f'{observaciones}\n{nota_otros}'.strip() if observaciones else nota_otros
 
     if not pago and not _obligacion_aplica_mes(obligacion, anio, mes):
         flash('Esta obligacion no aplica en ese mes porque aun no habia iniciado o ya no estaba vigente.', 'danger')
@@ -2347,9 +2349,11 @@ def ajustar_pago_cancelado(pago_id):
     componente_otros = _money_raw_or_none(request.form.get('componente_otros'))
     componente_anticipo = _money_raw_or_none(request.form.get('componente_anticipo'))
     destino_excedente = (request.form.get('destino_excedente') or 'mora').strip().lower()
+    otros_incluye_excedente = request.form.get('componente_otros_incluye_excedente') == '1'
     medio_pago_id = request.form.get('medio_pago_id') or None
     fecha_pago = _date_or_none(request.form.get('fecha_pago'))
     observaciones = (request.form.get('observaciones') or '').strip()
+    detalle_otros = (request.form.get('detalle_otros') or '').strip()
 
     valor_pagado_num = _float_or_none(valor_pagado)
     valor_causado_num = _float_or_none(valor_causado)
@@ -2389,10 +2393,14 @@ def ajustar_pago_cancelado(pago_id):
         componente_anticipo,
         componente_anticipo_num,
         destino_excedente,
+        otros_incluye_excedente=otros_incluye_excedente,
     )
     if excedente_ajuste_num > 0 and destino_excedente != 'anticipo' and not detalle_otros:
         flash('Si el excedente se aplica a mora / otros, debe registrar el detalle.', 'danger')
         return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
+    if detalle_otros and componente_otros_num not in (None, 0):
+        nota_otros = f'Mora/otros: {detalle_otros}'
+        observaciones = f'{observaciones}\n{nota_otros}'.strip() if observaciones else nota_otros
     if requiere_capital_interes:
         if componente_capital_num is None or componente_interes_num is None:
             flash('Esta cuota requiere ajustar capital e interes junto con el valor pagado.', 'danger')
