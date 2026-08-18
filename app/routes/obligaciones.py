@@ -1986,9 +1986,13 @@ def registrar_pago():
                 f'{"anticipo" if destino_excedente == "anticipo" else "mora / otros"}.'
             )
             observaciones = f'{observaciones}\n{nota_excedente}'.strip() if observaciones else nota_excedente
-        if detalle_otros and componente_otros_num not in (None, 0):
-            nota_otros = f'Mora/otros: {detalle_otros}'
-            observaciones = f'{observaciones}\n{nota_otros}'.strip() if observaciones else nota_otros
+        if detalle_otros:
+            if destino_excedente == 'anticipo' and componente_anticipo_num not in (None, 0):
+                nota_otros = f'Anticipo: {detalle_otros}'
+                observaciones = f'{observaciones}\n{nota_otros}'.strip() if observaciones else nota_otros
+            elif componente_otros_num not in (None, 0):
+                nota_otros = f'Mora/otros: {detalle_otros}'
+                observaciones = f'{observaciones}\n{nota_otros}'.strip() if observaciones else nota_otros
 
     if not pago and not _obligacion_aplica_mes(obligacion, anio, mes):
         flash('Esta obligacion no aplica en ese mes porque aun no habia iniciado o ya no estaba vigente.', 'danger')
@@ -2398,9 +2402,13 @@ def ajustar_pago_cancelado(pago_id):
     if excedente_ajuste_num > 0 and destino_excedente != 'anticipo' and not detalle_otros:
         flash('Si el excedente se aplica a mora / otros, debe registrar el detalle.', 'danger')
         return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
-    if detalle_otros and componente_otros_num not in (None, 0):
-        nota_otros = f'Mora/otros: {detalle_otros}'
-        observaciones = f'{observaciones}\n{nota_otros}'.strip() if observaciones else nota_otros
+    if detalle_otros:
+        if destino_excedente == 'anticipo' and componente_anticipo_num not in (None, 0):
+            nota_otros = f'Anticipo: {detalle_otros}'
+            observaciones = f'{observaciones}\n{nota_otros}'.strip() if observaciones else nota_otros
+        elif componente_otros_num not in (None, 0):
+            nota_otros = f'Mora/otros: {detalle_otros}'
+            observaciones = f'{observaciones}\n{nota_otros}'.strip() if observaciones else nota_otros
     if requiere_capital_interes:
         if componente_capital_num is None or componente_interes_num is None:
             flash('Esta cuota requiere ajustar capital e interes junto con el valor pagado.', 'danger')

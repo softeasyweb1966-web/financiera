@@ -716,17 +716,19 @@
                                 <input type="text" name="componente_otros" id="pago_otros" class="form-control form-control-sm js-money">
                                 <div class="form-text" id="texto_otros_pago">Use este campo para intereses de mora u otro cobro adicional.</div>
                             </div>
-                            <div class="col-md-6 mb-2">
-                                <label class="form-label">Detalle mora / otros</label>
-                                <input type="text" name="detalle_otros" id="pago_detalle_otros" class="form-control form-control-sm" placeholder="Ej: interes mora agosto">
-                                <div class="form-text" id="texto_detalle_otros_pago">Describa el concepto si registra mora, interes adicional u otro cobro.</div>
-                            </div>
                         </div>
                         <div class="row" id="grupo_anticipo_excedente_pago" style="display:none;">
                             <div class="col-md-6 mb-2">
                                 <label class="form-label">Anticipo</label>
                                 <input type="text" id="pago_anticipo_visible" class="form-control form-control-sm" readonly>
                                 <div class="form-text">Este excedente se guardara como anticipo para la obligacion.</div>
+                            </div>
+                        </div>
+                        <div class="row" id="grupo_detalle_excedente_pago">
+                            <div class="col-md-6 mb-2">
+                                <label class="form-label" id="pago_detalle_excedente_label">Detalle mora / otros</label>
+                                <input type="text" name="detalle_otros" id="pago_detalle_otros" class="form-control form-control-sm" placeholder="Ej: interes mora agosto">
+                                <div class="form-text" id="texto_detalle_otros_pago">Describa el concepto si registra mora, interes adicional u otro cobro.</div>
                             </div>
                         </div>
                         <div class="row">
@@ -1120,6 +1122,7 @@ function recalcularExcedentePagoUI() {
     const anticipoOculto = document.getElementById('pago_anticipo');
     const anticipoVisible = document.getElementById('pago_anticipo_visible');
     const otrosIncluyeExcedente = document.getElementById('pago_otros_incluye_excedente');
+    const detalleLabel = document.getElementById('pago_detalle_excedente_label');
     const texto = document.getElementById('texto_excedente_pago');
     const resumen = document.getElementById('resumen_excedente_pago');
     const textoDetalle = document.getElementById('texto_detalle_otros_pago');
@@ -1135,6 +1138,8 @@ function recalcularExcedentePagoUI() {
         anticipoOculto.value = '';
         anticipoVisible.value = '';
         window.FinancieraMoney.setValue(inputOtros, moraManual || '');
+        detalleLabel.textContent = 'Detalle mora / otros';
+        detalleOtros.placeholder = 'Ej: interes mora agosto';
         resumen.textContent = '';
         textoDetalle.textContent = 'Describa el concepto si registra mora, interes adicional u otro cobro.';
         return;
@@ -1153,8 +1158,11 @@ function recalcularExcedentePagoUI() {
         anticipoOculto.value = String(excedente);
         anticipoVisible.value = formatearMoneda(excedente);
         window.FinancieraMoney.setValue(inputOtros, moraManual || '');
+        detalleLabel.textContent = 'Detalle anticipo';
+        detalleOtros.placeholder = 'Ej: anticipo cuota octubre';
+        detalleOtros.disabled = false;
         resumen.textContent = 'Se guardara como anticipo: ' + formatearMoneda(excedente) + '.';
-        textoDetalle.textContent = 'Describa el concepto si registra mora, interes adicional u otro cobro.';
+        textoDetalle.textContent = 'Opcional. Describa a que corresponde este anticipo.';
         return;
     }
 
@@ -1167,6 +1175,8 @@ function recalcularExcedentePagoUI() {
     anticipoOculto.value = '';
     anticipoVisible.value = '';
     window.FinancieraMoney.setValue(inputOtros, moraManual + excedente);
+    detalleLabel.textContent = 'Detalle mora / otros';
+    detalleOtros.placeholder = 'Ej: interes mora agosto';
     resumen.textContent = 'Se llevara a mora / otros: ' + formatearMoneda(moraManual + excedente) + '.';
     textoDetalle.textContent = moraManual > 0
         ? 'Describa la mora / otros. El excedente se sumara a ese valor manual.'
