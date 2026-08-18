@@ -118,7 +118,7 @@
                 Registre un abono extraordinario al saldo y decida si desea conservar el plazo para bajar la cuota,
                 o conservar la cuota para acortar el tiempo restante.
             </p>
-            <form method="POST" action="{{ url_for('obligaciones.abonar_capital', id=obligacion.id) }}">
+            <form method="POST" action="{{ url_for('obligaciones.abonar_capital', id=obligacion.id) }}" id="abono-capital">
                 <div class="row g-2">
                     <div class="col-12 col-md-6">
                         <label class="form-label">Fecha del abono *</label>

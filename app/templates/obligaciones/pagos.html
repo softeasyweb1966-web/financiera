@@ -482,8 +482,14 @@
                 <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#modalPago"
                         onclick='prepararCausar({{ o.id }}, {{ nombre_modal|tojson }}, {{ mes }}, {{ item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ item.programado_capital or 0 }}, {{ item.programado_interes or 0 }}, {{ item.programado_seguro_vida or 0 }}, {{ item.programado_otros or 0 }}, {{ "true" if item.usa_tabla_amortizacion else "false" }}, {{ o.dia_limite_pago if o.dia_limite_pago is not none else (item.fecha_limite_actual.day if item.fecha_limite_actual else "null") }})'>
                     <i class="bi bi-pencil"></i> Causar
-                </button>
+                    </button>
                 {% endif %}
+                {% endif %}
+                {% if item.saldos_anteriores_items %}
+                <button class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#modalSaldosAnteriores"
+                        onclick='prepararSaldosAnteriores({{ o.id }}, {{ nombre_modal|tojson }}, {{ item.saldos_anteriores_items|tojson }})'>
+                    <i class="bi bi-list-check"></i> Saldos anteriores
+                </button>
                 {% endif %}
                 {% if pago and item.estado in ['pagado', 'parcial'] %}
                     {% if pago.comprobante_archivo %}
@@ -513,6 +519,9 @@
                 {% endif %}
                 <a href="{{ url_for('obligaciones.detalle', id=o.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary" title="Historial mes a mes">
                     <i class="bi bi-clock-history"></i>
+                </a>
+                <a href="{{ url_for('obligaciones.refinanciaciones', id=o.id) }}#abono-capital" class="btn btn-sm btn-outline-warning" title="Registrar abono a capital">
+                    <i class="bi bi-cash-coin"></i> Abonar
                 </a>
                 <a href="{{ url_for('obligaciones.refinanciaciones', id=o.id) }}" class="btn btn-sm btn-outline-info" title="Abonos, refinanciaciones y cambios">
                     <i class="bi bi-arrow-repeat"></i>
@@ -699,12 +708,19 @@
                                 <label class="form-label">Seguro vida</label>
                                 <input type="text" name="componente_seguro_vida" id="pago_seguro_vida" class="form-control form-control-sm js-money">
                             </div>
-                            <div class="col-3 mb-2" id="grupo_pago_otros" style="display:none;">
-                                <label class="form-label">Otros</label>
-                                <input type="text" name="componente_otros" id="pago_otros" class="form-control form-control-sm js-money">
-                            </div>
                         </div>
                         <small id="texto_desglose" class="text-muted d-block mb-2" style="display:none;">Ingrese la cuota pagada y discrimine cuanto corresponde a cada componente.</small>
+                        <div class="row">
+                            <div class="col-md-6 mb-2" id="grupo_pago_otros">
+                                <label class="form-label" id="pago_otros_label">Mora / otros</label>
+                                <input type="text" name="componente_otros" id="pago_otros" class="form-control form-control-sm js-money">
+                                <div class="form-text" id="texto_otros_pago">Use este campo para intereses de mora u otro cobro adicional.</div>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <label class="form-label">Detalle mora / otros</label>
+                                <input type="text" name="detalle_otros" id="pago_detalle_otros" class="form-control form-control-sm" placeholder="Ej: interes mora agosto">
+                            </div>
+                        </div>
                         <div class="row">
                             <div class="col-6 mb-2">
                                 <label class="form-label">Fecha pago</label>
@@ -747,11 +763,72 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="modalSaldosAnteriores" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('obligaciones.pagar_saldos_anteriores') }}">
+                <input type="hidden" name="obligacion_id" id="saldos_oblig_id">
+                <input type="hidden" name="anio_retorno" value="{{ anio }}">
+                <input type="hidden" name="mes_retorno" value="{{ mes }}">
+                <input type="hidden" name="saldos_payload" id="saldos_payload">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold" id="saldos_titulo">Pagar saldos anteriores</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-secondary py-2 px-3 small mb-3">
+                        Marque las cuotas viejas que desea cubrir. El sistema distribuye el valor en orden y deja la ultima como parcial si no alcanza.
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">Valor total a aplicar</label>
+                            <input type="text" name="valor_total" id="saldos_valor_total" class="form-control form-control-sm js-money">
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">Fecha pago</label>
+                            <input type="date" name="fecha_pago" id="saldos_fecha_pago" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">Medio de pago</label>
+                            <select name="medio_pago_id" id="saldos_medio_pago" class="form-select form-select-sm">
+                                <option value="">--</option>
+                                {% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-2 mb-2">
+                        <strong class="small">Cuotas pendientes seleccionables</strong>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="marcarHastaAlcanceSaldosAnteriores()">
+                            <i class="bi bi-magic"></i> Marcar hasta donde alcance
+                        </button>
+                    </div>
+                    <div id="saldos_items" class="border rounded p-2" style="max-height:320px; overflow:auto;"></div>
+                    <div class="row mt-2 small">
+                        <div class="col-md-4"><strong>Total seleccionado:</strong> <span id="saldos_total_seleccionado">$0</span></div>
+                        <div class="col-md-4"><strong>Total aplicado:</strong> <span id="saldos_total_aplicado">$0</span></div>
+                        <div class="col-md-4"><strong>Sin aplicar:</strong> <span id="saldos_total_sin_aplicar">$0</span></div>
+                    </div>
+                    <div class="mb-2 mt-3">
+                        <label class="form-label">Observaciones</label>
+                        <input type="text" name="observaciones" id="saldos_observaciones" class="form-control form-control-sm" placeholder="Opcional">
+                    </div>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="submit" class="btn btn-primary btn-sm" id="btn_guardar_saldos_anteriores">
+                        <i class="bi bi-check-lg"></i> Guardar pago
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 const mesesObligaciones = {{ meses|tojson }};
+let saldosAnterioresActuales = [];
 
 function toggleDesglose(requiereDesglose, usaTablaAmortizacion = false) {
     const visible = !!requiereDesglose;
@@ -760,9 +837,11 @@ function toggleDesglose(requiereDesglose, usaTablaAmortizacion = false) {
     document.getElementById('pago_capital').required = visible;
     document.getElementById('pago_interes').required = visible;
     document.getElementById('grupo_pago_seguro_vida').style.display = visible && usaTablaAmortizacion ? 'block' : 'none';
-    document.getElementById('grupo_pago_otros').style.display = visible && usaTablaAmortizacion ? 'block' : 'none';
     document.getElementById('pago_seguro_vida').required = visible && usaTablaAmortizacion;
-    document.getElementById('pago_otros').required = visible && usaTablaAmortizacion;
+    document.getElementById('pago_otros_label').textContent = usaTablaAmortizacion ? 'Otros' : 'Mora / otros';
+    document.getElementById('texto_otros_pago').textContent = usaTablaAmortizacion
+        ? 'Puede ajustar aqui mora u otro cobro adicional de la cuota.'
+        : 'Use este campo para intereses de mora u otro cobro adicional.';
     document.getElementById('texto_desglose').textContent = usaTablaAmortizacion
         ? 'Ingrese la cuota pagada y discrimine capital, interes, seguro vida y otros.'
         : 'Ingrese la cuota pagada y discrimine cuanto corresponde a capital y cuanto a interes.';
@@ -770,7 +849,6 @@ function toggleDesglose(requiereDesglose, usaTablaAmortizacion = false) {
         window.FinancieraMoney.setValue(document.getElementById('pago_capital'), '');
         window.FinancieraMoney.setValue(document.getElementById('pago_interes'), '');
         window.FinancieraMoney.setValue(document.getElementById('pago_seguro_vida'), '');
-        window.FinancieraMoney.setValue(document.getElementById('pago_otros'), '');
     }
 }
 
@@ -785,6 +863,7 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
     window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_seguro_vida'), valorSeguroVida || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_otros'), valorOtros || '');
+    document.getElementById('pago_detalle_otros').value = '';
     document.getElementById('pago_fecha_pago').value = '';
     document.getElementById('causar_dia_reportado').value = '';
     document.getElementById('pago_accion').value = 'pagar';
@@ -808,6 +887,7 @@ function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorC
     window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_seguro_vida'), valorSeguroVida || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_otros'), valorOtros || '');
+    document.getElementById('pago_detalle_otros').value = '';
     document.getElementById('causar_dia_reportado').value = diaBase || '';
     document.getElementById('pago_accion').value = 'causar';
     document.getElementById('pago_titulo').textContent = 'Causar - ' + nombre + ' - ' + periodo;
@@ -830,5 +910,118 @@ function prepararAnulacion(actionUrl, nextUrl, nombre, periodo) {
     document.getElementById('anulacion_titulo').textContent = 'Anular pago - ' + nombre + ' - ' + periodo;
     document.getElementById('anulacion_motivo').value = '';
 }
+
+function formatearMoneda(valor) {
+    return '$' + Number(valor || 0).toLocaleString('es-CO', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
+}
+
+function renderSaldosAnteriores() {
+    const container = document.getElementById('saldos_items');
+    if (!saldosAnterioresActuales.length) {
+        container.innerHTML = '<div class="text-muted small">Esta obligacion no tiene saldos anteriores pendientes.</div>';
+        return;
+    }
+
+    container.innerHTML = saldosAnterioresActuales.map(function(item, index) {
+        const detalle = item.descripcion ? '<div class="text-muted small">' + item.descripcion + '</div>' : '';
+        const abonado = item.valor_abonado > 0
+            ? '<div class="small" style="color:#8b5cf6">Abonado: ' + formatearMoneda(item.valor_abonado) + ' de ' + formatearMoneda(item.valor_cuota) + '</div>'
+            : '';
+        return `
+            <label class="d-block border rounded p-2 mb-2 saldo-item-row">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div class="form-check mb-0">
+                        <input class="form-check-input saldo-check" type="checkbox" id="saldo-check-${index}" data-index="${index}" checked>
+                        <span class="form-check-label">
+                            <strong>${item.periodo}</strong>
+                            <div class="small">${String(item.modalidad || '').split('_').join(' ')}</div>
+                            ${detalle}
+                            ${abonado}
+                        </span>
+                    </div>
+                    <div class="text-end">
+                        <div class="fw-semibold text-danger">${formatearMoneda(item.valor_deuda)}</div>
+                        <div class="small text-muted">Aplicado: <span id="saldo-aplicado-${index}">$0</span></div>
+                    </div>
+                </div>
+            </label>
+        `;
+    }).join('');
+
+    document.querySelectorAll('.saldo-check').forEach(function(check) {
+        check.addEventListener('change', recalcularSaldosAnteriores);
+    });
+}
+
+function recalcularSaldosAnteriores() {
+    const valorTotal = window.FinancieraMoney.parse(document.getElementById('saldos_valor_total').value);
+    let restante = valorTotal;
+    let totalSeleccionado = 0;
+    let totalAplicado = 0;
+    const payload = [];
+
+    document.querySelectorAll('.saldo-check').forEach(function(check) {
+        const index = Number(check.dataset.index);
+        const item = saldosAnterioresActuales[index];
+        const spanAplicado = document.getElementById('saldo-aplicado-' + index);
+        let valorAplicado = 0;
+
+        if (check.checked) {
+            totalSeleccionado += Number(item.valor_deuda || 0);
+            valorAplicado = Math.min(restante, Number(item.valor_deuda || 0));
+            if (valorAplicado > 0) {
+                restante -= valorAplicado;
+                totalAplicado += valorAplicado;
+                payload.push({
+                    anio: item.anio,
+                    mes: item.mes,
+                    valor_aplicado: Math.round(valorAplicado * 100) / 100
+                });
+            }
+        }
+
+        spanAplicado.textContent = formatearMoneda(valorAplicado);
+    });
+
+    document.getElementById('saldos_total_seleccionado').textContent = formatearMoneda(totalSeleccionado);
+    document.getElementById('saldos_total_aplicado').textContent = formatearMoneda(totalAplicado);
+    document.getElementById('saldos_total_sin_aplicar').textContent = formatearMoneda(Math.max(valorTotal - totalAplicado, 0));
+    document.getElementById('saldos_payload').value = JSON.stringify(payload);
+    document.getElementById('btn_guardar_saldos_anteriores').disabled = totalAplicado <= 0 || (valorTotal - totalAplicado) > 1;
+}
+
+function marcarHastaAlcanceSaldosAnteriores() {
+    const valorTotal = window.FinancieraMoney.parse(document.getElementById('saldos_valor_total').value);
+    let restante = valorTotal;
+    document.querySelectorAll('.saldo-check').forEach(function(check) {
+        const index = Number(check.dataset.index);
+        const item = saldosAnterioresActuales[index];
+        if (restante > 0) {
+            check.checked = true;
+            restante -= Number(item.valor_deuda || 0);
+        } else {
+            check.checked = false;
+        }
+    });
+    recalcularSaldosAnteriores();
+}
+
+function prepararSaldosAnteriores(id, nombre, payload) {
+    saldosAnterioresActuales = Array.isArray(payload) ? payload : [];
+    document.getElementById('saldos_oblig_id').value = id;
+    document.getElementById('saldos_titulo').textContent = 'Pagar saldos anteriores - ' + nombre;
+    document.getElementById('saldos_valor_total').value = '';
+    document.getElementById('saldos_fecha_pago').value = '';
+    document.getElementById('saldos_medio_pago').value = '';
+    document.getElementById('saldos_observaciones').value = '';
+    document.getElementById('saldos_payload').value = '[]';
+    renderSaldosAnteriores();
+    recalcularSaldosAnteriores();
+}
+
+document.getElementById('saldos_valor_total').addEventListener('input', recalcularSaldosAnteriores);
 </script>
 {% endblock %}

@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from sqlalchemy import func
+import json
 import math
 import re
 
@@ -699,6 +700,76 @@ def _resumen_vencido_obligacion(obligacion, pagos_por_periodo, anio_hasta, mes_h
     }
 
 
+def _componentes_base_periodo(obligacion, anio, mes, pago=None):
+    programado = _componentes_programados_periodo(obligacion, anio, mes)
+    componentes = {
+        'capital': float(programado.get('capital') or 0),
+        'interes': float(programado.get('interes') or 0),
+        'seguro_vida': float(programado.get('seguro_vida') or 0),
+        'otros': float(programado.get('otros') or 0),
+    }
+    total = sum(componentes.values())
+    if total > 0:
+        return componentes, total
+
+    if pago:
+        componentes_pago = {
+            'capital': float(pago.componente_capital or 0),
+            'interes': float(pago.componente_interes or 0),
+            'seguro_vida': float(pago.componente_seguro_vida or 0),
+            'otros': float(pago.componente_otros or 0),
+        }
+        total_pago = sum(componentes_pago.values())
+        if total_pago > 0:
+            return componentes_pago, total_pago
+
+    return componentes, float(programado.get('total') or 0)
+
+
+def _componentes_prorrateados_periodo(obligacion, anio, mes, valor_objetivo, pago=None):
+    valor_objetivo = float(valor_objetivo or 0)
+    componentes_base, total_base = _componentes_base_periodo(obligacion, anio, mes, pago)
+    if valor_objetivo <= 0 or total_base <= 0:
+        return {
+            'capital': 0,
+            'interes': 0,
+            'seguro_vida': 0,
+            'otros': 0,
+        }
+
+    proporcion = min(max(valor_objetivo / total_base, 0), 1)
+    componentes = {
+        key: round(valor * proporcion, 2)
+        for key, valor in componentes_base.items()
+    }
+
+    diferencia = round(valor_objetivo - sum(componentes.values()), 2)
+    if abs(diferencia) >= 0.01:
+        for key in ('otros', 'interes', 'capital', 'seguro_vida'):
+            if componentes_base.get(key, 0) > 0 or key == 'otros':
+                componentes[key] = round(componentes.get(key, 0) + diferencia, 2)
+                break
+
+    return componentes
+
+
+def _payload_saldos_anteriores_por_obligacion(obligacion, pendientes):
+    payload = []
+    for item in sorted(pendientes, key=lambda row: (row['anio'], row['mes'])):
+        payload.append({
+            'anio': item['anio'],
+            'mes': item['mes'],
+            'periodo': f"{item['mes_nombre']} {item['anio']}",
+            'descripcion': item.get('descripcion') or '',
+            'valor_deuda': float(item.get('valor_deuda') or 0),
+            'valor_cuota': float(item.get('valor_cuota') or 0),
+            'valor_abonado': float(item.get('valor_abonado') or 0),
+            'es_parcial': bool(item.get('es_parcial')),
+            'modalidad': obligacion.modalidad,
+        })
+    return payload
+
+
 def _saldo_pendiente_total_obligacion(obligacion, capital_pagado=0):
     if obligacion.saldo_actual is not None:
         return float(obligacion.saldo_actual)
@@ -1240,6 +1311,7 @@ def pagos(anio=None, mes=None):
     saldo_anterior_por_obligacion = {}
     saldo_anterior_parcial_por_obligacion = {}
     saldo_anterior_cuotas_por_obligacion = {}
+    pendientes_anteriores_por_obligacion = {}
     for o in obligaciones:
         pagos_hasta_mes = pagos_hasta_mes_por_obligacion.get(o.id, {})
         pagos_anteriores = [
@@ -1271,6 +1343,7 @@ def pagos(anio=None, mes=None):
             pendientes_anteriores.append({
                 'obligacion': o,
                 'pago': d,
+                'mes': d.mes,
                 'mes_nombre': MESES[d.mes - 1],
                 'anio': d.anio,
                 'valor_deuda': valor_deuda,
@@ -1279,6 +1352,7 @@ def pagos(anio=None, mes=None):
                 'valor_abonado': valor_abonado_periodo,
                 'descripcion': 'Saldo restante por abono parcial' if estado_visible_anterior == 'parcial' else 'Cuota pendiente',
             })
+            pendientes_anteriores_por_obligacion.setdefault(o.id, []).append(pendientes_anteriores[-1])
 
         fecha_inicio = _coerce_date(o.fecha_inicio)
         if fecha_inicio and fecha_inicio.year > anio:
@@ -1305,6 +1379,7 @@ def pagos(anio=None, mes=None):
             pendientes_anteriores.append({
                 'obligacion': o,
                 'pago': pago_existente,
+                'mes': mes_revision,
                 'mes_nombre': MESES[mes_revision - 1],
                 'anio': anio,
                 'valor_deuda': cuota_base,
@@ -1313,6 +1388,7 @@ def pagos(anio=None, mes=None):
                 'valor_abonado': 0,
                 'descripcion': 'Cuota pendiente',
             })
+            pendientes_anteriores_por_obligacion.setdefault(o.id, []).append(pendientes_anteriores[-1])
 
     # Acumulado pagado meses anteriores del año
     acum_pagado_anterior = db.session.query(
@@ -1684,6 +1760,10 @@ def pagos(anio=None, mes=None):
             'resumen_valor': resumen_valor,
             'resumen_dias_texto': resumen_dias_texto,
             'resumen_dias_clase': resumen_dias_clase,
+            'saldos_anteriores_items': _payload_saldos_anteriores_por_obligacion(
+                o,
+                pendientes_anteriores_por_obligacion.get(o.id, [])
+            ),
         })
 
     prioridad_estado = {
@@ -1786,12 +1866,17 @@ def registrar_pago():
         return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
 
     observaciones = request.form.get('observaciones', '').strip()
+    detalle_otros = (request.form.get('detalle_otros') or '').strip()
     valor_causado_num = _float_or_none(valor_causado)
     valor_pagado_num = _float_or_none(valor_pagado)
     componente_capital_num = _float_or_none(componente_capital)
     componente_interes_num = _float_or_none(componente_interes)
     componente_seguro_vida_num = _float_or_none(componente_seguro_vida)
     componente_otros_num = _float_or_none(componente_otros)
+
+    if detalle_otros and componente_otros_num not in (None, 0):
+        nota_otros = f'Mora/otros: {detalle_otros}'
+        observaciones = f'{observaciones}\n{nota_otros}'.strip() if observaciones else nota_otros
 
     if usa_tabla_amortizacion and fila_amortizacion:
         if componente_capital_num is None:
@@ -1910,6 +1995,158 @@ def registrar_pago():
     db.session.commit()
     flash('Registro actualizado.', 'success')
     return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
+
+
+@obligaciones_bp.route('/pago-saldos-anteriores', methods=['POST'])
+def pagar_saldos_anteriores():
+    obligacion_id = request.form.get('obligacion_id', type=int)
+    anio_retorno = request.form.get('anio_retorno', date.today().year, type=int)
+    mes_retorno = request.form.get('mes_retorno', date.today().month, type=int)
+    obligacion = Obligacion.query.get_or_404(obligacion_id)
+
+    valor_total = _float_or_none(request.form.get('valor_total'))
+    fecha_pago = _date_or_none(request.form.get('fecha_pago'))
+    medio_pago_id = request.form.get('medio_pago_id') or None
+    observaciones = (request.form.get('observaciones') or '').strip()
+
+    if valor_total is None or valor_total <= 0:
+        flash('Debe indicar el valor total a aplicar a saldos anteriores.', 'danger')
+        return redirect(url_for('obligaciones.pagos', anio=anio_retorno, mes=mes_retorno))
+
+    if not fecha_pago:
+        flash('Debe indicar una fecha de pago valida para los saldos anteriores.', 'danger')
+        return redirect(url_for('obligaciones.pagos', anio=anio_retorno, mes=mes_retorno))
+
+    try:
+        payload = json.loads(request.form.get('saldos_payload') or '[]')
+    except json.JSONDecodeError:
+        payload = []
+
+    if not payload:
+        flash('Seleccione al menos un saldo anterior para aplicar el pago.', 'danger')
+        return redirect(url_for('obligaciones.pagos', anio=anio_retorno, mes=mes_retorno))
+
+    items_aplicados = []
+    total_aplicado = 0
+    for item in payload:
+        anio_item = int(item.get('anio', 0) or 0)
+        mes_item = int(item.get('mes', 0) or 0)
+        valor_aplicado = float(item.get('valor_aplicado', 0) or 0)
+        if anio_item <= 0 or mes_item not in range(1, 13) or valor_aplicado <= 0:
+            continue
+        if (anio_item, mes_item) >= (anio_retorno, mes_retorno):
+            continue
+        if not _obligacion_aplica_mes(obligacion, anio_item, mes_item):
+            continue
+        items_aplicados.append({
+            'anio': anio_item,
+            'mes': mes_item,
+            'valor_aplicado': valor_aplicado,
+        })
+        total_aplicado += valor_aplicado
+
+    if not items_aplicados:
+        flash('No se encontro ningun saldo anterior valido para aplicar.', 'danger')
+        return redirect(url_for('obligaciones.pagos', anio=anio_retorno, mes=mes_retorno))
+
+    if total_aplicado - valor_total > 1:
+        flash('La suma aplicada a saldos anteriores supera el valor total ingresado.', 'danger')
+        return redirect(url_for('obligaciones.pagos', anio=anio_retorno, mes=mes_retorno))
+
+    if valor_total - total_aplicado > 1:
+        flash('Hay valor sin aplicar. Ajuste el monto o marque mas cuotas anteriores.', 'danger')
+        return redirect(url_for('obligaciones.pagos', anio=anio_retorno, mes=mes_retorno))
+
+    items_aplicados.sort(key=lambda row: (row['anio'], row['mes']))
+    pagos_por_periodo = {
+        (p.anio, p.mes): p
+        for p in PagoObligacion.query.filter(
+            PagoObligacion.obligacion_id == obligacion.id,
+            db.or_(
+                PagoObligacion.anio < anio_retorno,
+                db.and_(PagoObligacion.anio == anio_retorno, PagoObligacion.mes < mes_retorno)
+            )
+        ).all()
+    }
+
+    periodos_actualizados = 0
+    for item in items_aplicados:
+        anio_item = item['anio']
+        mes_item = item['mes']
+        valor_aplicado = float(item['valor_aplicado'] or 0)
+        pago = pagos_por_periodo.get((anio_item, mes_item))
+        valor_deuda_actual = _valor_deuda_periodo_obligacion(obligacion, pago, anio_item, mes_item)
+        if valor_aplicado <= 0 or valor_deuda_actual <= 0:
+            continue
+        if valor_aplicado - valor_deuda_actual > 1:
+            flash(f'El valor aplicado a {MESES[mes_item - 1]} {anio_item} supera la deuda pendiente.', 'danger')
+            return redirect(url_for('obligaciones.pagos', anio=anio_retorno, mes=mes_retorno))
+
+        valor_causado_base = float(
+            (pago.valor_causado if pago and pago.valor_causado is not None else None)
+            or _valor_programado_mes_obligacion(obligacion, anio_item, mes_item)
+            or 0
+        )
+        valor_pagado_anterior = float(pago.valor_pagado or 0) if pago and pago.estado != 'anulado' else 0
+        nuevo_valor_pagado = valor_pagado_anterior + valor_aplicado
+        nuevo_estado = 'pagado' if (not valor_causado_base or nuevo_valor_pagado + 1 >= valor_causado_base) else 'parcial'
+        componentes = _componentes_prorrateados_periodo(
+            obligacion,
+            anio_item,
+            mes_item,
+            nuevo_valor_pagado,
+            pago=pago
+        )
+        observacion_pago = (
+            f'{observaciones}\nPago aplicado a saldos anteriores'
+            if observaciones else 'Pago aplicado a saldos anteriores'
+        )
+
+        if pago:
+            _registrar_historial_pago_obligacion(
+                pago,
+                'ajuste',
+                f'Pago de saldo anterior registrado el {fecha_pago.strftime("%d/%m/%Y")}'
+            )
+            _revertir_impacto_pago(obligacion, pago)
+            pago.valor_causado = _money_raw_or_none(valor_causado_base, scale=2)
+            pago.valor_pagado = _money_raw_or_none(nuevo_valor_pagado, scale=2)
+            pago.componente_capital = _money_raw_or_none(componentes['capital'], scale=2)
+            pago.componente_interes = _money_raw_or_none(componentes['interes'], scale=2)
+            pago.componente_seguro_vida = _money_raw_or_none(componentes['seguro_vida'], scale=2)
+            pago.componente_otros = _money_raw_or_none(componentes['otros'], scale=2)
+            pago.estado = nuevo_estado
+            pago.medio_pago_id = medio_pago_id
+            pago.fecha_pago = fecha_pago
+            pago.fecha_causacion = pago.fecha_causacion or date.today()
+            pago.observaciones = observacion_pago
+        else:
+            pago = PagoObligacion(
+                obligacion_id=obligacion.id,
+                anio=anio_item,
+                mes=mes_item,
+                valor_causado=_money_raw_or_none(valor_causado_base, scale=2),
+                valor_pagado=_money_raw_or_none(nuevo_valor_pagado, scale=2),
+                componente_capital=_money_raw_or_none(componentes['capital'], scale=2),
+                componente_interes=_money_raw_or_none(componentes['interes'], scale=2),
+                componente_seguro_vida=_money_raw_or_none(componentes['seguro_vida'], scale=2),
+                componente_otros=_money_raw_or_none(componentes['otros'], scale=2),
+                estado=nuevo_estado,
+                medio_pago_id=medio_pago_id,
+                fecha_pago=fecha_pago,
+                fecha_causacion=date.today(),
+                observaciones=observacion_pago
+            )
+            db.session.add(pago)
+            pagos_por_periodo[(anio_item, mes_item)] = pago
+
+        if nuevo_estado == 'pagado':
+            _aplicar_impacto_pago(obligacion, pago)
+        periodos_actualizados += 1
+
+    db.session.commit()
+    flash(f'Se aplico el pago a {periodos_actualizados} saldo(s) anterior(es).', 'success')
+    return redirect(url_for('obligaciones.pagos', anio=anio_retorno, mes=mes_retorno))
 
 
 @obligaciones_bp.route('/pago/<int:pago_id>/comprobante')
