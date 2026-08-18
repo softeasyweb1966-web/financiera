@@ -97,7 +97,7 @@
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
                             <label class="form-label">Salario base</label>
-                            <input type="text" name="salario_base" id="salario_input" class="form-control js-money" value="{{ empleado.salario_base if empleado and empleado.salario_base else '' }}" onchange="checkCambioSalario()">
+                            <input type="text" name="salario_base" id="salario_input" class="form-control js-money" value="{{ empleado.salario_base if empleado and empleado.salario_base else '' }}" onchange="checkCambioSalario()" oninput="checkCambioSalario()">
                             {% if empleado %}
                             <div class="form-text"><a href="{{ url_for('nomina.historial_salarios', id=empleado.id) }}" class="text-decoration-none"><i class="bi bi-graph-up-arrow"></i> Ver historial de salarios</a></div>
                             {% endif %}
@@ -232,11 +232,12 @@ function checkCambioSalario() {
     if (!row) return;
     var inputVal = (document.getElementById('salario_input').value || '').replace(/[^0-9.]/g, '');
     var original = salarioOriginal.replace(/[^0-9.]/g, '');
-    if (inputVal && original && inputVal !== original) {
-        row.style.display = '';
-    } else {
-        row.style.display = 'none';
-    }
+    var cambio = (inputVal && original && inputVal !== original);
+    row.style.display = cambio ? '' : 'none';
+    var fechaInput = document.getElementById('fecha_cambio_salario');
+    var motivoInput = document.getElementById('motivo_salario');
+    if (fechaInput) fechaInput.required = cambio;
+    if (motivoInput) motivoInput.required = cambio;
 }
 
 document.addEventListener('DOMContentLoaded', function() {
