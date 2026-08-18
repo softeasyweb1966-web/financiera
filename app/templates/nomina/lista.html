@@ -6,6 +6,8 @@
     .catalog-shell { gap: 1rem; }
     .catalog-summary { border: 1px solid #dbeafe; background: linear-gradient(135deg, #eff6ff, #f8fafc); }
     .employee-card { border: 1px solid #e2e8f0; border-left: 4px solid #10b981; transition: box-shadow 0.15s ease, transform 0.15s ease; }
+    .employee-card-inactive { border-left-color: #94a3b8; background: #f8fafc; }
+    .employee-row-inactive { background: #f8fafc; }
     .employee-card:hover { box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08); transform: translateY(-1px); }
     .label-mini { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; }
     .value-mini { font-size: 0.9rem; font-weight: 600; color: #0f172a; }
@@ -31,19 +33,19 @@
     <div class="row g-3">
         <div class="col-6 col-lg-3">
             <div class="label-mini">Empleados activos</div>
-            <div class="value-mini">{{ empleados|length }}</div>
+            <div class="value-mini">{{ empleados_activos_count }}</div>
         </div>
         <div class="col-6 col-lg-3">
             <div class="label-mini">Laborales</div>
-            <div class="value-mini">{{ empleados|selectattr('tipo_contrato', 'equalto', 'laboral')|list|length }}</div>
+            <div class="value-mini">{{ empleados_laborales_count }}</div>
         </div>
         <div class="col-6 col-lg-3">
             <div class="label-mini">Prestación servicios</div>
-            <div class="value-mini">{{ empleados|selectattr('tipo_contrato', 'equalto', 'prestacion_servicios')|list|length }}</div>
+            <div class="value-mini">{{ empleados_servicios_count }}</div>
         </div>
         <div class="col-6 col-lg-3">
             <div class="label-mini">Con WhatsApp autorizado</div>
-            <div class="value-mini">{{ empleados|selectattr('autoriza_whatsapp')|list|length }}</div>
+            <div class="value-mini">{{ empleados_whatsapp_count }}</div>
         </div>
     </div>
 </div>

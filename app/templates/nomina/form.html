@@ -51,13 +51,38 @@
                 <div class="section-box">
                     <div class="section-title mb-3">Identificación</div>
                     <div class="row g-3">
-                        <div class="col-12 col-md-8">
+                        <div class="col-12 col-md-6">
                             <label class="form-label">Nombre</label>
                             <input type="text" class="form-control" value="{{ empleado.nombre }}" disabled>
                         </div>
-                        <div class="col-12 col-md-4">
+                        <div class="col-12 col-md-3">
                             <label class="form-label">Estado</label>
-                            <input type="text" class="form-control" value="{{ empleado.estado|title if empleado.estado else 'Activo' }}" disabled>
+                            <select name="estado" id="estado_select" class="form-select" onchange="toggleCambioEstadoNomina()">
+                                {% for estado in estados_empleado %}
+                                <option value="{{ estado }}" {{ 'selected' if (empleado.estado or 'activo') == estado else '' }}>
+                                    {{ estados_empleado_labels.get(estado, estado|title) }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-3">
+                            <label class="form-label">Fecha de finalizaciÃ³n</label>
+                            <input type="text" class="form-control" value="{{ empleado.fecha_retiro.strftime('%d/%m/%Y') if empleado.fecha_retiro else '-' }}" disabled>
+                        </div>
+                    </div>
+                    <div class="row g-3 mt-1" id="cambio-estado-row" style="display:none;">
+                        <div class="col-12">
+                            <div class="alert alert-warning py-2 small mb-0">
+                                <i class="bi bi-exclamation-triangle"></i> EstÃ¡ cambiando el estado. Ingrese fecha y motivo del cambio.
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" id="label_fecha_cambio_estado">Fecha del cambio</label>
+                            <input type="date" name="fecha_cambio_estado" id="fecha_cambio_estado" class="form-control" value="{{ today }}">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Motivo del cambio</label>
+                            <input type="text" name="motivo_estado" id="motivo_estado" class="form-control" placeholder="Explique la razÃ³n del cambio">
                         </div>
                     </div>
                 </div>
@@ -131,4 +156,38 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const estadoOriginalNomina = '{{ empleado.estado if empleado else "activo" }}';
+
+function toggleCambioEstadoNomina() {
+    const select = document.getElementById('estado_select');
+    const row = document.getElementById('cambio-estado-row');
+    const labelFecha = document.getElementById('label_fecha_cambio_estado');
+    const fechaInput = document.getElementById('fecha_cambio_estado');
+    const motivoInput = document.getElementById('motivo_estado');
+
+    if (!select || !row) {
+        return;
+    }
+
+    const nuevoEstado = select.value;
+    const cambioActivo = nuevoEstado !== estadoOriginalNomina;
+    row.style.display = cambioActivo ? '' : 'none';
+
+    if (fechaInput) {
+        fechaInput.required = cambioActivo;
+    }
+    if (motivoInput) {
+        motivoInput.required = cambioActivo;
+    }
+    if (labelFecha) {
+        labelFecha.textContent = nuevoEstado === 'activo' ? 'Fecha del cambio' : 'Fecha de finalizacion';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', toggleCambioEstadoNomina);
+</script>
 {% endblock %}

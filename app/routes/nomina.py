@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from app import db
 from app.models import (
     Empleado, Tercero, TipoTercero, RegistroNomina,
-    ConceptoNomina, MedioPago
+    ConceptoNomina, MedioPago, HistorialEstado
 )
 from datetime import date, datetime
 import calendar
@@ -20,10 +20,66 @@ FORMAS_PAGO = [
     ('mensual', 'Mensual'),
 ]
 FORMAS_PAGO_LABELS = dict(FORMAS_PAGO)
+ESTADOS_EMPLEADO = ['activo', 'inactivo', 'retirado', 'anulado']
+ESTADOS_EMPLEADO_LABELS = {
+    'activo': 'Activo',
+    'inactivo': 'Inactivo',
+    'retirado': 'Retirado',
+    'anulado': 'Anulado',
+}
 
 
 def _preliquidacion_session_key(anio, mes, quincena):
     return f'nomina_preliquidacion_{anio}_{mes}_{quincena}'
+
+
+def _date_or_none(valor):
+    if not valor:
+        return None
+    try:
+        return datetime.strptime(valor, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
+def _ordenar_empleados_catalogo(empleados):
+    prioridad_estado = {
+        'activo': 0,
+        'inactivo': 1,
+        'retirado': 2,
+        'anulado': 3,
+    }
+    return sorted(
+        empleados,
+        key=lambda e: (
+            0 if e.activo else 1,
+            prioridad_estado.get((e.estado or 'activo').lower(), 9),
+            (e.cargo or '').lower(),
+            (e.nombre or '').lower(),
+            e.id or 0,
+        )
+    )
+
+
+def _registrar_cambio_estado_empleado(empleado, nuevo_estado, fecha_cambio, motivo):
+    estado_anterior = (empleado.estado or 'activo').lower()
+    if nuevo_estado == estado_anterior:
+        return False
+
+    historial = HistorialEstado(
+        entidad='empleado',
+        entidad_id=empleado.id,
+        estado_anterior=estado_anterior,
+        estado_nuevo=nuevo_estado,
+        fecha_cambio=datetime.combine(fecha_cambio, datetime.min.time()),
+        motivo=motivo,
+        vigencia_desde=fecha_cambio,
+    )
+    db.session.add(historial)
+    empleado.estado = nuevo_estado
+    empleado.activo = (nuevo_estado == 'activo')
+    empleado.fecha_retiro = None if nuevo_estado == 'activo' else fecha_cambio
+    return True
 
 
 def _dias_periodo_nomina(anio, mes, quincena):
@@ -102,9 +158,23 @@ def _parse_novedades_periodo(raw_payload, conceptos_dict):
 
 @nomina_bp.route('/')
 def lista():
-    empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo).all()
+    empleados = Empleado.query.order_by(Empleado.activo.desc(), Empleado.cargo, Empleado.id).all()
+    empleados = _ordenar_empleados_catalogo(empleados)
     anio = request.args.get('anio', date.today().year, type=int)
-    return render_template('nomina/lista.html', empleados=empleados, anio=anio, meses=MESES)
+    empleados_activos = [e for e in empleados if e.activo]
+    return render_template(
+        'nomina/lista.html',
+        empleados=empleados,
+        empleados_activos_count=len(empleados_activos),
+        empleados_laborales_count=sum(1 for e in empleados_activos if (e.tipo_contrato or 'laboral') == 'laboral'),
+        empleados_servicios_count=sum(1 for e in empleados_activos if e.tipo_contrato == 'prestacion_servicios'),
+        empleados_whatsapp_count=sum(1 for e in empleados_activos if e.autoriza_whatsapp),
+        anio=anio,
+        meses=MESES,
+        estados_empleado=ESTADOS_EMPLEADO,
+        estados_empleado_labels=ESTADOS_EMPLEADO_LABELS,
+        today=date.today().strftime('%Y-%m-%d'),
+    )
 
 
 @nomina_bp.route('/nuevo', methods=['GET', 'POST'])
@@ -122,6 +192,7 @@ def nuevo():
             db.session.flush()
             tercero_id = tercero.id
 
+        fecha_ingreso = _date_or_none(request.form.get('fecha_ingreso'))
         empleado = Empleado(
             tercero_id=tercero_id,
             cargo=request.form.get('cargo', '').strip(),
@@ -130,7 +201,7 @@ def nuevo():
             forma_pago=request.form.get('forma_pago', 'quincenal'),
             whatsapp=request.form.get('whatsapp', '').strip() or None,
             autoriza_whatsapp=bool(request.form.get('autoriza_whatsapp')),
-            fecha_ingreso=request.form.get('fecha_ingreso') or None,
+            fecha_ingreso=fecha_ingreso,
             observaciones=request.form.get('observaciones', '').strip()
         )
         db.session.add(empleado)
@@ -139,27 +210,110 @@ def nuevo():
         return redirect(url_for('nomina.lista'))
 
     terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.nombre).all()
-    return render_template('nomina/form.html', empleado=None, terceros=terceros, formas_pago=FORMAS_PAGO)
+    return render_template(
+        'nomina/form.html',
+        empleado=None,
+        terceros=terceros,
+        formas_pago=FORMAS_PAGO,
+        estados_empleado=ESTADOS_EMPLEADO,
+        estados_empleado_labels=ESTADOS_EMPLEADO_LABELS,
+        today=date.today().strftime('%Y-%m-%d'),
+    )
 
 
 @nomina_bp.route('/<int:id>/editar', methods=['GET', 'POST'])
 def editar(id):
     empleado = Empleado.query.get_or_404(id)
     if request.method == 'POST':
+        nuevo_estado = (request.form.get('estado') or empleado.estado or 'activo').strip().lower()
+        if nuevo_estado not in ESTADOS_EMPLEADO:
+            flash('Seleccione un estado valido para el empleado.', 'danger')
+            return redirect(url_for('nomina.editar', id=id))
+
+        fecha_ingreso = _date_or_none(request.form.get('fecha_ingreso'))
+        if request.form.get('fecha_ingreso') and fecha_ingreso is None:
+            flash('La fecha de ingreso no es valida.', 'danger')
+            return redirect(url_for('nomina.editar', id=id))
+
+        estado_anterior = (empleado.estado or 'activo').lower()
+        if nuevo_estado != estado_anterior:
+            motivo_estado = (request.form.get('motivo_estado') or '').strip()
+            fecha_cambio_estado = _date_or_none(request.form.get('fecha_cambio_estado'))
+            if not fecha_cambio_estado:
+                flash('Debe indicar la fecha del cambio de estado.', 'danger')
+                return redirect(url_for('nomina.editar', id=id))
+            if not motivo_estado:
+                flash('Debe indicar el motivo del cambio de estado.', 'danger')
+                return redirect(url_for('nomina.editar', id=id))
+            _registrar_cambio_estado_empleado(empleado, nuevo_estado, fecha_cambio_estado, motivo_estado)
+
         empleado.cargo = request.form.get('cargo', '').strip()
         empleado.salario_base = request.form.get('salario_base') or None
         empleado.tipo_contrato = request.form.get('tipo_contrato', 'laboral')
         empleado.forma_pago = request.form.get('forma_pago', 'quincenal')
         empleado.whatsapp = request.form.get('whatsapp', '').strip() or None
         empleado.autoriza_whatsapp = bool(request.form.get('autoriza_whatsapp'))
-        empleado.fecha_ingreso = request.form.get('fecha_ingreso') or None
+        empleado.fecha_ingreso = fecha_ingreso
         empleado.observaciones = request.form.get('observaciones', '').strip()
         db.session.commit()
         flash('Empleado actualizado.', 'success')
         return redirect(url_for('nomina.lista'))
 
     terceros = Tercero.query.filter_by(activo=True).order_by(Tercero.nombre).all()
-    return render_template('nomina/form.html', empleado=empleado, terceros=terceros, formas_pago=FORMAS_PAGO)
+    return render_template(
+        'nomina/form.html',
+        empleado=empleado,
+        terceros=terceros,
+        formas_pago=FORMAS_PAGO,
+        estados_empleado=ESTADOS_EMPLEADO,
+        estados_empleado_labels=ESTADOS_EMPLEADO_LABELS,
+        today=date.today().strftime('%Y-%m-%d'),
+    )
+
+
+@nomina_bp.route('/<int:id>/cambiar-estado', methods=['POST'])
+def cambiar_estado(id):
+    empleado = Empleado.query.get_or_404(id)
+    nuevo_estado = (request.form.get('estado') or '').strip().lower()
+    motivo = (request.form.get('motivo') or '').strip()
+    fecha_cambio = _date_or_none(request.form.get('fecha_cambio'))
+
+    if nuevo_estado not in ESTADOS_EMPLEADO:
+        flash('Seleccione un estado valido para el empleado.', 'danger')
+        return redirect(url_for('nomina.lista'))
+    if nuevo_estado == (empleado.estado or 'activo').lower():
+        flash('El empleado ya se encuentra en ese estado.', 'warning')
+        return redirect(url_for('nomina.lista'))
+    if not fecha_cambio:
+        flash('Debe indicar la fecha del cambio de estado.', 'danger')
+        return redirect(url_for('nomina.lista'))
+    if not motivo:
+        flash('Debe indicar el motivo del cambio de estado.', 'danger')
+        return redirect(url_for('nomina.lista'))
+
+    _registrar_cambio_estado_empleado(empleado, nuevo_estado, fecha_cambio, motivo)
+    db.session.commit()
+    flash(f'Empleado "{empleado.nombre}" cambiado a {ESTADOS_EMPLEADO_LABELS.get(nuevo_estado, nuevo_estado)}.', 'success')
+    return redirect(url_for('nomina.lista'))
+
+
+@nomina_bp.route('/<int:id>/eliminar', methods=['POST'])
+def eliminar(id):
+    empleado = Empleado.query.get_or_404(id)
+    tiene_historial = RegistroNomina.query.filter_by(empleado_id=empleado.id).first() is not None
+    if tiene_historial:
+        flash(
+            f'No se puede eliminar a "{empleado.nombre}" porque ya tiene registros de nomina. '
+            'Cambie su estado a inactivo o retirado.',
+            'danger'
+        )
+        return redirect(url_for('nomina.lista'))
+
+    nombre = empleado.nombre
+    db.session.delete(empleado)
+    db.session.commit()
+    flash(f'Empleado "{nombre}" eliminado del catalogo.', 'success')
+    return redirect(url_for('nomina.lista'))
 
 
 @nomina_bp.route('/preliquidar', methods=['GET', 'POST'])

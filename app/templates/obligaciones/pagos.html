@@ -96,27 +96,6 @@
     {% endfor %}
 </div>
 
-<div class="row g-2 mb-3">
-    <div class="col-md-4">
-        <div class="card p-2 text-center">
-            <small class="text-muted">Total saldo actual <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
-            <span class="fw-bold text-danger">${{ "{:,.0f}".format(total_saldo_actual) }}</span>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card p-2 text-center">
-            <small class="text-muted">Obligaciones activas <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
-            <span class="fw-bold">{{ obligaciones_activas_total }}</span>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card p-2 text-center">
-            <small class="text-muted">Cuota mensual estimada <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
-            <span class="fw-bold text-primary">${{ "{:,.0f}".format(cuota_mensual_estimada) }}</span>
-        </div>
-    </div>
-</div>
-
 <div class="row g-2 mb-3 align-items-start">
     <div class="col-lg-3 col-md-4">
         <div class="summary-stack">
@@ -264,6 +243,27 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-md-4">
+        <div class="card p-2 text-center">
+            <small class="text-muted">Total saldo actual <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
+            <span class="fw-bold text-danger">${{ "{:,.0f}".format(total_saldo_actual) }}</span>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-2 text-center">
+            <small class="text-muted">Obligaciones activas <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
+            <span class="fw-bold">{{ obligaciones_activas_total }}</span>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-2 text-center">
+            <small class="text-muted">Cuota mensual estimada <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
+            <span class="fw-bold text-primary">${{ "{:,.0f}".format(cuota_mensual_estimada) }}</span>
         </div>
     </div>
 </div>
