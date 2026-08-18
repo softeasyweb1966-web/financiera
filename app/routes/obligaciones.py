@@ -770,6 +770,18 @@ def _payload_saldos_anteriores_por_obligacion(obligacion, pendientes):
     return payload
 
 
+def _ordenar_obligaciones_lista(obligaciones):
+    return sorted(
+        obligaciones,
+        key=lambda o: (
+            1 if (o.estado or '').lower() == 'finalizado' else 0,
+            o.dia_limite_pago if o.dia_limite_pago is not None else 99,
+            (o.tercero.nombre.lower() if o.tercero and o.tercero.nombre else ''),
+            o.id or 0,
+        )
+    )
+
+
 def _saldo_pendiente_total_obligacion(obligacion, capital_pagado=0):
     if obligacion.saldo_actual is not None:
         return float(obligacion.saldo_actual)
@@ -917,6 +929,7 @@ def _validar_desglose_cuota_form(modalidad, requiere_desglose, valor_cuota_fija,
 @obligaciones_bp.route('/')
 def lista():
     obligaciones = Obligacion.query.filter_by(activo=True).order_by(Obligacion.dia_limite_pago).all()
+    obligaciones = _ordenar_obligaciones_lista(obligaciones)
     anio = request.args.get('anio', date.today().year, type=int)
     return render_template('obligaciones/lista.html',
                            obligaciones=obligaciones, anio=anio, meses=MESES)
