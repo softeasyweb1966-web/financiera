@@ -455,27 +455,26 @@
                             <input type="text" name="componente_seguro_vida" id="ajuste_seguro_vida" class="form-control form-control-sm js-money">
                         </div>
                         <div class="col-3" id="ajuste_otros_wrapper" style="display:none;">
-                            <label class="form-label">Otros</label>
+                            <label class="form-label">Mora / otros manuales</label>
                             <input type="text" name="componente_otros" id="ajuste_otros" class="form-control form-control-sm js-money">
                         </div>
                     </div>
-                    <div class="row g-2 mt-1">
-                        <div class="col-6">
-                            <label class="form-label">Anticipo</label>
-                            <input type="text" name="componente_anticipo" id="ajuste_anticipo" class="form-control form-control-sm js-money">
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label">Excedente calculado</label>
-                            <input type="text" id="ajuste_excedente" class="form-control form-control-sm js-money" readonly>
-                        </div>
-                    </div>
-                    <div class="row g-2 mt-1">
-                        <div class="col-12">
-                            <label class="form-label">Si el pagado supera el causado, aplicar excedente a</label>
-                            <select name="destino_excedente" id="ajuste_destino_excedente" class="form-select form-select-sm">
-                                <option value="mora">Mora / otros</option>
-                                <option value="anticipo">Anticipo</option>
-                            </select>
+                    <input type="hidden" name="componente_anticipo" id="ajuste_anticipo" value="">
+                    <div class="alert alert-info py-2 small mt-2 mb-2" id="bloque_excedente_ajuste" style="display:none;">
+                        <div class="fw-semibold mb-1" id="texto_excedente_ajuste"></div>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-6">
+                                <label class="form-label mb-1">¿A dónde quiere aplicar ese excedente?</label>
+                                <select name="destino_excedente" id="ajuste_destino_excedente" class="form-select form-select-sm">
+                                    <option value="anticipo">Anticipo</option>
+                                    <option value="mora">Mora / otros</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="border rounded p-2 bg-white">
+                                    <div id="resumen_excedente_ajuste" class="text-muted"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="mb-2 mt-2">
@@ -519,26 +518,60 @@ function prepararAjustePago(pagoId, periodo, valorPagado, fechaPago, valorCausad
     document.getElementById('ajuste_interes').value = interes || '';
     document.getElementById('ajuste_seguro_vida').value = seguroVida || '';
     document.getElementById('ajuste_otros').value = otros || '';
-    document.getElementById('ajuste_anticipo').value = anticipo || '';
+    document.getElementById('ajuste_anticipo').value = '';
     document.getElementById('ajuste_destino_excedente').value = (anticipo && anticipo !== '0' && anticipo !== '0.00') ? 'anticipo' : 'mora';
-    window.FinancieraMoney.setValue(document.getElementById('ajuste_excedente'), '');
     document.getElementById('ajuste_medio_pago').value = medioPagoId || '';
     document.getElementById('ajuste_observaciones').value = observaciones || '';
     document.getElementById('ajuste_motivo').value = '';
     document.getElementById('ajuste_desglose_wrapper').style.display = requiereDesglose ? '' : 'none';
     document.getElementById('ajuste_seguro_wrapper').style.display = requiereDesglose && usaSeguros ? '' : 'none';
     document.getElementById('ajuste_otros_wrapper').style.display = requiereDesglose && usaSeguros ? '' : 'none';
-    recalcularExcedenteAjuste();
+    actualizarExcedenteAjuste();
 }
 
 function recalcularExcedenteAjuste() {
     const valorCausado = window.FinancieraMoney.parse(document.getElementById('ajuste_valor_causado').value);
     const valorPagado = window.FinancieraMoney.parse(document.getElementById('ajuste_valor_pagado').value);
     const excedente = Math.max(valorPagado - valorCausado, 0);
-    window.FinancieraMoney.setValue(document.getElementById('ajuste_excedente'), excedente || '');
+    const destino = document.getElementById('ajuste_destino_excedente').value || 'anticipo';
+    const moraManual = window.FinancieraMoney.parse(document.getElementById('ajuste_otros').value);
+    const bloque = document.getElementById('bloque_excedente_ajuste');
+    const texto = document.getElementById('texto_excedente_ajuste');
+    const resumen = document.getElementById('resumen_excedente_ajuste');
+
+    if (excedente <= 0) {
+        bloque.style.display = 'none';
+        document.getElementById('ajuste_anticipo').value = '';
+        resumen.textContent = '';
+        return;
+    }
+
+    bloque.style.display = 'block';
+    texto.textContent = 'Este ajuste deja un excedente de ' + formatearMonedaAjuste(excedente) + ' sobre el valor causado.';
+
+    if (destino === 'anticipo') {
+        document.getElementById('ajuste_anticipo').value = String(excedente);
+        resumen.textContent = 'Se guardará como anticipo: ' + formatearMonedaAjuste(excedente) + '. Mora / otros manuales: ' + formatearMonedaAjuste(moraManual) + '.';
+    } else {
+        document.getElementById('ajuste_anticipo').value = '';
+        resumen.textContent = 'Se sumará a mora / otros: ' + formatearMonedaAjuste(moraManual + excedente) + '.';
+    }
 }
 
-document.getElementById('ajuste_valor_causado').addEventListener('input', recalcularExcedenteAjuste);
-document.getElementById('ajuste_valor_pagado').addEventListener('input', recalcularExcedenteAjuste);
+function actualizarExcedenteAjuste() {
+    recalcularExcedenteAjuste();
+}
+
+function formatearMonedaAjuste(valor) {
+    return '$' + Number(valor || 0).toLocaleString('es-CO', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
+}
+
+document.getElementById('ajuste_valor_causado').addEventListener('input', actualizarExcedenteAjuste);
+document.getElementById('ajuste_valor_pagado').addEventListener('input', actualizarExcedenteAjuste);
+document.getElementById('ajuste_otros').addEventListener('input', actualizarExcedenteAjuste);
+document.getElementById('ajuste_destino_excedente').addEventListener('change', actualizarExcedenteAjuste);
 </script>
 {% endblock %}

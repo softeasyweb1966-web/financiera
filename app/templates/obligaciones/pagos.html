@@ -692,33 +692,31 @@
                         <small id="texto_desglose" class="text-muted d-block mb-2" style="display:none;">Ingrese la cuota pagada y discrimine cuanto corresponde a cada componente.</small>
                         <div class="row">
                             <div class="col-md-6 mb-2" id="grupo_pago_otros">
-                                <label class="form-label" id="pago_otros_label">Mora / otros</label>
+                                <label class="form-label" id="pago_otros_label">Mora / otros manuales</label>
                                 <input type="text" name="componente_otros" id="pago_otros" class="form-control form-control-sm js-money">
                                 <div class="form-text" id="texto_otros_pago">Use este campo para intereses de mora u otro cobro adicional.</div>
                             </div>
                             <div class="col-md-6 mb-2">
-                                <label class="form-label">Anticipo</label>
-                                <input type="text" name="componente_anticipo" id="pago_anticipo" class="form-control form-control-sm js-money">
-                                <div class="form-text">Se usa cuando paga de mas y desea dejar saldo a favor.</div>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-2">
-                                <label class="form-label">Excedente calculado</label>
-                                <input type="text" id="pago_excedente" class="form-control form-control-sm js-money" readonly>
-                            </div>
-                            <div class="col-md-6 mb-2">
-                                <label class="form-label">Si el pagado supera el causado, aplicar excedente a</label>
-                                <select name="destino_excedente" id="pago_destino_excedente" class="form-select form-select-sm">
-                                    <option value="mora">Mora / otros</option>
-                                    <option value="anticipo">Anticipo</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-2">
                                 <label class="form-label">Detalle mora / otros</label>
                                 <input type="text" name="detalle_otros" id="pago_detalle_otros" class="form-control form-control-sm" placeholder="Ej: interes mora agosto">
+                            </div>
+                        </div>
+                        <input type="hidden" name="componente_anticipo" id="pago_anticipo" value="">
+                        <div class="alert alert-info py-2 px-3 small mb-3" id="bloque_excedente_pago" style="display:none;">
+                            <div class="fw-semibold mb-1" id="texto_excedente_pago"></div>
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-6">
+                                    <label class="form-label mb-1">¿A dónde quiere aplicar ese excedente?</label>
+                                    <select name="destino_excedente" id="pago_destino_excedente" class="form-select form-select-sm">
+                                        <option value="anticipo">Anticipo</option>
+                                        <option value="mora">Mora / otros</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="border rounded p-2 bg-white">
+                                        <div id="resumen_excedente_pago" class="text-muted"></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div class="row">
@@ -838,7 +836,7 @@ function toggleDesglose(requiereDesglose, usaTablaAmortizacion = false) {
     document.getElementById('pago_interes').required = visible;
     document.getElementById('grupo_pago_seguro_vida').style.display = visible && usaTablaAmortizacion ? 'block' : 'none';
     document.getElementById('pago_seguro_vida').required = visible && usaTablaAmortizacion;
-    document.getElementById('pago_otros_label').textContent = usaTablaAmortizacion ? 'Otros' : 'Mora / otros';
+    document.getElementById('pago_otros_label').textContent = usaTablaAmortizacion ? 'Otros manuales' : 'Mora / otros manuales';
     document.getElementById('texto_otros_pago').textContent = usaTablaAmortizacion
         ? 'Puede ajustar aqui mora u otro cobro adicional de la cuota.'
         : 'Use este campo para intereses de mora u otro cobro adicional.';
@@ -863,9 +861,8 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
     window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_seguro_vida'), valorSeguroVida || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_otros'), valorOtros || '');
-    window.FinancieraMoney.setValue(document.getElementById('pago_anticipo'), '');
-    window.FinancieraMoney.setValue(document.getElementById('pago_excedente'), '');
-    document.getElementById('pago_destino_excedente').value = 'mora';
+    document.getElementById('pago_anticipo').value = '';
+    document.getElementById('pago_destino_excedente').value = 'anticipo';
     document.getElementById('pago_detalle_otros').value = '';
     document.getElementById('pago_fecha_pago').value = '';
     document.getElementById('causar_dia_reportado').value = '';
@@ -878,7 +875,7 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
     document.getElementById('pago_valor').readOnly = false;
     document.getElementById('texto_causacion_tabla').style.display = 'none';
     toggleDesglose(requiereDesglose, usaTablaAmortizacion);
-    recalcularExcedentePago();
+    actualizarExcedentePago();
 }
 
 function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres, valorSeguroVida, valorOtros, usaTablaAmortizacion, diaBase) {
@@ -891,9 +888,8 @@ function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorC
     window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_seguro_vida'), valorSeguroVida || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_otros'), valorOtros || '');
-    window.FinancieraMoney.setValue(document.getElementById('pago_anticipo'), '');
-    window.FinancieraMoney.setValue(document.getElementById('pago_excedente'), '');
-    document.getElementById('pago_destino_excedente').value = 'mora';
+    document.getElementById('pago_anticipo').value = '';
+    document.getElementById('pago_destino_excedente').value = 'anticipo';
     document.getElementById('pago_detalle_otros').value = '';
     document.getElementById('causar_dia_reportado').value = diaBase || '';
     document.getElementById('pago_accion').value = 'causar';
@@ -922,7 +918,29 @@ function recalcularExcedentePago() {
     const valorCausado = window.FinancieraMoney.parse(document.getElementById('pago_valor_causado2').value);
     const valorPagado = window.FinancieraMoney.parse(document.getElementById('pago_valor').value);
     const excedente = Math.max(valorPagado - valorCausado, 0);
-    window.FinancieraMoney.setValue(document.getElementById('pago_excedente'), excedente || '');
+    const destino = document.getElementById('pago_destino_excedente').value || 'anticipo';
+    const moraManual = window.FinancieraMoney.parse(document.getElementById('pago_otros').value);
+    const bloque = document.getElementById('bloque_excedente_pago');
+    const texto = document.getElementById('texto_excedente_pago');
+    const resumen = document.getElementById('resumen_excedente_pago');
+
+    if (excedente <= 0) {
+        bloque.style.display = 'none';
+        document.getElementById('pago_anticipo').value = '';
+        resumen.textContent = '';
+        return;
+    }
+
+    bloque.style.display = 'block';
+    texto.textContent = 'Está pagando ' + formatearMoneda(excedente) + ' por encima del valor causado.';
+
+    if (destino === 'anticipo') {
+        document.getElementById('pago_anticipo').value = String(excedente);
+        resumen.textContent = 'Se guardará como anticipo: ' + formatearMoneda(excedente) + '. Mora / otros manuales: ' + formatearMoneda(moraManual) + '.';
+    } else {
+        document.getElementById('pago_anticipo').value = '';
+        resumen.textContent = 'Se sumará a mora / otros: ' + formatearMoneda(moraManual + excedente) + '.';
+    }
 }
 
 function formatearMoneda(valor) {
@@ -1037,7 +1055,13 @@ function prepararSaldosAnteriores(id, nombre, payload) {
 }
 
 document.getElementById('saldos_valor_total').addEventListener('input', recalcularSaldosAnteriores);
-document.getElementById('pago_valor_causado2').addEventListener('input', recalcularExcedentePago);
-document.getElementById('pago_valor').addEventListener('input', recalcularExcedentePago);
+document.getElementById('pago_valor_causado2').addEventListener('input', actualizarExcedentePago);
+document.getElementById('pago_valor').addEventListener('input', actualizarExcedentePago);
+document.getElementById('pago_otros').addEventListener('input', actualizarExcedentePago);
+document.getElementById('pago_destino_excedente').addEventListener('change', actualizarExcedentePago);
+
+function actualizarExcedentePago() {
+    recalcularExcedentePago();
+}
 </script>
 {% endblock %}
