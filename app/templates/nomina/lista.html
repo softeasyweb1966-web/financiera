@@ -57,9 +57,11 @@
             <thead class="table-light">
                 <tr>
                     <th>Empleado</th>
+                    <th>Estado</th>
                     <th>Contrato</th>
                     <th>Forma pago</th>
                     <th>Salario base</th>
+                    <th>FinalizaciÃ³n</th>
                     <th>WhatsApp</th>
                     <th class="text-center">Desprendible</th>
                     <th></th>
@@ -67,14 +69,20 @@
             </thead>
             <tbody>
                 {% for e in empleados %}
-                <tr>
+                <tr class="{{ 'employee-row-inactive text-muted' if not e.activo else '' }}">
                     <td>
                         <div class="fw-semibold">{{ e.nombre }}</div>
                         <small class="text-muted">{{ e.cargo or 'Sin cargo' }}</small>
                     </td>
+                    <td>
+                        <span class="badge bg-{{ 'success' if (e.estado or 'activo') == 'activo' else 'secondary' if e.estado == 'inactivo' else 'warning text-dark' if e.estado == 'retirado' else 'danger' }}">
+                            {{ estados_empleado_labels.get(e.estado or 'activo', (e.estado or 'activo')|title) }}
+                        </span>
+                    </td>
                     <td><span class="badge {{ 'bg-primary' if e.tipo_contrato == 'laboral' else 'bg-secondary' }}">{{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</span></td>
                     <td>{{ (e.forma_pago or 'quincenal')|title }}</td>
                     <td>{{ "${:,.0f}".format(e.salario_base) if e.salario_base else '-' }}</td>
+                    <td>{{ e.fecha_retiro.strftime('%d/%m/%Y') if e.fecha_retiro else '-' }}</td>
                     <td>{{ e.whatsapp or '-' }}</td>
                     <td class="text-center">
                         {% if e.autoriza_whatsapp %}
@@ -85,6 +93,14 @@
                     </td>
                     <td class="text-end">
                         <a href="{{ url_for('nomina.editar', id=e.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-warning"
+                                onclick='abrirCambioEstadoNomina({{ e.id }}, {{ e.nombre|tojson }}, {{ (e.estado or "activo")|tojson }})'>
+                            <i class="bi bi-arrow-repeat"></i>
+                        </button>
+                        <form method="POST" action="{{ url_for('nomina.eliminar', id=e.id) }}" class="d-inline" onsubmit="return confirm('¿Eliminar este empleado del catálogo?');">
+                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                        </form>
                     </td>
                 </tr>
                 {% endfor %}
@@ -96,16 +112,26 @@
 <div class="row g-3 d-lg-none">
     {% for e in empleados %}
     <div class="col-12 col-md-6">
-        <div class="card employee-card p-3 h-100">
+        <div class="card employee-card {{ 'employee-card-inactive' if not e.activo else '' }} p-3 h-100">
             <div class="d-flex justify-content-between align-items-start gap-2">
                 <div>
                     <div class="fw-bold">{{ e.nombre }}</div>
                     <small class="text-muted">{{ e.cargo or 'Sin cargo' }}</small>
                 </div>
-                <a href="{{ url_for('nomina.editar', id=e.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+                <div class="d-flex gap-1">
+                    <a href="{{ url_for('nomina.editar', id=e.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-warning"
+                            onclick='abrirCambioEstadoNomina({{ e.id }}, {{ e.nombre|tojson }}, {{ (e.estado or "activo")|tojson }})'>
+                        <i class="bi bi-arrow-repeat"></i>
+                    </button>
+                </div>
             </div>
 
             <div class="d-flex gap-2 flex-wrap mt-2">
+                <span class="badge bg-{{ 'success' if (e.estado or 'activo') == 'activo' else 'secondary' if e.estado == 'inactivo' else 'warning text-dark' if e.estado == 'retirado' else 'danger' }}">
+                    {{ estados_empleado_labels.get(e.estado or 'activo', (e.estado or 'activo')|title) }}
+                </span>
                 <span class="badge {{ 'bg-primary' if e.tipo_contrato == 'laboral' else 'bg-secondary' }}">{{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</span>
                 <span class="badge bg-light text-dark border">{{ (e.forma_pago or 'quincenal')|title }}</span>
                 {% if e.autoriza_whatsapp %}
@@ -122,6 +148,16 @@
                     <div class="label-mini">Celular</div>
                     <div class="value-mini">{{ e.whatsapp or '-' }}</div>
                 </div>
+                <div class="col-6">
+                    <div class="label-mini">Fecha finalizaciÃ³n</div>
+                    <div class="value-mini">{{ e.fecha_retiro.strftime('%d/%m/%Y') if e.fecha_retiro else '-' }}</div>
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <form method="POST" action="{{ url_for('nomina.eliminar', id=e.id) }}" onsubmit="return confirm('¿Eliminar este empleado del catálogo?');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger w-100"><i class="bi bi-trash"></i> Eliminar</button>
+                </form>
             </div>
         </div>
     </div>
@@ -134,4 +170,69 @@
     <a href="{{ url_for('nomina.nuevo') }}" class="btn btn-primary btn-sm">Agregar el primero</a>
 </div>
 {% endif %}
+
+<div class="modal fade" id="modalEstadoNomina" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="formEstadoNomina">
+                <div class="modal-header">
+                    <h6 class="modal-title fw-bold" id="estado_nomina_titulo">Cambiar estado</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label">Nuevo estado</label>
+                        <select name="estado" id="estado_nomina_select" class="form-select" required>
+                            {% for estado in estados_empleado %}
+                            <option value="{{ estado }}">{{ estados_empleado_labels.get(estado, estado|title) }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label" id="estado_nomina_fecha_label">Fecha de finalizaciÃ³n</label>
+                        <input type="date" name="fecha_cambio" id="estado_nomina_fecha" class="form-control" value="{{ today }}" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Motivo del cambio</label>
+                        <textarea name="motivo" class="form-control" rows="3" placeholder="Explique la razÃ³n del cambio" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar cambio</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function abrirCambioEstadoNomina(id, nombre, estadoActual) {
+    const form = document.getElementById('formEstadoNomina');
+    const titulo = document.getElementById('estado_nomina_titulo');
+    const select = document.getElementById('estado_nomina_select');
+    const fechaLabel = document.getElementById('estado_nomina_fecha_label');
+
+    form.action = '/nomina/' + id + '/cambiar-estado';
+    titulo.textContent = 'Cambiar estado - ' + nombre;
+    select.value = estadoActual || 'activo';
+    fechaLabel.textContent = select.value === 'activo' ? 'Fecha del cambio' : 'Fecha de finalizaciÃ³n';
+
+    const modal = new bootstrap.Modal(document.getElementById('modalEstadoNomina'));
+    modal.show();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const select = document.getElementById('estado_nomina_select');
+    const fechaLabel = document.getElementById('estado_nomina_fecha_label');
+    if (!select || !fechaLabel) {
+        return;
+    }
+    select.addEventListener('change', function() {
+        fechaLabel.textContent = select.value === 'activo' ? 'Fecha del cambio' : 'Fecha de finalizaciÃ³n';
+    });
+});
+</script>
 {% endblock %}
