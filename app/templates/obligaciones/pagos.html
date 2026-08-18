@@ -438,6 +438,9 @@
                 {% endif %}
                 <small class="text-muted d-block">Capital pagado: <strong>${{ "{:,.0f}".format(item.capital_pagado_total) }}</strong></small>
                 <small class="text-muted d-block">Intereses pagados: <strong>${{ "{:,.0f}".format(item.interes_pagado_total) }}</strong></small>
+                {% if item.anticipo_pagado_total > 0 %}
+                <small class="text-muted d-block">Anticipos pagados: <strong>${{ "{:,.0f}".format(item.anticipo_pagado_total) }}</strong></small>
+                {% endif %}
                 <small class="text-danger d-block">Falta total por pagar: ${{ "{:,.0f}".format(item.pendiente_total) }}</small>
                 <small class="text-muted d-block">
                     Ultimo pago{% if not o.fecha_vencimiento %} estimado{% endif %}:
@@ -720,6 +723,26 @@
                                 <div class="form-text" id="texto_otros_pago">Use este campo para intereses de mora u otro cobro adicional.</div>
                             </div>
                             <div class="col-md-6 mb-2">
+                                <label class="form-label">Anticipo</label>
+                                <input type="text" name="componente_anticipo" id="pago_anticipo" class="form-control form-control-sm js-money">
+                                <div class="form-text">Se usa cuando paga de mas y desea dejar saldo a favor.</div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-2">
+                                <label class="form-label">Excedente calculado</label>
+                                <input type="text" id="pago_excedente" class="form-control form-control-sm js-money" readonly>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <label class="form-label">Si el pagado supera el causado, aplicar excedente a</label>
+                                <select name="destino_excedente" id="pago_destino_excedente" class="form-select form-select-sm">
+                                    <option value="mora">Mora / otros</option>
+                                    <option value="anticipo">Anticipo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-2">
                                 <label class="form-label">Detalle mora / otros</label>
                                 <input type="text" name="detalle_otros" id="pago_detalle_otros" class="form-control form-control-sm" placeholder="Ej: interes mora agosto">
                             </div>
@@ -866,6 +889,9 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
     window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_seguro_vida'), valorSeguroVida || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_otros'), valorOtros || '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_anticipo'), '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_excedente'), '');
+    document.getElementById('pago_destino_excedente').value = 'mora';
     document.getElementById('pago_detalle_otros').value = '';
     document.getElementById('pago_fecha_pago').value = '';
     document.getElementById('causar_dia_reportado').value = '';
@@ -878,6 +904,7 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
     document.getElementById('pago_valor').readOnly = false;
     document.getElementById('texto_causacion_tabla').style.display = 'none';
     toggleDesglose(requiereDesglose, usaTablaAmortizacion);
+    recalcularExcedentePago();
 }
 
 function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres, valorSeguroVida, valorOtros, usaTablaAmortizacion, diaBase) {
@@ -890,6 +917,9 @@ function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorC
     window.FinancieraMoney.setValue(document.getElementById('pago_interes'), valorInteres || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_seguro_vida'), valorSeguroVida || '');
     window.FinancieraMoney.setValue(document.getElementById('pago_otros'), valorOtros || '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_anticipo'), '');
+    window.FinancieraMoney.setValue(document.getElementById('pago_excedente'), '');
+    document.getElementById('pago_destino_excedente').value = 'mora';
     document.getElementById('pago_detalle_otros').value = '';
     document.getElementById('causar_dia_reportado').value = diaBase || '';
     document.getElementById('pago_accion').value = 'causar';
@@ -912,6 +942,13 @@ function prepararAnulacion(actionUrl, nextUrl, nombre, periodo) {
     document.getElementById('anulacion_next').value = nextUrl;
     document.getElementById('anulacion_titulo').textContent = 'Anular pago - ' + nombre + ' - ' + periodo;
     document.getElementById('anulacion_motivo').value = '';
+}
+
+function recalcularExcedentePago() {
+    const valorCausado = window.FinancieraMoney.parse(document.getElementById('pago_valor_causado2').value);
+    const valorPagado = window.FinancieraMoney.parse(document.getElementById('pago_valor').value);
+    const excedente = Math.max(valorPagado - valorCausado, 0);
+    window.FinancieraMoney.setValue(document.getElementById('pago_excedente'), excedente || '');
 }
 
 function formatearMoneda(valor) {
@@ -1026,5 +1063,7 @@ function prepararSaldosAnteriores(id, nombre, payload) {
 }
 
 document.getElementById('saldos_valor_total').addEventListener('input', recalcularSaldosAnteriores);
+document.getElementById('pago_valor_causado2').addEventListener('input', recalcularExcedentePago);
+document.getElementById('pago_valor').addEventListener('input', recalcularExcedentePago);
 </script>
 {% endblock %}

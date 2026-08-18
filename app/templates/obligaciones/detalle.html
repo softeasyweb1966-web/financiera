@@ -54,6 +54,7 @@
                     <th>Interes</th>
                     <th>Seguro vida</th>
                     <th>Otros</th>
+                    <th>Anticipo</th>
                     <th>Medio</th>
                     <th>Comprobante</th>
                     <th>Observaciones</th>
@@ -88,6 +89,7 @@
                     <td>{{ "${:,.0f}".format(pago.componente_interes) if pago and pago.componente_interes else ("${:,.0f}".format(programado.interes) if usa_tabla and programado and programado.interes else '-') }}</td>
                     <td>{{ "${:,.0f}".format(pago.componente_seguro_vida) if pago and pago.componente_seguro_vida else ("${:,.0f}".format(programado.seguro_vida) if usa_tabla and programado and programado.seguro_vida else '-') }}</td>
                     <td>{{ "${:,.0f}".format(pago.componente_otros) if pago and pago.componente_otros else ("${:,.0f}".format(programado.otros) if usa_tabla and programado and programado.otros is not none else '-') }}</td>
+                    <td>{{ "${:,.0f}".format(pago.componente_anticipo) if pago and pago.componente_anticipo else '-' }}</td>
                     <td>{{ pago.medio_pago.nombre if pago and pago.medio_pago else '-' }}</td>
                     <td>
                         {% if pago and pago.comprobante_archivo %}
@@ -127,6 +129,7 @@
                     <td>${{ "{:,.0f}".format(pagos_vigentes|selectattr('componente_interes')|map(attribute='componente_interes')|map('float')|sum) }}</td>
                     <td>${{ "{:,.0f}".format(pagos_vigentes|selectattr('componente_seguro_vida')|map(attribute='componente_seguro_vida')|map('float')|sum) }}</td>
                     <td>${{ "{:,.0f}".format(pagos_vigentes|selectattr('componente_otros')|map(attribute='componente_otros')|map('float')|sum) }}</td>
+                    <td>${{ "{:,.0f}".format(pagos_vigentes|selectattr('componente_anticipo')|map(attribute='componente_anticipo')|map('float')|sum) }}</td>
                     <td colspan="4"></td>
                 </tr>
             </tfoot>
@@ -185,6 +188,7 @@
                     <th>Interes</th>
                     <th>Seguro vida</th>
                     <th>Otros</th>
+                    <th>Anticipo</th>
                     <th>Motivo</th>
                 </tr>
             </thead>
@@ -200,11 +204,12 @@
                     <td>{{ "${:,.0f}".format(item.componente_interes) if item.componente_interes else '-' }}</td>
                     <td>{{ "${:,.0f}".format(item.componente_seguro_vida) if item.componente_seguro_vida else '-' }}</td>
                     <td>{{ "${:,.0f}".format(item.componente_otros) if item.componente_otros else '-' }}</td>
+                    <td>{{ "${:,.0f}".format(item.componente_anticipo) if item.componente_anticipo else '-' }}</td>
                     <td><small>{{ item.motivo or item.observaciones or '' }}</small></td>
                 </tr>
                 {% endfor %}
                 {% if not historial_pagos %}
-                <tr><td colspan="10" class="text-center text-muted py-3">No hay ajustes ni anulaciones registradas.</td></tr>
+                <tr><td colspan="11" class="text-center text-muted py-3">No hay ajustes ni anulaciones registrados.</td></tr>
                 {% endif %}
             </tbody>
         </table>

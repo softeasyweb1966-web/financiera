@@ -226,9 +226,10 @@
                                 {% if p.componente_capital or p.componente_interes %}
                                 <small class="text-muted d-block">Cap: ${{ "{:,.0f}".format(p.componente_capital or 0) }}</small>
                                 <small class="text-muted d-block">Int: ${{ "{:,.0f}".format(p.componente_interes or 0) }}</small>
-                                {% if p.componente_seguro_vida or p.componente_otros %}
+                                {% if p.componente_seguro_vida or p.componente_otros or p.componente_anticipo %}
                                 <small class="text-muted d-block">Seg: ${{ "{:,.0f}".format(p.componente_seguro_vida or 0) }}</small>
                                 <small class="text-muted d-block">Otr: ${{ "{:,.0f}".format(p.componente_otros or 0) }}</small>
+                                <small class="text-muted d-block">Ant: ${{ "{:,.0f}".format(p.componente_anticipo or 0) }}</small>
                                 {% endif %}
                                 {% else %}
                                 -
@@ -251,6 +252,7 @@
                                             {{ ("{:,.0f}".format(p.componente_interes or 0))|tojson if p.componente_interes is not none else '""' }},
                                             {{ ("{:,.0f}".format(p.componente_seguro_vida or 0))|tojson if p.componente_seguro_vida is not none else '""' }},
                                             {{ ("{:,.0f}".format(p.componente_otros or 0))|tojson if p.componente_otros is not none else '""' }},
+                                            {{ ("{:,.0f}".format(p.componente_anticipo or 0))|tojson if p.componente_anticipo is not none else '""' }},
                                             {{ p.medio_pago_id if p.medio_pago_id else "null" }},
                                             {{ (p.observaciones or "")|tojson }},
                                             {{ "true" if obligacion.requiere_desglose_pago or p.componente_capital is not none or p.componente_interes is not none else "false" }},
@@ -391,9 +393,10 @@
                                 {% if h.componente_capital or h.componente_interes %}
                                 <small class="text-muted d-block">Cap: ${{ "{:,.0f}".format(h.componente_capital or 0) }}</small>
                                 <small class="text-muted d-block">Int: ${{ "{:,.0f}".format(h.componente_interes or 0) }}</small>
-                                {% if h.componente_seguro_vida or h.componente_otros %}
+                                {% if h.componente_seguro_vida or h.componente_otros or h.componente_anticipo %}
                                 <small class="text-muted d-block">Seg: ${{ "{:,.0f}".format(h.componente_seguro_vida or 0) }}</small>
                                 <small class="text-muted d-block">Otr: ${{ "{:,.0f}".format(h.componente_otros or 0) }}</small>
+                                <small class="text-muted d-block">Ant: ${{ "{:,.0f}".format(h.componente_anticipo or 0) }}</small>
                                 {% endif %}
                                 {% else %}
                                 -
@@ -456,6 +459,25 @@
                             <input type="text" name="componente_otros" id="ajuste_otros" class="form-control form-control-sm js-money">
                         </div>
                     </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-6">
+                            <label class="form-label">Anticipo</label>
+                            <input type="text" name="componente_anticipo" id="ajuste_anticipo" class="form-control form-control-sm js-money">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Excedente calculado</label>
+                            <input type="text" id="ajuste_excedente" class="form-control form-control-sm js-money" readonly>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-12">
+                            <label class="form-label">Si el pagado supera el causado, aplicar excedente a</label>
+                            <select name="destino_excedente" id="ajuste_destino_excedente" class="form-select form-select-sm">
+                                <option value="mora">Mora / otros</option>
+                                <option value="anticipo">Anticipo</option>
+                            </select>
+                        </div>
+                    </div>
                     <div class="mb-2 mt-2">
                         <label class="form-label">Medio de pago</label>
                         <select name="medio_pago_id" id="ajuste_medio_pago" class="form-select form-select-sm">
@@ -487,7 +509,7 @@
 <script>
 const ajustePagoBaseUrl = {{ url_for('obligaciones.ajustar_pago_cancelado', pago_id=0)|tojson }};
 
-function prepararAjustePago(pagoId, periodo, valorPagado, fechaPago, valorCausado, capital, interes, seguroVida, otros, medioPagoId, observaciones, requiereDesglose, usaSeguros) {
+function prepararAjustePago(pagoId, periodo, valorPagado, fechaPago, valorCausado, capital, interes, seguroVida, otros, anticipo, medioPagoId, observaciones, requiereDesglose, usaSeguros) {
     document.getElementById('formAjustePago').action = ajustePagoBaseUrl.replace('/0/ajustar', '/' + pagoId + '/ajustar');
     document.getElementById('ajustePagoTitulo').textContent = 'Ajustar cuota cancelada - ' + periodo;
     document.getElementById('ajuste_fecha_pago').value = fechaPago || '';
@@ -497,12 +519,26 @@ function prepararAjustePago(pagoId, periodo, valorPagado, fechaPago, valorCausad
     document.getElementById('ajuste_interes').value = interes || '';
     document.getElementById('ajuste_seguro_vida').value = seguroVida || '';
     document.getElementById('ajuste_otros').value = otros || '';
+    document.getElementById('ajuste_anticipo').value = anticipo || '';
+    document.getElementById('ajuste_destino_excedente').value = (anticipo && anticipo !== '0' && anticipo !== '0.00') ? 'anticipo' : 'mora';
+    window.FinancieraMoney.setValue(document.getElementById('ajuste_excedente'), '');
     document.getElementById('ajuste_medio_pago').value = medioPagoId || '';
     document.getElementById('ajuste_observaciones').value = observaciones || '';
     document.getElementById('ajuste_motivo').value = '';
     document.getElementById('ajuste_desglose_wrapper').style.display = requiereDesglose ? '' : 'none';
     document.getElementById('ajuste_seguro_wrapper').style.display = requiereDesglose && usaSeguros ? '' : 'none';
     document.getElementById('ajuste_otros_wrapper').style.display = requiereDesglose && usaSeguros ? '' : 'none';
+    recalcularExcedenteAjuste();
 }
+
+function recalcularExcedenteAjuste() {
+    const valorCausado = window.FinancieraMoney.parse(document.getElementById('ajuste_valor_causado').value);
+    const valorPagado = window.FinancieraMoney.parse(document.getElementById('ajuste_valor_pagado').value);
+    const excedente = Math.max(valorPagado - valorCausado, 0);
+    window.FinancieraMoney.setValue(document.getElementById('ajuste_excedente'), excedente || '');
+}
+
+document.getElementById('ajuste_valor_causado').addEventListener('input', recalcularExcedenteAjuste);
+document.getElementById('ajuste_valor_pagado').addEventListener('input', recalcularExcedenteAjuste);
 </script>
 {% endblock %}

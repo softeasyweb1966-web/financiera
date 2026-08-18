@@ -113,12 +113,46 @@ def _componentes_pago_total(
     componente_interes_num,
     componente_seguro_vida_num,
     componente_otros_num,
+    componente_anticipo_num=None,
 ):
     return (
         float(componente_capital_num or 0)
         + float(componente_interes_num or 0)
         + float(componente_seguro_vida_num or 0)
         + float(componente_otros_num or 0)
+        + float(componente_anticipo_num or 0)
+    )
+
+
+def _aplicar_excedente_pago(
+    valor_causado_num,
+    valor_pagado_num,
+    componente_otros,
+    componente_otros_num,
+    componente_anticipo,
+    componente_anticipo_num,
+    destino_excedente,
+):
+    excedente_num = 0
+    if (
+        valor_causado_num is not None
+        and valor_pagado_num is not None
+        and valor_pagado_num > valor_causado_num
+    ):
+        excedente_num = round(valor_pagado_num - valor_causado_num, 2)
+        if (destino_excedente or 'mora') == 'anticipo':
+            componente_anticipo_num = round(float(componente_anticipo_num or 0) + excedente_num, 2)
+            componente_anticipo = _money_raw_or_none(componente_anticipo_num, scale=2)
+        else:
+            componente_otros_num = round(float(componente_otros_num or 0) + excedente_num, 2)
+            componente_otros = _money_raw_or_none(componente_otros_num, scale=2)
+
+    return (
+        componente_otros,
+        componente_otros_num,
+        componente_anticipo,
+        componente_anticipo_num,
+        excedente_num,
     )
 
 
@@ -275,6 +309,7 @@ def _registrar_historial_pago_obligacion(pago, accion, motivo=None):
         componente_interes=pago.componente_interes,
         componente_seguro_vida=pago.componente_seguro_vida,
         componente_otros=pago.componente_otros,
+        componente_anticipo=pago.componente_anticipo,
         numero_cuota=pago.numero_cuota,
         dia_pago_reportado=pago.dia_pago_reportado,
         fecha_pago=pago.fecha_pago,
@@ -1308,7 +1343,8 @@ def pagos(anio=None, mes=None):
             func.coalesce(func.sum(PagoObligacion.componente_capital), 0).label('capital_pagado'),
             func.coalesce(func.sum(PagoObligacion.componente_interes), 0).label('interes_pagado'),
             func.coalesce(func.sum(PagoObligacion.componente_seguro_vida), 0).label('seguro_pagado'),
-            func.coalesce(func.sum(PagoObligacion.componente_otros), 0).label('otros_pagado')
+            func.coalesce(func.sum(PagoObligacion.componente_otros), 0).label('otros_pagado'),
+            func.coalesce(func.sum(PagoObligacion.componente_anticipo), 0).label('anticipo_pagado')
         ).filter(
             PagoObligacion.obligacion_id.in_(obligacion_ids),
             PagoObligacion.estado.in_(['pagado', 'parcial'])
@@ -1320,8 +1356,9 @@ def pagos(anio=None, mes=None):
                 'interes_pagado': float(interes_pagado or 0),
                 'seguro_pagado': float(seguro_pagado or 0),
                 'otros_pagado': float(otros_pagado or 0),
+                'anticipo_pagado': float(anticipo_pagado or 0),
             }
-            for obligacion_id, capital_pagado, interes_pagado, seguro_pagado, otros_pagado in totales_pago_rows
+            for obligacion_id, capital_pagado, interes_pagado, seguro_pagado, otros_pagado, anticipo_pagado in totales_pago_rows
         }
 
     # Pendientes de meses anteriores (pendiente, causado, vencido, parcial, sin_causar)
@@ -1644,6 +1681,7 @@ def pagos(anio=None, mes=None):
         interes_pagado_total = float(totales_pago.get('interes_pagado', 0))
         seguro_pagado_total = float(totales_pago.get('seguro_pagado', 0))
         otros_pagado_total = float(totales_pago.get('otros_pagado', 0))
+        anticipo_pagado_total = float(totales_pago.get('anticipo_pagado', 0))
         pendiente_total = _saldo_pendiente_total_obligacion(o, capital_pagado_total)
         fecha_ultimo_pago = _fecha_ultimo_pago_estimada(o, fecha_referencia)
         dias_ultimo_pago = (fecha_ultimo_pago - hoy).days if fecha_ultimo_pago else None
@@ -1760,6 +1798,7 @@ def pagos(anio=None, mes=None):
             'interes_pagado_total': interes_pagado_total,
             'seguro_pagado_total': seguro_pagado_total,
             'otros_pagado_total': otros_pagado_total,
+            'anticipo_pagado_total': anticipo_pagado_total,
             'pendiente_total': pendiente_total,
             'saldo_anterior': saldo_anterior_por_obligacion.get(o.id, 0),
             'fecha_ultimo_pago': fecha_ultimo_pago,
@@ -1861,6 +1900,8 @@ def registrar_pago():
     componente_interes = _money_raw_or_none(request.form.get('componente_interes'))
     componente_seguro_vida = _money_raw_or_none(request.form.get('componente_seguro_vida'))
     componente_otros = _money_raw_or_none(request.form.get('componente_otros'))
+    componente_anticipo = _money_raw_or_none(request.form.get('componente_anticipo'))
+    destino_excedente = (request.form.get('destino_excedente') or 'mora').strip().lower()
     estado = request.form.get('estado', 'pagado')
     medio_pago_id = request.form.get('medio_pago_id') or None
     fecha_pago = request.form.get('fecha_pago') or None
@@ -1892,6 +1933,7 @@ def registrar_pago():
     componente_interes_num = _float_or_none(componente_interes)
     componente_seguro_vida_num = _float_or_none(componente_seguro_vida)
     componente_otros_num = _float_or_none(componente_otros)
+    componente_anticipo_num = _float_or_none(componente_anticipo)
 
     if detalle_otros and componente_otros_num not in (None, 0):
         nota_otros = f'Mora/otros: {detalle_otros}'
@@ -1911,9 +1953,37 @@ def registrar_pago():
             componente_otros = _money_raw_or_none(fila_amortizacion.otros or 0)
             componente_otros_num = _float_or_none(componente_otros)
 
+    base_estado = valor_causado_num
     pago = PagoObligacion.query.filter_by(
         obligacion_id=obligacion_id, anio=anio, mes=mes
     ).first()
+    if base_estado is None and pago and pago.valor_causado is not None:
+        base_estado = float(pago.valor_causado or 0)
+    if base_estado is None:
+        base_estado = _valor_programado_mes_obligacion(obligacion, anio, mes)
+
+    if accion == 'pagar':
+        (
+            componente_otros,
+            componente_otros_num,
+            componente_anticipo,
+            componente_anticipo_num,
+            excedente_num,
+        ) = _aplicar_excedente_pago(
+            base_estado,
+            valor_pagado_num,
+            componente_otros,
+            componente_otros_num,
+            componente_anticipo,
+            componente_anticipo_num,
+            destino_excedente,
+        )
+        if excedente_num > 0:
+            nota_excedente = (
+                f'Excedente de ${excedente_num:,.0f} aplicado a '
+                f'{"anticipo" if destino_excedente == "anticipo" else "mora / otros"}.'
+            )
+            observaciones = f'{observaciones}\n{nota_excedente}'.strip() if observaciones else nota_excedente
 
     if not pago and not _obligacion_aplica_mes(obligacion, anio, mes):
         flash('Esta obligacion no aplica en ese mes porque aun no habia iniciado o ya no estaba vigente.', 'danger')
@@ -1931,19 +2001,14 @@ def registrar_pago():
                 componente_interes_num,
                 componente_seguro_vida_num,
                 componente_otros_num,
+                componente_anticipo_num,
             )
             if base_comparacion is not None and abs(total_componentes - base_comparacion) > 1:
-                flash('La suma de capital, interes, seguro y otros debe coincidir con la cuota pagada.', 'danger')
+                flash('La suma de capital, interes, seguro, mora/otros y anticipo debe coincidir con la cuota pagada.', 'danger')
                 return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
         elif ((componente_capital_num is None) ^ (componente_interes_num is None)):
             flash('Si registra capital o interes, debe diligenciar ambos valores.', 'danger')
             return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
-
-        base_estado = valor_causado_num
-        if base_estado is None and pago and pago.valor_causado is not None:
-            base_estado = float(pago.valor_causado or 0)
-        if base_estado is None:
-            base_estado = _valor_programado_mes_obligacion(obligacion, anio, mes)
 
         if estado in ('pagado', 'parcial') and valor_pagado_num is not None and valor_pagado_num > 0:
             if base_estado and valor_pagado_num + 1 < base_estado:
@@ -1966,6 +2031,7 @@ def registrar_pago():
             pago.componente_interes = componente_interes
             pago.componente_seguro_vida = componente_seguro_vida
             pago.componente_otros = componente_otros
+            pago.componente_anticipo = componente_anticipo
             pago.estado = estado
             pago.medio_pago_id = medio_pago_id
             pago.fecha_pago = fecha_pago
@@ -1995,6 +2061,7 @@ def registrar_pago():
                 componente_interes=componente_interes,
                 componente_seguro_vida=componente_seguro_vida,
                 componente_otros=componente_otros,
+                componente_anticipo=componente_anticipo,
                 numero_cuota=numero_cuota,
                 estado=estado, medio_pago_id=medio_pago_id,
                 fecha_pago=fecha_pago, observaciones=observaciones,
@@ -2134,6 +2201,7 @@ def pagar_saldos_anteriores():
             pago.componente_interes = _money_raw_or_none(componentes['interes'], scale=2)
             pago.componente_seguro_vida = _money_raw_or_none(componentes['seguro_vida'], scale=2)
             pago.componente_otros = _money_raw_or_none(componentes['otros'], scale=2)
+            pago.componente_anticipo = None
             pago.estado = nuevo_estado
             pago.medio_pago_id = medio_pago_id
             pago.fecha_pago = fecha_pago
@@ -2150,6 +2218,7 @@ def pagar_saldos_anteriores():
                 componente_interes=_money_raw_or_none(componentes['interes'], scale=2),
                 componente_seguro_vida=_money_raw_or_none(componentes['seguro_vida'], scale=2),
                 componente_otros=_money_raw_or_none(componentes['otros'], scale=2),
+                componente_anticipo=None,
                 estado=nuevo_estado,
                 medio_pago_id=medio_pago_id,
                 fecha_pago=fecha_pago,
@@ -2239,6 +2308,7 @@ def anular_pago(pago_id):
     pago.componente_interes = None
     pago.componente_seguro_vida = None
     pago.componente_otros = None
+    pago.componente_anticipo = None
     pago.fecha_pago = None
     pago.medio_pago_id = None
     pago.comprobante_nombre = None
@@ -2272,6 +2342,8 @@ def ajustar_pago_cancelado(pago_id):
     componente_interes = _money_raw_or_none(request.form.get('componente_interes'))
     componente_seguro_vida = _money_raw_or_none(request.form.get('componente_seguro_vida'))
     componente_otros = _money_raw_or_none(request.form.get('componente_otros'))
+    componente_anticipo = _money_raw_or_none(request.form.get('componente_anticipo'))
+    destino_excedente = (request.form.get('destino_excedente') or 'mora').strip().lower()
     medio_pago_id = request.form.get('medio_pago_id') or None
     fecha_pago = _date_or_none(request.form.get('fecha_pago'))
     observaciones = (request.form.get('observaciones') or '').strip()
@@ -2282,6 +2354,7 @@ def ajustar_pago_cancelado(pago_id):
     componente_interes_num = _float_or_none(componente_interes)
     componente_seguro_vida_num = _float_or_none(componente_seguro_vida)
     componente_otros_num = _float_or_none(componente_otros)
+    componente_anticipo_num = _float_or_none(componente_anticipo)
 
     if valor_pagado_num is None or valor_pagado_num <= 0:
         flash('El valor pagado ajustado debe ser mayor que cero.', 'danger')
@@ -2291,18 +2364,30 @@ def ajustar_pago_cancelado(pago_id):
         flash('Debe indicar una fecha de pago valida.', 'danger')
         return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
 
-    requiere_desglose = bool(
+    requiere_capital_interes = bool(
         obligacion.requiere_desglose_pago
         or pago.componente_capital is not None
         or pago.componente_interes is not None
-        or pago.componente_seguro_vida is not None
-        or pago.componente_otros is not None
         or componente_capital_num is not None
         or componente_interes_num is not None
-        or componente_seguro_vida_num is not None
-        or componente_otros_num is not None
     )
-    if requiere_desglose:
+    base_causado_ajuste = valor_causado_num if valor_causado_num is not None else float(pago.valor_causado or 0)
+    (
+        componente_otros,
+        componente_otros_num,
+        componente_anticipo,
+        componente_anticipo_num,
+        excedente_ajuste_num,
+    ) = _aplicar_excedente_pago(
+        base_causado_ajuste,
+        valor_pagado_num,
+        componente_otros,
+        componente_otros_num,
+        componente_anticipo,
+        componente_anticipo_num,
+        destino_excedente,
+    )
+    if requiere_capital_interes:
         if componente_capital_num is None or componente_interes_num is None:
             flash('Esta cuota requiere ajustar capital e interes junto con el valor pagado.', 'danger')
             return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
@@ -2311,8 +2396,9 @@ def ajustar_pago_cancelado(pago_id):
             componente_interes_num,
             componente_seguro_vida_num,
             componente_otros_num,
+            componente_anticipo_num,
         ) - valor_pagado_num) > 1:
-            flash('La suma de capital, interes, seguro y otros debe coincidir con el valor pagado ajustado.', 'danger')
+            flash('La suma de capital, interes, seguro, mora/otros y anticipo debe coincidir con el valor pagado ajustado.', 'danger')
             return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
 
     _registrar_historial_pago_obligacion(pago, 'ajuste', motivo)
@@ -2321,14 +2407,26 @@ def ajustar_pago_cancelado(pago_id):
     pago.valor_pagado = valor_pagado
     pago.fecha_pago = fecha_pago
     pago.medio_pago_id = medio_pago_id
+    if excedente_ajuste_num > 0:
+        nota_excedente = (
+            f'Excedente de ${excedente_ajuste_num:,.0f} aplicado a '
+            f'{"anticipo" if destino_excedente == "anticipo" else "mora / otros"}.'
+        )
+        observaciones = f'{observaciones}\n{nota_excedente}'.strip() if observaciones else nota_excedente
     pago.observaciones = observaciones
     if valor_causado_num is not None:
         pago.valor_causado = valor_causado
-    if requiere_desglose:
+    if (
+        requiere_capital_interes
+        or componente_seguro_vida_num is not None
+        or componente_otros_num is not None
+        or componente_anticipo_num is not None
+    ):
         pago.componente_capital = componente_capital
         pago.componente_interes = componente_interes
         pago.componente_seguro_vida = componente_seguro_vida
         pago.componente_otros = componente_otros
+        pago.componente_anticipo = componente_anticipo
 
     _aplicar_impacto_pago(obligacion, pago)
 

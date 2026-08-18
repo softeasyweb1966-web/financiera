@@ -104,6 +104,8 @@ def _ensure_schema():
             db.session.execute(text('ALTER TABLE pagos_obligaciones ADD COLUMN IF NOT EXISTS componente_seguro_vida NUMERIC(14, 2)'))
         if 'componente_otros' not in columnas_pagos_obligaciones:
             db.session.execute(text('ALTER TABLE pagos_obligaciones ADD COLUMN IF NOT EXISTS componente_otros NUMERIC(14, 2)'))
+        if 'componente_anticipo' not in columnas_pagos_obligaciones:
+            db.session.execute(text('ALTER TABLE pagos_obligaciones ADD COLUMN IF NOT EXISTS componente_anticipo NUMERIC(14, 2)'))
         if 'comprobante_nombre' not in columnas_pagos_obligaciones:
             db.session.execute(text('ALTER TABLE pagos_obligaciones ADD COLUMN IF NOT EXISTS comprobante_nombre VARCHAR(255)'))
         if 'comprobante_mime' not in columnas_pagos_obligaciones:
@@ -118,6 +120,8 @@ def _ensure_schema():
             db.session.execute(text('ALTER TABLE historial_pagos_obligaciones ADD COLUMN IF NOT EXISTS componente_seguro_vida NUMERIC(14, 2)'))
         if 'componente_otros' not in columnas_historial_pagos:
             db.session.execute(text('ALTER TABLE historial_pagos_obligaciones ADD COLUMN IF NOT EXISTS componente_otros NUMERIC(14, 2)'))
+        if 'componente_anticipo' not in columnas_historial_pagos:
+            db.session.execute(text('ALTER TABLE historial_pagos_obligaciones ADD COLUMN IF NOT EXISTS componente_anticipo NUMERIC(14, 2)'))
         db.session.commit()
 
 
