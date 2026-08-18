@@ -191,6 +191,7 @@
 {% block scripts %}
 <script>
 const estadoOriginalNomina = '{{ empleado.estado if empleado else "activo" }}';
+const salarioOriginal = '{{ empleado.salario_base if empleado and empleado.salario_base else "" }}';
 
 function toggleCambioEstadoNomina() {
     const select = document.getElementById('estado_select');
@@ -218,6 +219,29 @@ function toggleCambioEstadoNomina() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', toggleCambioEstadoNomina);
+function toggleQuincenaMensual() {
+    var forma = document.getElementById('forma_pago_select').value;
+    var row = document.getElementById('quincena-mensual-row');
+    if (row) {
+        row.style.display = (forma === 'mensual') ? '' : 'none';
+    }
+}
+
+function checkCambioSalario() {
+    var row = document.getElementById('cambio-salario-row');
+    if (!row) return;
+    var inputVal = (document.getElementById('salario_input').value || '').replace(/[^0-9.]/g, '');
+    var original = salarioOriginal.replace(/[^0-9.]/g, '');
+    if (inputVal && original && inputVal !== original) {
+        row.style.display = '';
+    } else {
+        row.style.display = 'none';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    toggleCambioEstadoNomina();
+    toggleQuincenaMensual();
+});
 </script>
 {% endblock %}
