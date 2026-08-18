@@ -476,7 +476,7 @@
                 {% if item.estado != 'pagado' and not item.es_informativo %}
                 <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
                         onclick='prepararPago({{ o.id }}, {{ nombre_modal|tojson }}, {{ mes }}, {{ item.valor_pago_sugerido or item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ item.programado_capital or 0 }}, {{ item.programado_interes or 0 }}, {{ item.programado_seguro_vida or 0 }}, {{ item.programado_otros or 0 }}, {{ "true" if item.usa_tabla_amortizacion else "false" }})'>
-                    <i class="bi bi-check-lg"></i> Pagar
+                    <i class="bi bi-check-lg"></i> Pagar cuota / mora
                 </button>
                 {% if item.estado == 'sin_causar' or item.estado == 'pendiente' %}
                 <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#modalPago"
@@ -485,12 +485,10 @@
                     </button>
                 {% endif %}
                 {% endif %}
-                {% if item.saldos_anteriores_items %}
                 <button class="btn btn-sm btn-outline-dark" data-bs-toggle="modal" data-bs-target="#modalSaldosAnteriores"
                         onclick='prepararSaldosAnteriores({{ o.id }}, {{ nombre_modal|tojson }}, {{ item.saldos_anteriores_items|tojson }})'>
-                    <i class="bi bi-list-check"></i> Saldos anteriores
+                    <i class="bi bi-list-check"></i> Pagar saldos anteriores
                 </button>
-                {% endif %}
                 {% if pago and item.estado in ['pagado', 'parcial'] %}
                     {% if pago.comprobante_archivo %}
                     <a href="{{ url_for('obligaciones.descargar_comprobante', pago_id=pago.id) }}" class="btn btn-sm btn-outline-info" title="Ver recibo">
@@ -527,6 +525,11 @@
                     <i class="bi bi-arrow-repeat"></i>
                 </a>
             </div>
+            {% if not item.es_informativo %}
+            <small class="text-muted d-block mt-2">
+                En <strong>Pagar cuota / mora</strong> puede registrar cuota, abono parcial y valor de mora / otros.
+            </small>
+            {% endif %}
         </div>
     </div>
     {% endfor %}
