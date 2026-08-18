@@ -97,7 +97,10 @@
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
                             <label class="form-label">Salario base</label>
-                            <input type="text" name="salario_base" class="form-control js-money" value="{{ empleado.salario_base if empleado and empleado.salario_base else '' }}">
+                            <input type="text" name="salario_base" id="salario_input" class="form-control js-money" value="{{ empleado.salario_base if empleado and empleado.salario_base else '' }}" onchange="checkCambioSalario()">
+                            {% if empleado %}
+                            <div class="form-text"><a href="{{ url_for('nomina.historial_salarios', id=empleado.id) }}" class="text-decoration-none"><i class="bi bi-graph-up-arrow"></i> Ver historial de salarios</a></div>
+                            {% endif %}
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
                             <label class="form-label">Tipo de contrato</label>
@@ -108,17 +111,44 @@
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
                             <label class="form-label">Forma de pago</label>
-                            <select name="forma_pago" class="form-select">
+                            <select name="forma_pago" id="forma_pago_select" class="form-select" onchange="toggleQuincenaMensual()">
                                 {% for valor, etiqueta in formas_pago %}
                                 <option value="{{ valor }}" {{ 'selected' if (empleado and empleado.forma_pago == valor) or (not empleado and valor == 'quincenal') else '' }}>{{ etiqueta }}</option>
                                 {% endfor %}
                             </select>
+                        </div>
+                        <!-- Quincena de pago mensual (solo si forma_pago = mensual) -->
+                        <div class="col-12 col-md-6 col-xl-3" id="quincena-mensual-row" style="display:none;">
+                            <label class="form-label">¿En qué quincena se paga?</label>
+                            <select name="quincena_pago_mensual" class="form-select">
+                                <option value="1" {{ 'selected' if empleado and empleado.quincena_pago_mensual == 1 else '' }}>Quincena 1 (1-15)</option>
+                                <option value="2" {{ 'selected' if not empleado or not empleado.quincena_pago_mensual or empleado.quincena_pago_mensual == 2 else '' }}>Quincena 2 (16-30)</option>
+                            </select>
+                            <div class="form-text">Indica en cuál quincena se incluye este pago mensual</div>
                         </div>
                         <div class="col-12 col-md-6">
                             <label class="form-label">Fecha ingreso</label>
                             <input type="date" name="fecha_ingreso" class="form-control" value="{{ empleado.fecha_ingreso if empleado and empleado.fecha_ingreso else '' }}">
                         </div>
                     </div>
+                    <!-- Sección cambio de salario (aparece al modificar el valor) -->
+                    {% if empleado %}
+                    <div class="row g-3 mt-2" id="cambio-salario-row" style="display:none;">
+                        <div class="col-12">
+                            <div class="alert alert-info py-2 small mb-0">
+                                <i class="bi bi-graph-up-arrow"></i> Está modificando el salario. Ingrese la fecha y motivo para mantener la trazabilidad.
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Fecha del cambio de salario *</label>
+                            <input type="date" name="fecha_cambio_salario" id="fecha_cambio_salario" class="form-control" value="{{ today }}">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Motivo del cambio *</label>
+                            <input type="text" name="motivo_salario" id="motivo_salario" class="form-control" placeholder="Ej: Aumento anual, ajuste, promoción">
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
 
                 <div class="section-box">

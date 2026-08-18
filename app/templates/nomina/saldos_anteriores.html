@@ -6,75 +6,91 @@
     .saldo-shell { border: 1px solid #dbeafe; box-shadow: 0 10px 24px rgba(37, 99, 235, 0.06); }
     .saldo-info { border: 1px solid #bfdbfe; background: linear-gradient(135deg, #eff6ff, #f8fafc); }
     .saldo-table td, .saldo-table th { vertical-align: middle; }
+    .fila-novedad { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+    .fila-novedad:hover { border-color: #bfdbfe; }
 </style>
 
 <div class="card saldo-shell p-3">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
         <div>
-            <h5 class="fw-bold mb-1"><i class="bi bi-journal-text text-dark"></i> Saldos anteriores de nomina</h5>
-            <small class="text-muted">Use esta pantalla solo para quincenas anteriores a agosto {{ nomina_inicio_anio }} que no se van a cargar como meses normales en nomina.</small>
+            <h5 class="fw-bold mb-1"><i class="bi bi-journal-text text-dark"></i> Saldos anteriores de nómina</h5>
+            <small class="text-muted">Use esta pantalla para cargar saldos de quincenas anteriores a agosto {{ nomina_inicio_anio }}. Puede cargar varias novedades de una vez.</small>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <a href="{{ url_for('nomina.lista') }}" class="btn btn-outline-secondary btn-sm">Volver a nomina</a>
+            <a href="{{ url_for('nomina.lista') }}" class="btn btn-outline-secondary btn-sm">Volver a nómina</a>
             <a href="{{ url_for('nomina.pagos', anio=nomina_inicio_anio, mes=nomina_inicio_mes, quincena=1) }}" class="btn btn-outline-primary btn-sm">Ir a pagos</a>
         </div>
     </div>
 
     <div class="alert saldo-info py-2 mb-3">
-        La operacion normal de nomina empieza desde <strong>agosto {{ nomina_inicio_anio }}</strong>. Aqui puede cargar el saldo historico indicando a que <strong>mes y quincena</strong> pertenece.
+        La operación normal de nómina empieza desde <strong>agosto {{ nomina_inicio_anio }}</strong>. Aquí puede cargar saldos históricos indicando a qué <strong>mes y quincena</strong> pertenecen. Puede agregar varias filas y guardar todas de una vez.
     </div>
 
     <div class="row g-3">
-        <div class="col-12 col-xl-4">
+        <div class="col-12 col-xl-5">
             <div class="card h-100">
                 <div class="card-body">
-                    <h6 class="fw-bold mb-3">Cargar saldo anterior</h6>
-                    <form method="POST">
-                        <div class="mb-3">
-                            <label class="form-label">Empleado</label>
-                            <select name="empleado_id" class="form-select" required>
-                                <option value="">Seleccione</option>
-                                {% for e in empleados %}
-                                <option value="{{ e.id }}">{{ e.nombre }}{% if e.cargo %} - {{ e.cargo }}{% endif %}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="row g-2">
-                            <div class="col-4">
-                                <label class="form-label">Anio</label>
-                                <input type="number" name="anio" class="form-control" value="{{ nomina_inicio_anio }}" min="2000" max="{{ nomina_inicio_anio }}" required>
+                    <h6 class="fw-bold mb-3">Cargar novedades <small class="text-muted fw-normal">(múltiples)</small></h6>
+                    <form method="POST" id="formSaldos">
+                        <!-- Filas dinámicas -->
+                        <div id="filas-container">
+                            <div class="fila-novedad" data-idx="0">
+                                <div class="row g-2">
+                                    <div class="col-12">
+                                        <label class="form-label small fw-semibold">Empleado</label>
+                                        <select name="empleado_id_0" class="form-select form-select-sm" required>
+                                            <option value="">Seleccione</option>
+                                            {% for e in empleados %}
+                                            <option value="{{ e.id }}">{{ e.nombre }}{% if e.cargo %} - {{ e.cargo }}{% endif %}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small">Año</label>
+                                        <input type="number" name="anio_0" class="form-control form-control-sm" value="{{ nomina_inicio_anio }}" min="2000" max="{{ nomina_inicio_anio }}" required>
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small">Mes</label>
+                                        <select name="mes_0" class="form-select form-select-sm" required>
+                                            {% for i in range(1, nomina_inicio_mes) %}
+                                            <option value="{{ i }}" {{ 'selected' if i == (nomina_inicio_mes - 1) else '' }}>{{ meses[i-1][:3] }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small">Quincena</label>
+                                        <select name="quincena_0" class="form-select form-select-sm" required>
+                                            <option value="1">Q1</option>
+                                            <option value="2" selected>Q2</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small">Valor</label>
+                                        <input type="number" name="valor_0" class="form-control form-control-sm" required placeholder="0">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small">Detalle</label>
+                                        <input type="text" name="observaciones_0" class="form-control form-control-sm" placeholder="Motivo">
+                                    </div>
+                                </div>
                             </div>
-                            <div class="col-4">
-                                <label class="form-label">Mes</label>
-                                <select name="mes" class="form-select" required>
-                                    {% for i in range(1, nomina_inicio_mes) %}
-                                    <option value="{{ i }}" {{ 'selected' if i == (nomina_inicio_mes - 1) else '' }}>{{ meses[i-1] }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-4">
-                                <label class="form-label">Quincena</label>
-                                <select name="quincena" class="form-select" required>
-                                    <option value="1">Q1</option>
-                                    <option value="2" selected>Q2</option>
-                                </select>
-                            </div>
                         </div>
-                        <div class="mt-3">
-                            <label class="form-label">Valor pendiente</label>
-                            <input type="text" name="valor" class="form-control js-money" required>
+
+                        <input type="hidden" name="total_filas" id="total_filas" value="1">
+
+                        <div class="d-flex gap-2 mt-3">
+                            <button type="button" class="btn btn-outline-primary btn-sm flex-grow-1" onclick="agregarFila()">
+                                <i class="bi bi-plus-lg"></i> Agregar otra novedad
+                            </button>
                         </div>
-                        <div class="mt-3">
-                            <label class="form-label">Detalle</label>
-                            <textarea name="observaciones" class="form-control" rows="3" placeholder="Ej. quincena pendiente por ingreso manual, ajuste historico, diferencia no pagada"></textarea>
-                        </div>
-                        <button type="submit" class="btn btn-dark mt-3 w-100"><i class="bi bi-check-lg"></i> Guardar saldo</button>
+
+                        <button type="submit" class="btn btn-dark mt-3 w-100"><i class="bi bi-check-lg"></i> Guardar todo ({{ '<span id="contador-filas">1</span>' | safe }} novedades)</button>
                     </form>
                 </div>
             </div>
         </div>
 
-        <div class="col-12 col-xl-8">
+        <div class="col-12 col-xl-7">
             <div class="card h-100">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -89,7 +105,7 @@
                     </div>
 
                     {% if saldos %}
-                    <div class="table-responsive">
+                    <div class="table-responsive" style="max-height:500px; overflow-y:auto;">
                         <table class="table table-sm table-hover saldo-table">
                             <thead class="table-light">
                                 <tr>
@@ -109,7 +125,7 @@
                                         <strong>{{ saldo.empleado.nombre }}</strong>
                                         <br><small class="text-muted">{{ saldo.empleado.cargo or 'Sin cargo' }}</small>
                                     </td>
-                                    <td>{{ meses[saldo.mes-1] }} {{ saldo.anio }} - Q{{ saldo.quincena }}</td>
+                                    <td>{{ meses[saldo.mes-1][:3] }} {{ saldo.anio }} Q{{ saldo.quincena }}</td>
                                     <td>${{ "{:,.0f}".format(saldo.valor_inicial or 0) }}</td>
                                     <td class="text-danger fw-bold">${{ "{:,.0f}".format(saldo.saldo_pendiente or 0) }}</td>
                                     <td>
@@ -117,10 +133,10 @@
                                             {{ (saldo.estado or 'pendiente')|title }}
                                         </span>
                                     </td>
-                                    <td>{{ saldo.observaciones or '-' }}</td>
+                                    <td><small>{{ saldo.observaciones or '-' }}</small></td>
                                     <td class="text-end">
-                                        <form method="POST" action="{{ url_for('nomina.eliminar_saldo_anterior', id=saldo.id) }}" onsubmit="return confirm('¿Eliminar este saldo anterior?');">
-                                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                        <form method="POST" action="{{ url_for('nomina.eliminar_saldo_anterior', id=saldo.id) }}" onsubmit="return confirm('¿Eliminar este saldo?');">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger py-0"><i class="bi bi-trash"></i></button>
                                         </form>
                                     </td>
                                 </tr>
@@ -131,7 +147,7 @@
                     {% else %}
                     <div class="text-center text-muted py-4">
                         <i class="bi bi-inbox fs-1"></i>
-                        <p class="mb-0">Todavia no hay saldos anteriores cargados.</p>
+                        <p class="mb-0">Todavía no hay saldos anteriores cargados.</p>
                     </div>
                     {% endif %}
                 </div>
@@ -139,4 +155,66 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var filaCount = 1;
+
+function agregarFila() {
+    var idx = filaCount;
+    var container = document.getElementById('filas-container');
+    var html = `
+    <div class="fila-novedad" data-idx="${idx}">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+            <small class="text-muted fw-semibold">Novedad #${idx + 1}</small>
+            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="eliminarFila(this)" title="Quitar">✕</button>
+        </div>
+        <div class="row g-2">
+            <div class="col-12">
+                <select name="empleado_id_${idx}" class="form-select form-select-sm" required>
+                    <option value="">Seleccione empleado</option>
+                    {% for e in empleados %}
+                    <option value="{{ e.id }}">{{ e.nombre }}{% if e.cargo %} - {{ e.cargo }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-4">
+                <input type="number" name="anio_${idx}" class="form-control form-control-sm" value="{{ nomina_inicio_anio }}" min="2000" max="{{ nomina_inicio_anio }}" required>
+            </div>
+            <div class="col-4">
+                <select name="mes_${idx}" class="form-select form-select-sm" required>
+                    {% for i in range(1, nomina_inicio_mes) %}
+                    <option value="{{ i }}" {{ 'selected' if i == (nomina_inicio_mes - 1) else '' }}>{{ meses[i-1][:3] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-4">
+                <select name="quincena_${idx}" class="form-select form-select-sm" required>
+                    <option value="1">Q1</option>
+                    <option value="2" selected>Q2</option>
+                </select>
+            </div>
+            <div class="col-6">
+                <input type="number" name="valor_${idx}" class="form-control form-control-sm" required placeholder="Valor">
+            </div>
+            <div class="col-6">
+                <input type="text" name="observaciones_${idx}" class="form-control form-control-sm" placeholder="Detalle">
+            </div>
+        </div>
+    </div>`;
+    container.insertAdjacentHTML('beforeend', html);
+    filaCount++;
+    document.getElementById('total_filas').value = filaCount;
+    document.getElementById('contador-filas').textContent = filaCount;
+}
+
+function eliminarFila(btn) {
+    btn.closest('.fila-novedad').remove();
+    // No decrementamos filaCount para evitar conflictos de nombres
+    var filas = document.querySelectorAll('.fila-novedad');
+    document.getElementById('contador-filas').textContent = filas.length;
+    document.getElementById('total_filas').value = filaCount; // mantiene el max index
+}
+</script>
 {% endblock %}

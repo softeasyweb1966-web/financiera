@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Historial Salarios — {{ empleado.nombre }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h5 class="fw-bold mb-0"><i class="bi bi-graph-up-arrow text-success"></i> Historial de salarios</h5>
+        <small class="text-muted">{{ empleado.nombre }} · {{ empleado.cargo or 'Sin cargo' }} · Salario actual: ${{ "{:,.0f}".format(empleado.salario_base) if empleado.salario_base else '—' }}</small>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('nomina.editar', id=empleado.id) }}" class="btn btn-outline-secondary btn-sm">← Editar empleado</a>
+        <a href="{{ url_for('nomina.lista') }}" class="btn btn-outline-secondary btn-sm">Volver a nómina</a>
+    </div>
+</div>
+
+<div class="card">
+    {% if registros %}
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Fecha cambio</th>
+                    <th>Salario anterior</th>
+                    <th></th>
+                    <th>Salario nuevo</th>
+                    <th>Variación</th>
+                    <th>Motivo</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in registros %}
+                {% set variacion = (r.salario_nuevo - r.salario_anterior)|float if r.salario_anterior else 0 %}
+                {% set pct = ((variacion / r.salario_anterior|float) * 100) if r.salario_anterior and r.salario_anterior|float > 0 else 0 %}
+                <tr>
+                    <td class="fw-semibold">{{ r.fecha_cambio.strftime('%d/%m/%Y') }}</td>
+                    <td>${{ "{:,.0f}".format(r.salario_anterior) if r.salario_anterior else '—' }}</td>
+                    <td>→</td>
+                    <td class="fw-bold text-success">${{ "{:,.0f}".format(r.salario_nuevo) }}</td>
+                    <td>
+                        {% if variacion > 0 %}
+                        <span class="text-success">+${{ "{:,.0f}".format(variacion) }} ({{ "{:.1f}".format(pct) }}%)</span>
+                        {% elif variacion < 0 %}
+                        <span class="text-danger">${{ "{:,.0f}".format(variacion) }} ({{ "{:.1f}".format(pct) }}%)</span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td><small>{{ r.motivo or '—' }}</small></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="p-4 text-center text-muted">
+        <i class="bi bi-info-circle fs-3"></i>
+        <p>No hay cambios de salario registrados.</p>
+        <small>Los cambios se registran automáticamente al modificar el salario desde la ficha del empleado.</small>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

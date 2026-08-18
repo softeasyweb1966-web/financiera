@@ -2,7 +2,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from app import db
 from app.models import (
     Empleado, Tercero, TipoTercero, RegistroNomina,
-    ConceptoNomina, MedioPago, HistorialEstado, SaldoAnteriorNomina
+    ConceptoNomina, MedioPago, HistorialEstado, SaldoAnteriorNomina,
+    HistorialSalario
 )
 from datetime import date, datetime
 import calendar
@@ -278,55 +279,58 @@ def saldos_anteriores():
     )
 
     if request.method == 'POST':
-        empleado_id = request.form.get('empleado_id', type=int)
-        anio = request.form.get('anio', type=int)
-        mes = request.form.get('mes', type=int)
-        quincena = request.form.get('quincena', type=int)
-        valor = float(request.form.get('valor') or 0)
-        observaciones = (request.form.get('observaciones') or '').strip()
+        total_filas = int(request.form.get('total_filas', 1))
+        count_guardados = 0
+        count_errores = 0
 
-        empleado = Empleado.query.get(empleado_id) if empleado_id else None
-        if not empleado:
-            flash('Seleccione un empleado valido.', 'danger')
-            return redirect(url_for('nomina.saldos_anteriores'))
-        if not anio or mes not in range(1, 13) or quincena not in (1, 2):
-            flash('Debe indicar anio, mes y quincena validos.', 'danger')
-            return redirect(url_for('nomina.saldos_anteriores'))
-        if valor <= 0:
-            flash('El valor del saldo anterior debe ser mayor a cero.', 'danger')
-            return redirect(url_for('nomina.saldos_anteriores'))
-        if not _periodo_es_anterior_al_inicio_nomina(anio, mes, quincena):
-            flash('Los saldos anteriores manuales solo aplican para quincenas anteriores a agosto 2026.', 'danger')
-            return redirect(url_for('nomina.saldos_anteriores'))
+        for idx in range(total_filas):
+            empleado_id = request.form.get(f'empleado_id_{idx}', type=int)
+            anio = request.form.get(f'anio_{idx}', type=int)
+            mes = request.form.get(f'mes_{idx}', type=int)
+            quincena = request.form.get(f'quincena_{idx}', type=int)
+            valor = float(request.form.get(f'valor_{idx}') or 0)
+            observaciones = (request.form.get(f'observaciones_{idx}') or '').strip()
 
-        existente = SaldoAnteriorNomina.query.filter_by(
-            empleado_id=empleado.id,
-            anio=anio,
-            mes=mes,
-            quincena=quincena
-        ).order_by(SaldoAnteriorNomina.id.desc()).first()
+            # Validar que la fila tenga datos (puede haber sido eliminada en el frontend)
+            if not empleado_id or not anio or not mes or not quincena or valor <= 0:
+                continue
 
-        if existente and existente.estado in ('pendiente', 'parcial'):
-            existente.valor_inicial = float(existente.valor_inicial or 0) + valor
-            existente.saldo_pendiente = float(existente.saldo_pendiente or 0) + valor
-            existente.estado = 'pendiente'
-            if observaciones:
-                existente.observaciones = f'{existente.observaciones} | {observaciones}' if existente.observaciones else observaciones
-            flash('Saldo anterior actualizado correctamente.', 'success')
-        else:
-            db.session.add(SaldoAnteriorNomina(
-                empleado_id=empleado.id,
-                anio=anio,
-                mes=mes,
-                quincena=quincena,
-                valor_inicial=valor,
-                saldo_pendiente=valor,
-                estado='pendiente',
-                observaciones=observaciones or None,
-            ))
-            flash('Saldo anterior cargado correctamente.', 'success')
+            empleado = Empleado.query.get(empleado_id)
+            if not empleado:
+                count_errores += 1
+                continue
+
+            if not _periodo_es_anterior_al_inicio_nomina(anio, mes, quincena):
+                count_errores += 1
+                continue
+
+            existente = SaldoAnteriorNomina.query.filter_by(
+                empleado_id=empleado.id, anio=anio, mes=mes, quincena=quincena
+            ).order_by(SaldoAnteriorNomina.id.desc()).first()
+
+            if existente and existente.estado in ('pendiente', 'parcial'):
+                existente.valor_inicial = float(existente.valor_inicial or 0) + valor
+                existente.saldo_pendiente = float(existente.saldo_pendiente or 0) + valor
+                existente.estado = 'pendiente'
+                if observaciones:
+                    existente.observaciones = f'{existente.observaciones} | {observaciones}' if existente.observaciones else observaciones
+            else:
+                db.session.add(SaldoAnteriorNomina(
+                    empleado_id=empleado.id, anio=anio, mes=mes, quincena=quincena,
+                    valor_inicial=valor, saldo_pendiente=valor,
+                    estado='pendiente', observaciones=observaciones or None,
+                ))
+            count_guardados += 1
 
         db.session.commit()
+
+        if count_guardados > 0:
+            flash(f'{count_guardados} saldo(s) cargado(s) correctamente.', 'success')
+        if count_errores > 0:
+            flash(f'{count_errores} fila(s) con errores (periodo inválido o datos faltantes).', 'warning')
+        if count_guardados == 0 and count_errores == 0:
+            flash('No se encontraron datos para guardar.', 'warning')
+
         return redirect(url_for('nomina.saldos_anteriores'))
 
     saldos = SaldoAnteriorNomina.query.order_by(
@@ -369,6 +373,7 @@ def nuevo():
             salario_base=request.form.get('salario_base') or None,
             tipo_contrato=request.form.get('tipo_contrato', 'laboral'),
             forma_pago=request.form.get('forma_pago', 'quincenal'),
+            quincena_pago_mensual=request.form.get('quincena_pago_mensual', type=int) or 2,
             whatsapp=request.form.get('whatsapp', '').strip() or None,
             autoriza_whatsapp=bool(request.form.get('autoriza_whatsapp')),
             fecha_ingreso=fecha_ingreso,
@@ -417,10 +422,34 @@ def editar(id):
                 return redirect(url_for('nomina.editar', id=id))
             _registrar_cambio_estado_empleado(empleado, nuevo_estado, fecha_cambio_estado, motivo_estado)
 
+        # Verificar cambio de salario
+        nuevo_salario_str = request.form.get('salario_base', '').strip()
+        nuevo_salario = float(nuevo_salario_str) if nuevo_salario_str else None
+        salario_anterior = float(empleado.salario_base) if empleado.salario_base else None
+
+        if nuevo_salario and salario_anterior and nuevo_salario != salario_anterior:
+            fecha_cambio_sal = _date_or_none(request.form.get('fecha_cambio_salario'))
+            motivo_sal = (request.form.get('motivo_salario') or '').strip()
+            if not fecha_cambio_sal:
+                flash('Debe indicar la fecha del cambio de salario.', 'danger')
+                return redirect(url_for('nomina.editar', id=id))
+            if not motivo_sal:
+                flash('Debe indicar el motivo del cambio de salario.', 'danger')
+                return redirect(url_for('nomina.editar', id=id))
+            hist_sal = HistorialSalario(
+                empleado_id=id,
+                salario_anterior=salario_anterior,
+                salario_nuevo=nuevo_salario,
+                fecha_cambio=fecha_cambio_sal,
+                motivo=motivo_sal
+            )
+            db.session.add(hist_sal)
+
         empleado.cargo = request.form.get('cargo', '').strip()
-        empleado.salario_base = request.form.get('salario_base') or None
+        empleado.salario_base = nuevo_salario
         empleado.tipo_contrato = request.form.get('tipo_contrato', 'laboral')
         empleado.forma_pago = request.form.get('forma_pago', 'quincenal')
+        empleado.quincena_pago_mensual = request.form.get('quincena_pago_mensual', type=int) or 2
         empleado.whatsapp = request.form.get('whatsapp', '').strip() or None
         empleado.autoriza_whatsapp = bool(request.form.get('autoriza_whatsapp'))
         empleado.fecha_ingreso = fecha_ingreso
@@ -439,6 +468,15 @@ def editar(id):
         estados_empleado_labels=ESTADOS_EMPLEADO_LABELS,
         today=date.today().strftime('%Y-%m-%d'),
     )
+
+
+@nomina_bp.route('/<int:id>/historial-salarios')
+def historial_salarios(id):
+    empleado = Empleado.query.get_or_404(id)
+    registros = HistorialSalario.query.filter_by(empleado_id=id).order_by(
+        HistorialSalario.fecha_cambio.desc()
+    ).all()
+    return render_template('nomina/historial_salarios.html', empleado=empleado, registros=registros)
 
 
 @nomina_bp.route('/<int:id>/cambiar-estado', methods=['POST'])

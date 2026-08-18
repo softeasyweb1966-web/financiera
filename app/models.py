@@ -426,6 +426,7 @@ class Empleado(db.Model):
     salario_base = db.Column(db.Numeric(14, 2))
     tipo_contrato = db.Column(db.String(30))  # laboral, prestacion_servicios
     forma_pago = db.Column(db.String(20), default='quincenal')  # diaria, semanal, quincenal, mensual
+    quincena_pago_mensual = db.Column(db.Integer, default=2)  # 1 o 2: en qué quincena se paga si es mensual
     whatsapp = db.Column(db.String(20))
     autoriza_whatsapp = db.Column(db.Boolean, default=False)
     fecha_ingreso = db.Column(db.Date)
@@ -439,6 +440,8 @@ class Empleado(db.Model):
     tercero = db.relationship('Tercero', backref='empleado_info')
     registros_nomina = db.relationship('RegistroNomina', backref='empleado', lazy='dynamic')
     saldos_anteriores_nomina = db.relationship('SaldoAnteriorNomina', backref='empleado', lazy='dynamic')
+    historial_salarios = db.relationship('HistorialSalario', backref='empleado', lazy='dynamic',
+                                         order_by='HistorialSalario.fecha_cambio.desc()')
 
     @property
     def nombre(self):
@@ -446,6 +449,23 @@ class Empleado(db.Model):
 
     def __repr__(self):
         return f'<Empleado {self.nombre} - {self.cargo}>'
+
+
+class HistorialSalario(db.Model):
+    """Registro histórico de cambios de salario de un empleado"""
+    __tablename__ = 'historial_salarios'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False)
+    salario_anterior = db.Column(db.Numeric(14, 2))
+    salario_nuevo = db.Column(db.Numeric(14, 2), nullable=False)
+    fecha_cambio = db.Column(db.Date, nullable=False)
+    motivo = db.Column(db.Text)
+    registrado_por = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<HistorialSalario emp#{self.empleado_id}: {self.salario_anterior}→{self.salario_nuevo}>'
 
 
 class SaldoAnteriorNomina(db.Model):
