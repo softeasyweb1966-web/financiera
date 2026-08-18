@@ -237,53 +237,92 @@
     <span><span class="indicador ind-pagado"></span> Pagado</span>
 </div>
 
-<div class="row g-2">
+<!-- Tabla compacta de empleados (escritorio) -->
+<div class="card d-none d-md-block">
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th style="width:3%"></th>
+                    <th>Empleado</th>
+                    <th>Contrato</th>
+                    <th class="text-end">Salario</th>
+                    <th class="text-end">Esperado Q</th>
+                    <th class="text-end">Pagado</th>
+                    <th>Conceptos</th>
+                    <th class="text-center">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in empleados_mes %}
+                {% set e = item.empleado %}
+                <tr class="{{ 'table-success' if item.tiene_pago else '' }}">
+                    <td><span class="indicador ind-{{ item.estado }}"></span></td>
+                    <td>
+                        <strong>{{ e.nombre }}</strong>
+                        <br><small class="text-muted">{{ e.cargo or '' }}</small>
+                    </td>
+                    <td><span class="badge {{ 'bg-primary' if e.tipo_contrato == 'laboral' else 'bg-secondary' }}" style="font-size:0.6rem;">{{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</span></td>
+                    <td class="text-end"><small>${{ "{:,.0f}".format(e.salario_base) if e.salario_base else '—' }}</small></td>
+                    <td class="text-end">${{ "{:,.0f}".format(item.valor_quincena) }}</td>
+                    <td class="text-end fw-bold {{ 'text-success' if item.tiene_pago else 'text-muted' }}">
+                        {{ "${:,.0f}".format(item.total_pagado) if item.tiene_pago else '—' }}
+                    </td>
+                    <td>
+                        {% if item.registros %}
+                        {% for r in item.registros %}
+                        <span class="badge" style="background:#e0f2fe; color:#1e40af; font-size:0.58rem;">{{ r.concepto_nomina.nombre }}</span>
+                        {% endfor %}
+                        {% else %}
+                        <small class="text-muted">—</small>
+                        {% endif %}
+                    </td>
+                    <td class="text-center text-nowrap">
+                        {% if not item.tiene_pago %}
+                        <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-sm btn-outline-success py-0" title="Registrar"><i class="bi bi-cash"></i></a>
+                        {% endif %}
+                        <a href="{{ url_for('nomina.detalle', id=e.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary py-0" title="Historial"><i class="bi bi-clock-history"></i></a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot class="table-light">
+                <tr class="fw-bold">
+                    <td></td>
+                    <td>TOTAL</td>
+                    <td></td>
+                    <td></td>
+                    <td class="text-end">${{ "{:,.0f}".format(esperado_quincena) }}</td>
+                    <td class="text-end text-success">${{ "{:,.0f}".format(pagado_quincena_actual) }}</td>
+                    <td></td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+<!-- Vista móvil (tarjetas mini) -->
+<div class="d-md-none">
     {% for item in empleados_mes %}
     {% set e = item.empleado %}
-    <div class="col-12 col-md-6 col-lg-4">
-        <div class="card card-servicio estado-{{ item.estado }} p-3 h-100">
-            <div class="d-flex justify-content-between align-items-start">
-                <div>
-                    <div class="fw-bold" style="font-size:0.9rem;">{{ e.nombre }}</div>
-                    <small class="text-muted">{{ e.cargo or 'Sin cargo' }} · {{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</small>
-                </div>
-                <span class="indicador ind-{{ item.estado }}"></span>
-            </div>
-
-            <div class="mt-2">
-                {% if item.tiene_pago %}
-                <span class="fs-5 fw-bold text-success">${{ "{:,.0f}".format(item.total_pagado) }}</span>
-                <small class="text-success d-block">pagado esta quincena</small>
-                {% else %}
-                <span class="fs-5 fw-bold" style="color:#9ca3af;">${{ "{:,.0f}".format(item.valor_quincena) }}</span>
-                <small class="text-muted d-block">valor esperado quincena</small>
-                {% endif %}
-            </div>
-
-            {% if item.registros %}
-            <div class="mt-1" style="font-size:0.72rem;">
-                {% for r in item.registros %}
-                <span class="badge" style="background:#e0f2fe; color:#1e40af; font-size:0.65rem;">
-                    {{ r.concepto_nomina.nombre }}: ${{ "{:,.0f}".format(r.valor) }}
-                </span>
-                {% endfor %}
-            </div>
+    <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+        <div>
+            <span class="indicador ind-{{ item.estado }}"></span>
+            <strong style="font-size:0.85rem;">{{ e.nombre }}</strong>
+            <br><small class="text-muted">{{ e.cargo or '' }}</small>
+        </div>
+        <div class="text-end">
+            {% if item.tiene_pago %}
+            <span class="fw-bold text-success">${{ "{:,.0f}".format(item.total_pagado) }}</span>
+            {% else %}
+            <span class="text-muted">${{ "{:,.0f}".format(item.valor_quincena) }}</span>
             {% endif %}
-
-            <div class="mt-1">
-                <small class="text-muted">Salario: ${{ "{:,.0f}".format(e.salario_base) if e.salario_base else '—' }}</small>
-            </div>
-
-            <div class="mt-2 d-flex gap-1 flex-wrap">
-                {% if not item.tiene_pago %}
-                <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-sm btn-outline-success">
-                    <i class="bi bi-cash"></i> Registrar
-                </a>
-                {% endif %}
-                <a href="{{ url_for('nomina.detalle', id=e.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary" title="Historial">
-                    <i class="bi bi-clock-history"></i>
-                </a>
-            </div>
+            <br>
+            <a href="{{ url_for('nomina.detalle', id=e.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary py-0 px-1" style="font-size:0.65rem;"><i class="bi bi-clock-history"></i></a>
+            {% if not item.tiene_pago %}
+            <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.65rem;"><i class="bi bi-cash"></i></a>
+            {% endif %}
         </div>
     </div>
     {% endfor %}
