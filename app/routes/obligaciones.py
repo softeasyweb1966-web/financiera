@@ -771,10 +771,16 @@ def _payload_saldos_anteriores_por_obligacion(obligacion, pendientes):
 
 
 def _ordenar_obligaciones_lista(obligaciones):
+    def _esta_finalizada(o):
+        return (
+            (o.estado or '').lower() == 'finalizado'
+            or _coerce_date(o.fecha_finalizacion) is not None
+        )
+
     return sorted(
         obligaciones,
         key=lambda o: (
-            1 if (o.estado or '').lower() == 'finalizado' else 0,
+            1 if _esta_finalizada(o) else 0,
             o.dia_limite_pago if o.dia_limite_pago is not None else 99,
             (o.tercero.nombre.lower() if o.tercero and o.tercero.nombre else ''),
             o.id or 0,
