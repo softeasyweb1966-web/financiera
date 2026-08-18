@@ -690,17 +690,6 @@
                             </div>
                         </div>
                         <small id="texto_desglose" class="text-muted d-block mb-2" style="display:none;">Ingrese la cuota pagada y discrimine cuanto corresponde a cada componente.</small>
-                        <div class="row">
-                            <div class="col-md-6 mb-2" id="grupo_pago_otros">
-                                <label class="form-label" id="pago_otros_label">Mora / otros manuales</label>
-                                <input type="text" name="componente_otros" id="pago_otros" class="form-control form-control-sm js-money">
-                                <div class="form-text" id="texto_otros_pago">Use este campo para intereses de mora u otro cobro adicional.</div>
-                            </div>
-                            <div class="col-md-6 mb-2">
-                                <label class="form-label">Detalle mora / otros</label>
-                                <input type="text" name="detalle_otros" id="pago_detalle_otros" class="form-control form-control-sm" placeholder="Ej: interes mora agosto">
-                            </div>
-                        </div>
                         <input type="hidden" name="componente_anticipo" id="pago_anticipo" value="">
                         <div class="alert alert-info py-2 px-3 small mb-3" id="bloque_excedente_pago" style="display:none;">
                             <div class="fw-semibold mb-1" id="texto_excedente_pago"></div>
@@ -717,6 +706,25 @@
                                         <div id="resumen_excedente_pago" class="text-muted"></div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="row" id="grupo_mora_excedente_pago">
+                            <div class="col-md-6 mb-2" id="grupo_pago_otros">
+                                <label class="form-label" id="pago_otros_label">Mora / otros manuales</label>
+                                <input type="text" name="componente_otros" id="pago_otros" class="form-control form-control-sm js-money">
+                                <div class="form-text" id="texto_otros_pago">Use este campo para intereses de mora u otro cobro adicional.</div>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <label class="form-label">Detalle mora / otros</label>
+                                <input type="text" name="detalle_otros" id="pago_detalle_otros" class="form-control form-control-sm" placeholder="Ej: interes mora agosto">
+                                <div class="form-text" id="texto_detalle_otros_pago">Describa el concepto si registra mora, interes adicional u otro cobro.</div>
+                            </div>
+                        </div>
+                        <div class="row" id="grupo_anticipo_excedente_pago" style="display:none;">
+                            <div class="col-md-6 mb-2">
+                                <label class="form-label">Anticipo</label>
+                                <input type="text" id="pago_anticipo_visible" class="form-control form-control-sm" readonly>
+                                <div class="form-text">Este excedente se guardara como anticipo para la obligacion.</div>
                             </div>
                         </div>
                         <div class="row">
@@ -921,13 +929,26 @@ function recalcularExcedentePago() {
     const destino = document.getElementById('pago_destino_excedente').value || 'anticipo';
     const moraManual = window.FinancieraMoney.parse(document.getElementById('pago_otros').value);
     const bloque = document.getElementById('bloque_excedente_pago');
+    const grupoMora = document.getElementById('grupo_mora_excedente_pago');
+    const grupoAnticipo = document.getElementById('grupo_anticipo_excedente_pago');
+    const inputOtros = document.getElementById('pago_otros');
+    const detalleOtros = document.getElementById('pago_detalle_otros');
+    const anticipoVisible = document.getElementById('pago_anticipo_visible');
     const texto = document.getElementById('texto_excedente_pago');
     const resumen = document.getElementById('resumen_excedente_pago');
+    const textoDetalle = document.getElementById('texto_detalle_otros_pago');
 
     if (excedente <= 0) {
         bloque.style.display = 'none';
+        grupoMora.style.display = 'flex';
+        grupoAnticipo.style.display = 'none';
+        inputOtros.disabled = false;
+        detalleOtros.disabled = false;
+        detalleOtros.required = false;
         document.getElementById('pago_anticipo').value = '';
+        anticipoVisible.value = '';
         resumen.textContent = '';
+        textoDetalle.textContent = 'Describa el concepto si registra mora, interes adicional u otro cobro.';
         return;
     }
 
@@ -1061,7 +1082,67 @@ document.getElementById('pago_otros').addEventListener('input', actualizarExcede
 document.getElementById('pago_destino_excedente').addEventListener('change', actualizarExcedentePago);
 
 function actualizarExcedentePago() {
-    recalcularExcedentePago();
+    recalcularExcedentePagoUI();
+}
+
+function recalcularExcedentePagoUI() {
+    const valorCausado = window.FinancieraMoney.parse(document.getElementById('pago_valor_causado2').value);
+    const valorPagado = window.FinancieraMoney.parse(document.getElementById('pago_valor').value);
+    const excedente = Math.max(valorPagado - valorCausado, 0);
+    const destino = document.getElementById('pago_destino_excedente').value || 'anticipo';
+    const moraManual = window.FinancieraMoney.parse(document.getElementById('pago_otros').value);
+    const bloque = document.getElementById('bloque_excedente_pago');
+    const grupoMora = document.getElementById('grupo_mora_excedente_pago');
+    const grupoAnticipo = document.getElementById('grupo_anticipo_excedente_pago');
+    const inputOtros = document.getElementById('pago_otros');
+    const detalleOtros = document.getElementById('pago_detalle_otros');
+    const anticipoOculto = document.getElementById('pago_anticipo');
+    const anticipoVisible = document.getElementById('pago_anticipo_visible');
+    const texto = document.getElementById('texto_excedente_pago');
+    const resumen = document.getElementById('resumen_excedente_pago');
+    const textoDetalle = document.getElementById('texto_detalle_otros_pago');
+
+    if (excedente <= 0) {
+        bloque.style.display = 'none';
+        grupoMora.style.display = 'flex';
+        grupoAnticipo.style.display = 'none';
+        inputOtros.disabled = false;
+        detalleOtros.disabled = false;
+        detalleOtros.required = false;
+        anticipoOculto.value = '';
+        anticipoVisible.value = '';
+        resumen.textContent = '';
+        textoDetalle.textContent = 'Describa el concepto si registra mora, interes adicional u otro cobro.';
+        return;
+    }
+
+    bloque.style.display = 'block';
+    texto.textContent = 'Esta pagando ' + formatearMoneda(excedente) + ' por encima del valor causado.';
+
+    if (destino === 'anticipo') {
+        grupoMora.style.display = 'none';
+        grupoAnticipo.style.display = 'flex';
+        inputOtros.disabled = true;
+        detalleOtros.disabled = true;
+        detalleOtros.required = false;
+        anticipoOculto.value = String(excedente);
+        anticipoVisible.value = formatearMoneda(excedente);
+        resumen.textContent = 'Se guardara como anticipo: ' + formatearMoneda(excedente) + '.';
+        textoDetalle.textContent = 'Describa el concepto si registra mora, interes adicional u otro cobro.';
+        return;
+    }
+
+    grupoMora.style.display = 'flex';
+    grupoAnticipo.style.display = 'none';
+    inputOtros.disabled = false;
+    detalleOtros.disabled = false;
+    detalleOtros.required = true;
+    anticipoOculto.value = '';
+    anticipoVisible.value = '';
+    resumen.textContent = 'Se sumara automaticamente a mora / otros: ' + formatearMoneda(excedente) + '.';
+    textoDetalle.textContent = moraManual > 0
+        ? 'Describa la mora / otros. El excedente se sumara a ese valor manual.'
+        : 'Describa la mora / otros que recibira este excedente.';
 }
 </script>
 {% endblock %}

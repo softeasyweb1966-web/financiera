@@ -1978,6 +1978,9 @@ def registrar_pago():
             componente_anticipo_num,
             destino_excedente,
         )
+        if excedente_num > 0 and destino_excedente != 'anticipo' and not detalle_otros:
+            flash('Si el excedente se aplica a mora / otros, debe registrar el detalle.', 'danger')
+            return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
         if excedente_num > 0:
             nota_excedente = (
                 f'Excedente de ${excedente_num:,.0f} aplicado a '
@@ -2387,6 +2390,9 @@ def ajustar_pago_cancelado(pago_id):
         componente_anticipo_num,
         destino_excedente,
     )
+    if excedente_ajuste_num > 0 and destino_excedente != 'anticipo' and not detalle_otros:
+        flash('Si el excedente se aplica a mora / otros, debe registrar el detalle.', 'danger')
+        return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
     if requiere_capital_interes:
         if componente_capital_num is None or componente_interes_num is None:
             flash('Esta cuota requiere ajustar capital e interes junto con el valor pagado.', 'danger')
