@@ -287,6 +287,9 @@
                         {% if item.aplica_periodo and not item.tiene_pago %}
                         <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena, empleado_id=e.id) }}" class="btn btn-sm btn-outline-success py-0" title="Registrar"><i class="bi bi-cash"></i></a>
                         {% endif %}
+                        {% if item.tiene_saldos_historicos %}
+                        <a href="{{ url_for('nomina.pagar_saldos_historicos_empleado', id=e.id, anio_retorno=anio) }}" class="btn btn-sm btn-outline-dark py-0" title="Saldos historicos"><i class="bi bi-list-check"></i></a>
+                        {% endif %}
                         <a href="{{ url_for('nomina.detalle', id=e.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary py-0" title="Historial"><i class="bi bi-clock-history"></i></a>
                     </td>
                 </tr>
@@ -330,6 +333,9 @@
             {% endif %}
             <br>
             <a href="{{ url_for('nomina.detalle', id=e.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary py-0 px-1" style="font-size:0.65rem;"><i class="bi bi-clock-history"></i></a>
+            {% if item.tiene_saldos_historicos %}
+            <a href="{{ url_for('nomina.pagar_saldos_historicos_empleado', id=e.id, anio_retorno=anio) }}" class="btn btn-sm btn-outline-dark py-0 px-1" style="font-size:0.65rem;"><i class="bi bi-list-check"></i></a>
+            {% endif %}
             {% if item.aplica_periodo and not item.tiene_pago %}
             <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena, empleado_id=e.id) }}" class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.65rem;"><i class="bi bi-cash"></i></a>
             {% endif %}

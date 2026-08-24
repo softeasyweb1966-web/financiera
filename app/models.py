@@ -440,6 +440,8 @@ class Empleado(db.Model):
     tercero = db.relationship('Tercero', backref='empleado_info')
     registros_nomina = db.relationship('RegistroNomina', backref='empleado', lazy='dynamic')
     saldos_anteriores_nomina = db.relationship('SaldoAnteriorNomina', backref='empleado', lazy='dynamic')
+    abonos_nomina = db.relationship('AbonoNomina', backref='empleado', lazy='dynamic',
+                                    order_by='desc(AbonoNomina.fecha_pago), desc(AbonoNomina.id)')
     historial_salarios = db.relationship('HistorialSalario', backref='empleado', lazy='dynamic',
                                          order_by='HistorialSalario.fecha_cambio.desc()')
 
@@ -483,6 +485,9 @@ class SaldoAnteriorNomina(db.Model):
     observaciones = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    abonos = db.relationship('AbonoNomina', backref='saldo_anterior', lazy='dynamic',
+                             order_by='desc(AbonoNomina.fecha_pago), desc(AbonoNomina.id)')
 
     def __repr__(self):
         return f'<SaldoAnteriorNomina {self.empleado_id} {self.anio}-{self.mes} Q{self.quincena}>'
@@ -618,6 +623,30 @@ class RegistroNomina(db.Model):
         db.UniqueConstraint('empleado_id', 'concepto_nomina_id', 'anio', 'mes', 'quincena',
                             name='uq_registro_nomina_concepto_quinc'),
     )
+
+
+class AbonoNomina(db.Model):
+    """Bitacora de abonos aplicados a una quincena de nomina o a un saldo historico."""
+    __tablename__ = 'abonos_nomina'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False)
+    saldo_anterior_nomina_id = db.Column(db.Integer, db.ForeignKey('saldos_anteriores_nomina.id'))
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    quincena = db.Column(db.Integer, nullable=False)
+    valor_abono = db.Column(db.Numeric(14, 2), nullable=False)
+    fecha_pago = db.Column(db.Date, nullable=False)
+    medio_pago_id = db.Column(db.Integer, db.ForeignKey('medios_pago.id'))
+    descripcion = db.Column(db.Text)
+    registrado_por = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    medio_pago = db.relationship('MedioPago')
+
+    def __repr__(self):
+        return f'<AbonoNomina {self.empleado_id} {self.anio}-{self.mes} Q{self.quincena}: ${self.valor_abono}>'
 
 
 class Compra(db.Model):

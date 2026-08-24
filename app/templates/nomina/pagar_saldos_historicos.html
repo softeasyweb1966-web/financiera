@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block title %}Pagar Saldos Historicos{% endblock %}
+
+{% block content %}
+<style>
+    .saldo-shell { border: 1px solid #dbeafe; box-shadow: 0 10px 24px rgba(37, 99, 235, 0.06); }
+    .saldo-resumen { border: 1px solid #bfdbfe; background: linear-gradient(135deg, #eff6ff, #f8fafc); }
+    .saldo-item { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; background: #fff; }
+    .saldo-item:hover { border-color: #bfdbfe; }
+</style>
+
+<div class="card saldo-shell p-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+        <div>
+            <h5 class="fw-bold mb-1"><i class="bi bi-cash-coin text-success"></i> Pagar saldos historicos - {{ empleado.nombre }}</h5>
+            <small class="text-muted">{{ empleado.cargo or 'Sin cargo' }} - ${{ "{:,.0f}".format(empleado.salario_base or 0) }}</small>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ url_for('nomina.detalle', id=empleado.id, anio=anio_retorno) }}" class="btn btn-outline-secondary btn-sm">Volver al historial</a>
+            <a href="{{ url_for('nomina.pagos', anio=anio_retorno) }}" class="btn btn-outline-primary btn-sm">Ir a pagos</a>
+        </div>
+    </div>
+
+    <div class="alert saldo-resumen py-2 mb-3">
+        Digite el valor total a pagar y el sistema marcara desde la quincena mas antigua hasta donde alcance. Si no cubre una quincena completa, quedara como saldo parcial pendiente.
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <small class="text-muted d-block">Quincenas pendientes</small>
+                    <div class="fs-5 fw-bold">{{ saldos_pendientes|length }}</div>
+                    <small class="text-muted d-block mt-3">Total pendiente</small>
+                    <div class="fs-4 fw-bold text-danger">${{ "{:,.0f}".format(total_pendiente) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg-8">
+            <div class="card h-100">
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="anio_retorno" value="{{ anio_retorno }}">
+                        <input type="hidden" name="saldos_payload" id="saldos_payload" value="[]">
+
+                        <div class="row g-3">
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Valor total a aplicar</label>
+                                <input type="text" name="valor_total" id="saldos_valor_total" class="form-control form-control-sm js-money">
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Fecha de pago</label>
+                                <input type="date" name="fecha_pago" class="form-control form-control-sm" required>
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Medio de pago</label>
+                                <select name="medio_pago_id" class="form-select form-select-sm">
+                                    <option value="">--</option>
+                                    {% for medio in medios %}
+                                    <option value="{{ medio.id }}">{{ medio.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Descripcion u observacion</label>
+                                <input type="text" name="observaciones" class="form-control form-control-sm" placeholder="Opcional">
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="marcarHastaAlcance()">
+                                    <i class="bi bi-magic"></i> Sugerir segun valor
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="seleccionarTodos(true)">Seleccionar todos</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="seleccionarTodos(false)">Quitar todos</button>
+                            </div>
+                            <div class="small text-muted">
+                                Aplicado: <strong id="total_aplicado">$0</strong> |
+                                Sin aplicar: <strong id="total_sin_aplicar">$0</strong>
+                            </div>
+                        </div>
+
+                        <div class="mt-3" id="saldos_items">
+                            {% if saldos_pendientes %}
+                            <div class="row g-2">
+                                {% for item in saldos_pendientes %}
+                                <div class="col-12 col-xl-6">
+                                    <label class="saldo-item d-block">
+                                        <div class="d-flex justify-content-between align-items-start gap-3">
+                                            <div class="form-check mb-0">
+                                                <input class="form-check-input saldo-check" type="checkbox"
+                                                       data-index="{{ loop.index0 }}"
+                                                       id="saldo-check-{{ loop.index0 }}">
+                                                <span class="form-check-label">
+                                                    <strong>{{ item.periodo }}</strong>
+                                                    <div class="small text-muted">
+                                                        {{ 'Nomina causada' if item.origen == 'nomina' else 'Saldo anterior manual' }}
+                                                    </div>
+                                                    {% if item.valor_causado > 0 %}
+                                                    <div class="small text-muted">Causado: ${{ "{:,.0f}".format(item.valor_causado) }}</div>
+                                                    {% endif %}
+                                                    {% if item.valor_abonado > 0 %}
+                                                    <div class="small" style="color:#7c3aed;">Abonado: ${{ "{:,.0f}".format(item.valor_abonado) }}</div>
+                                                    {% endif %}
+                                                    {% if item.detalle %}
+                                                    <div class="small text-muted">{{ item.detalle }}</div>
+                                                    {% endif %}
+                                                </span>
+                                            </div>
+                                            <div class="text-end">
+                                                <div class="fw-bold text-danger">${{ "{:,.0f}".format(item.valor_deuda) }}</div>
+                                                <div class="small text-muted">Aplicado: <span id="saldo-aplicado-{{ loop.index0 }}">$0</span></div>
+                                            </div>
+                                        </div>
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <div class="text-center text-muted py-4">
+                                <i class="bi bi-check2-circle fs-1 text-success"></i>
+                                <p class="mb-0">Este empleado no tiene saldos historicos pendientes.</p>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="mt-3">
+                            <button type="submit" class="btn btn-primary" id="btn_guardar" {{ 'disabled' if not saldos_pendientes else '' }}>
+                                <i class="bi bi-check-lg"></i> Guardar pago
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const saldosPendientesNomina = {{ saldos_pendientes_json|tojson }};
+
+function leerMonto(input) {
+    if (window.FinancieraMoney && typeof window.FinancieraMoney.parse === 'function') {
+        return window.FinancieraMoney.parse(input.value);
+    }
+    return Number(String(input.value || '').replace(/[^\d.-]/g, '')) || 0;
+}
+
+function formatearMoneda(valor) {
+    return '$' + Number(valor || 0).toLocaleString('es-CO', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
+}
+
+function seleccionarTodos(seleccionar) {
+    document.querySelectorAll('.saldo-check').forEach(function(check) {
+        check.checked = seleccionar;
+    });
+    recalcularSaldos();
+}
+
+function autoSeleccionarPorValor() {
+    const valorTotal = leerMonto(document.getElementById('saldos_valor_total'));
+    let restante = valorTotal;
+    document.querySelectorAll('.saldo-check').forEach(function(check) {
+        const item = saldosPendientesNomina[Number(check.dataset.index)];
+        if (valorTotal <= 0) {
+            check.checked = false;
+            return;
+        }
+        if (restante > 0) {
+            check.checked = true;
+            restante -= Number(item.valor_deuda || 0);
+        } else {
+            check.checked = false;
+        }
+    });
+}
+
+function marcarHastaAlcance() {
+    autoSeleccionarPorValor();
+    recalcularSaldos();
+}
+
+function recalcularSaldos() {
+    const valorTotal = leerMonto(document.getElementById('saldos_valor_total'));
+    let restante = valorTotal;
+    let totalAplicado = 0;
+    const payload = [];
+
+    document.querySelectorAll('.saldo-check').forEach(function(check) {
+        const index = Number(check.dataset.index);
+        const item = saldosPendientesNomina[index];
+        const spanAplicado = document.getElementById('saldo-aplicado-' + index);
+        let valorAplicado = 0;
+
+        if (check.checked) {
+            valorAplicado = Math.min(restante, Number(item.valor_deuda || 0));
+            if (valorAplicado > 0) {
+                restante -= valorAplicado;
+                totalAplicado += valorAplicado;
+                payload.push({
+                    anio: item.anio,
+                    mes: item.mes,
+                    quincena: item.quincena,
+                    valor_aplicado: Math.round(valorAplicado * 100) / 100
+                });
+            }
+        }
+
+        if (spanAplicado) {
+            spanAplicado.textContent = formatearMoneda(valorAplicado);
+        }
+    });
+
+    document.getElementById('total_aplicado').textContent = formatearMoneda(totalAplicado);
+    document.getElementById('total_sin_aplicar').textContent = formatearMoneda(Math.max(valorTotal - totalAplicado, 0));
+    document.getElementById('saldos_payload').value = JSON.stringify(payload);
+    document.getElementById('btn_guardar').disabled = totalAplicado <= 0 || (valorTotal - totalAplicado) > 1;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const valorInput = document.getElementById('saldos_valor_total');
+    if (valorInput) {
+        valorInput.addEventListener('input', function() {
+            autoSeleccionarPorValor();
+            recalcularSaldos();
+        });
+    }
+    document.querySelectorAll('.saldo-check').forEach(function(check) {
+        check.addEventListener('change', recalcularSaldos);
+    });
+    recalcularSaldos();
+});
+</script>
+{% endblock %}
