@@ -14,8 +14,8 @@
 <div class="card liquidacion-card p-3">
     <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
         <div>
-            <h5 class="fw-bold mb-1"><i class="bi bi-cash text-success"></i> Registrar Nomina - {{ meses[mes-1] }} {{ anio }} - Quincena {{ quincena }}</h5>
-            <small class="text-muted">Liquidacion del periodo. Puede venir cargada desde la preliquidacion o registrar directamente.</small>
+            <h5 class="fw-bold mb-1"><i class="bi bi-journal-check text-primary"></i> Causar Nomina - {{ meses[mes-1] }} {{ anio }} - Quincena {{ quincena }}</h5>
+            <small class="text-muted">Causacion del periodo. Puede venir cargada desde la preliquidacion o generarse directamente.</small>
             {% if empleado_seleccionado %}
             <div><small class="text-primary fw-semibold">Pago individual: {{ empleado_seleccionado.nombre }}</small></div>
             {% endif %}
@@ -23,6 +23,7 @@
         <div class="d-flex gap-2 flex-wrap liquidacion-actions">
             <a href="{{ url_for('nomina.saldos_anteriores') }}" class="btn btn-outline-dark btn-sm">Saldos anteriores</a>
             <a href="{{ url_for('nomina.preliquidar', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-warning btn-sm">Volver a preliquidar</a>
+            <a href="{{ url_for('nomina.pagar_quincena', anio=anio, mes=mes, quincena=quincena, empleado_id=empleado_id_filtro) if empleado_id_filtro else url_for('nomina.pagar_quincena', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-success btn-sm">Ir a pagar</a>
             <a href="{{ url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-secondary btn-sm">Volver a pagos</a>
         </div>
     </div>
@@ -142,7 +143,7 @@
             </table>
         </div>
 
-        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Guardar registros</button>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Guardar causacion</button>
     </form>
 </div>
 

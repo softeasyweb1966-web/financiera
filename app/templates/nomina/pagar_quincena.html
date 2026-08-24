@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Pagar Quincena{% endblock %}
+
+{% block content %}
+<style>
+    .pago-card { border: 1px solid #dbeafe; box-shadow: 0 10px 24px rgba(37, 99, 235, 0.06); }
+    .label-mini { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; }
+    .concept-badge-dev { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .concept-badge-ded { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+</style>
+
+<div class="card pago-card p-3">
+    <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+        <div>
+            <h5 class="fw-bold mb-1"><i class="bi bi-cash-coin text-success"></i> Pagar Nomina - {{ meses[mes-1] }} {{ anio }} - Quincena {{ quincena }}</h5>
+            <small class="text-muted">Esta pantalla cobra solo lo ya causado en la quincena. Las novedades ya quedan incluidas dentro del valor causado.</small>
+            {% if empleado_seleccionado %}
+            <div><small class="text-primary fw-semibold">Pago individual: {{ empleado_seleccionado.nombre }}</small></div>
+            {% endif %}
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ url_for('nomina.saldos_anteriores') }}" class="btn btn-outline-dark btn-sm">Saldos anteriores</a>
+            <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena, empleado_id=empleado_id_filtro) if empleado_id_filtro else url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-warning btn-sm">Volver a causar</a>
+            <a href="{{ url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-secondary btn-sm">Volver a pagos</a>
+        </div>
+    </div>
+
+    <div class="alert alert-info py-2 mb-3">
+        La nomina operativa inicia desde <strong>agosto {{ nomina_inicio_anio }}</strong>. Si hay saldos de quincenas anteriores, se gestionan desde <strong>Saldos anteriores</strong>.
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-12 col-md-4">
+            <div class="card p-3" style="background:#eff6ff; border:1px solid #bfdbfe;">
+                <div class="label-mini">Causado quincena</div>
+                <div class="fs-5 fw-bold text-primary">${{ "{:,.0f}".format(total_causado) }}</div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="card p-3" style="background:#f0fdf4; border:1px solid #bbf7d0;">
+                <div class="label-mini">Abonado</div>
+                <div class="fs-5 fw-bold text-success">${{ "{:,.0f}".format(total_abonado) }}</div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="card p-3" style="background:#fef2f2; border:1px solid #fecaca;">
+                <div class="label-mini">Saldo por pagar</div>
+                <div class="fs-5 fw-bold text-danger">${{ "{:,.0f}".format(total_saldo) }}</div>
+            </div>
+        </div>
+    </div>
+
+    <form method="POST">
+        <input type="hidden" name="anio" value="{{ anio }}">
+        <input type="hidden" name="mes" value="{{ mes }}">
+        <input type="hidden" name="quincena" value="{{ quincena }}">
+        {% if empleado_id_filtro %}
+        <input type="hidden" name="empleado_id_filtro" value="{{ empleado_id_filtro }}">
+        {% endif %}
+
+        <div class="row mb-3 g-3">
+            <div class="col-12 col-md-4">
+                <label class="form-label">Fecha de pago</label>
+                <input type="date" name="fecha_pago" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label">Medio de pago</label>
+                <select name="medio_pago_id" class="form-select form-select-sm">
+                    <option value="">--</option>
+                    {% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label">Observaciones</label>
+                <input type="text" name="observaciones" class="form-control form-control-sm" placeholder="Soporte, referencia o nota del pago">
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label">Mes</label>
+                <select class="form-select form-select-sm" onchange="location.href='?anio={{ anio }}&mes='+this.value+'&quincena={{ quincena }}{% if empleado_id_filtro %}&empleado_id={{ empleado_id_filtro }}{% endif %}'">
+                    {% for i in meses_habilitados %}
+                    <option value="{{ i }}" {{ 'selected' if i == mes else '' }}>{{ meses[i-1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label">Quincena</label>
+                <select class="form-select form-select-sm" onchange="location.href='?anio={{ anio }}&mes={{ mes }}&quincena='+this.value+'{% if empleado_id_filtro %}&empleado_id={{ empleado_id_filtro }}{% endif %}'">
+                    <option value="1" {{ 'selected' if quincena == 1 else '' }}>Quincena 1</option>
+                    <option value="2" {{ 'selected' if quincena == 2 else '' }}>Quincena 2</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mb-2">
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="toggleSeleccionPago(true)">Seleccionar todos</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleSeleccionPago(false)">Quitar todos</button>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Empleado</th>
+                        <th>Conceptos causados</th>
+                        <th>Causado</th>
+                        <th>Abonado</th>
+                        <th>Saldo</th>
+                        <th>Valor a pagar</th>
+                        <th>Incluir</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in empleados_pago %}
+                    {% set e = row.empleado %}
+                    <tr class="{{ 'table-success' if row.saldo <= 0 else '' }}">
+                        <td class="fw-semibold">
+                            {{ e.nombre }}
+                            <br>
+                            <small class="text-muted">{{ e.cargo or '' }} - ${{ "{:,.0f}".format(e.salario_base) if e.salario_base else '0' }}</small>
+                            {% if row.tiene_novedades %}
+                            <br><small class="text-primary">Incluye novedades del periodo</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-1">
+                                {% for concepto in row.conceptos %}
+                                <span class="badge {{ 'concept-badge-ded' if concepto.tipo == 'deduccion' else 'concept-badge-dev' }}">
+                                    {{ concepto.nombre }}: {{ '-' if concepto.tipo == 'deduccion' else '+' }}${{ "{:,.0f}".format(concepto.valor_mostrar) }}
+                                </span>
+                                {% endfor %}
+                            </div>
+                        </td>
+                        <td class="fw-bold text-primary">${{ "{:,.0f}".format(row.total_causado) }}</td>
+                        <td class="fw-bold text-success">${{ "{:,.0f}".format(row.total_abonado) }}</td>
+                        <td class="fw-bold {{ 'text-success' if row.saldo <= 0 else 'text-danger' }}">${{ "{:,.0f}".format(row.saldo) }}</td>
+                        <td>
+                            <input type="text" name="valor_{{ e.id }}" class="form-control form-control-sm js-money" value="{{ row.saldo }}" style="max-width:150px">
+                        </td>
+                        <td class="text-center">
+                            <input type="checkbox" name="empleado_ids" value="{{ e.id }}" class="form-check-input" {{ 'checked' if row.incluir else '' }} {{ 'disabled' if row.saldo <= 0 else '' }}>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if not empleados_pago %}
+        <div class="alert alert-warning mb-3">
+            No hay quincenas causadas pendientes por pagar en este periodo. Primero cause la nomina si aun no se ha generado.
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-success" {{ 'disabled' if not empleados_pago else '' }}><i class="bi bi-check-lg"></i> Guardar pagos</button>
+    </form>
+</div>
+
+<script>
+function toggleSeleccionPago(seleccionar) {
+    document.querySelectorAll('input[name="empleado_ids"]:not([disabled])').forEach(function (checkbox) {
+        checkbox.checked = seleccionar;
+    });
+}
+</script>
+{% endblock %}

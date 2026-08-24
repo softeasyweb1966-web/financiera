@@ -228,6 +228,18 @@ def _nota_pago_historico_nomina(valor_aplicado, fecha_pago, medio_pago=None, obs
     return ' | '.join(partes)
 
 
+def _nota_pago_periodo_nomina(valor_aplicado, fecha_pago, medio_pago=None, observaciones=None):
+    partes = [
+        f'Pago quincena: ${float(valor_aplicado or 0):,.0f}',
+        f'fecha {fecha_pago.strftime("%d/%m/%Y")}',
+    ]
+    if medio_pago:
+        partes.append(f'medio {medio_pago.nombre}')
+    if observaciones:
+        partes.append(observaciones.strip())
+    return ' | '.join(partes)
+
+
 def _registrar_abono_nomina(empleado_id, anio, mes, quincena, valor_abono, fecha_pago,
                             medio_pago_id=None, descripcion=None, saldo_anterior_nomina_id=None):
     valor_abono = float(valor_abono or 0)
@@ -904,6 +916,7 @@ def pagos(anio=None, mes=None, quincena=None):
     anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
     meses_habilitados = _meses_habilitados_nomina(anio)
 
+    empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo, Empleado.id).all()
     empleados_periodo = _empleados_nomina_periodo(anio, mes, quincena)
     empleados_periodo_ids = {e.id for e in empleados_periodo}
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
@@ -1499,3 +1512,190 @@ def registrar_quincena():
                            meses_habilitados=_meses_habilitados_nomina(anio),
                            nomina_inicio_anio=NOMINA_INICIO_ANIO,
                            nomina_inicio_mes=NOMINA_INICIO_MES)
+
+
+@nomina_bp.route('/pagar', methods=['GET', 'POST'])
+def pagar_quincena():
+    if request.method == 'POST':
+        anio = int(request.form['anio'])
+        mes = int(request.form['mes'])
+        quincena = int(request.form['quincena'])
+        anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
+        empleado_id_filtro = request.form.get('empleado_id_filtro', type=int)
+        fecha_pago = _date_or_none(request.form.get('fecha_pago'))
+        medio_pago_id = request.form.get('medio_pago_id') or None
+        observaciones = (request.form.get('observaciones') or '').strip()
+        medio_pago = MedioPago.query.get(medio_pago_id) if medio_pago_id else None
+        redirect_kwargs = {'anio': anio, 'mes': mes, 'quincena': quincena}
+        if empleado_id_filtro:
+            redirect_kwargs['empleado_id'] = empleado_id_filtro
+
+        if not fecha_pago:
+            flash('Debe indicar una fecha de pago valida.', 'danger')
+            return redirect(url_for('nomina.pagar_quincena', **redirect_kwargs))
+
+        empleados_ids = request.form.getlist('empleado_ids')
+        if not empleados_ids:
+            flash('Seleccione al menos un empleado para registrar el pago.', 'warning')
+            return redirect(url_for('nomina.pagar_quincena', **redirect_kwargs))
+
+        pagos_preparados = []
+        for emp_id in empleados_ids:
+            empleado = Empleado.query.get(int(emp_id))
+            if not empleado or not _empleado_aplica_periodo(empleado, anio, mes, quincena):
+                continue
+
+            registros = RegistroNomina.query.filter_by(
+                empleado_id=empleado.id, anio=anio, mes=mes, quincena=quincena
+            ).all()
+            if not registros:
+                continue
+
+            total_causado = sum(float(r.valor or 0) for r in registros)
+            total_abonado = sum(
+                float(a.valor_abono or 0)
+                for a in AbonoNomina.query.filter_by(
+                    empleado_id=empleado.id, anio=anio, mes=mes, quincena=quincena
+                ).all()
+            )
+            if total_abonado <= 0 and registros and all(r.fecha_pago for r in registros):
+                total_abonado = total_causado
+            saldo_pendiente = max(total_causado - total_abonado, 0)
+            if saldo_pendiente <= 0:
+                continue
+
+            valor_pago = float(request.form.get(f'valor_{emp_id}') or 0)
+            if valor_pago <= 0:
+                valor_pago = saldo_pendiente
+            if valor_pago - saldo_pendiente > 1:
+                flash(f'El valor a pagar de {empleado.nombre} supera el saldo pendiente de la quincena.', 'danger')
+                return redirect(url_for('nomina.pagar_quincena', **redirect_kwargs))
+
+            pagos_preparados.append({
+                'empleado': empleado,
+                'registros': registros,
+                'valor_pago': valor_pago,
+                'total_causado': total_causado,
+                'total_abonado': total_abonado,
+            })
+
+        if not pagos_preparados:
+            flash('No se encontraron causaciones pendientes para pagar en esa quincena.', 'warning')
+            return redirect(url_for('nomina.pagar_quincena', **redirect_kwargs))
+
+        periodos_pagados = 0
+        for pago in pagos_preparados:
+            empleado = pago['empleado']
+            registros = pago['registros']
+            valor_pago = pago['valor_pago']
+            total_causado = pago['total_causado']
+            total_abonado = pago['total_abonado']
+            nota = _nota_pago_periodo_nomina(valor_pago, fecha_pago, medio_pago=medio_pago, observaciones=observaciones)
+
+            _registrar_abono_nomina(
+                empleado_id=empleado.id,
+                anio=anio,
+                mes=mes,
+                quincena=quincena,
+                valor_abono=valor_pago,
+                fecha_pago=fecha_pago,
+                medio_pago_id=medio_pago_id,
+                descripcion=nota
+            )
+
+            total_abonado_nuevo = total_abonado + valor_pago
+            for registro in registros:
+                registro.observaciones = _append_observacion(registro.observaciones, nota)
+                if medio_pago_id and not registro.medio_pago_id and total_abonado_nuevo + 1 >= total_causado:
+                    registro.medio_pago_id = medio_pago_id
+                if total_abonado_nuevo + 1 >= total_causado and not registro.fecha_pago:
+                    registro.fecha_pago = fecha_pago
+
+            periodos_pagados += 1
+
+        db.session.commit()
+        flash(f'Se registraron pagos para {periodos_pagados} empleado(s) en la quincena.', 'success')
+        return redirect(url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena))
+
+    anio = request.args.get('anio', date.today().year, type=int)
+    mes = request.args.get('mes', date.today().month, type=int)
+    quincena = request.args.get('quincena', 1 if date.today().day <= 15 else 2, type=int)
+    empleado_id_filtro = request.args.get('empleado_id', type=int)
+    anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
+    meses_habilitados = _meses_habilitados_nomina(anio)
+
+    empleado_seleccionado = None
+    if empleado_id_filtro:
+        empleado_seleccionado = Empleado.query.filter_by(activo=True, id=empleado_id_filtro).first_or_404()
+        if not _empleado_aplica_periodo(empleado_seleccionado, anio, mes, quincena):
+            flash('Ese empleado no aplica para la quincena seleccionada.', 'warning')
+            return redirect(url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena))
+
+    empleados_periodo = _empleados_nomina_periodo(anio, mes, quincena, empleado_id=empleado_id_filtro)
+    empleados_periodo_ids = [e.id for e in empleados_periodo]
+    medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
+
+    registros_quincena = RegistroNomina.query.filter_by(anio=anio, mes=mes, quincena=quincena).all()
+    registros_por_empleado = {}
+    for registro in registros_quincena:
+        if registro.empleado_id not in empleados_periodo_ids:
+            continue
+        registros_por_empleado.setdefault(registro.empleado_id, []).append(registro)
+
+    abonos_quincena = AbonoNomina.query.filter_by(anio=anio, mes=mes, quincena=quincena).all()
+    abonos_por_empleado = {}
+    for abono in abonos_quincena:
+        abonos_por_empleado[abono.empleado_id] = abonos_por_empleado.get(abono.empleado_id, 0) + float(abono.valor_abono or 0)
+
+    rows = []
+    total_causado = 0
+    total_abonado = 0
+    total_saldo = 0
+    for empleado in empleados_periodo:
+        registros = registros_por_empleado.get(empleado.id, [])
+        if not registros:
+            continue
+        causado = sum(float(r.valor or 0) for r in registros)
+        abonado = float(abonos_por_empleado.get(empleado.id, 0) or 0)
+        if abonado <= 0 and registros and all(r.fecha_pago for r in registros):
+            abonado = causado
+        saldo = max(causado - abonado, 0)
+        conceptos = []
+        for registro in registros:
+            conceptos.append({
+                'nombre': registro.concepto_nomina.nombre if registro.concepto_nomina else 'Concepto',
+                'valor': float(registro.valor or 0),
+                'valor_mostrar': abs(float(registro.valor or 0)),
+                'tipo': registro.concepto_nomina.tipo if registro.concepto_nomina else 'otro',
+            })
+        total_causado += causado
+        total_abonado += abonado
+        total_saldo += saldo
+        rows.append({
+            'empleado': empleado,
+            'registros': registros,
+            'conceptos': conceptos,
+            'total_causado': causado,
+            'total_abonado': abonado,
+            'saldo': saldo,
+            'incluir': saldo > 0,
+            'tiene_novedades': len(registros) > 1,
+        })
+
+    return render_template(
+        'nomina/pagar_quincena.html',
+        empleados_pago=rows,
+        medios=medios,
+        anio=anio,
+        mes=mes,
+        quincena=quincena,
+        meses=MESES,
+        meses_habilitados=meses_habilitados,
+        empleado_id_filtro=empleado_id_filtro,
+        empleado_seleccionado=empleado_seleccionado,
+        total_causado=total_causado,
+        total_abonado=total_abonado,
+        total_saldo=total_saldo,
+        nomina_inicio_anio=NOMINA_INICIO_ANIO,
+        nomina_inicio_mes=NOMINA_INICIO_MES,
+    )

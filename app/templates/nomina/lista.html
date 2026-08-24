@@ -25,7 +25,8 @@
         <a href="{{ url_for('nomina.saldos_anteriores') }}" class="btn btn-outline-dark btn-sm"><i class="bi bi-journal-text"></i> Saldos anteriores</a>
         <a href="{{ url_for('nomina.pagos', anio=anio) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-table"></i> Pagos {{ anio }}</a>
         <a href="{{ url_for('nomina.preliquidar', anio=anio) }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-calculator"></i> Preliquidar</a>
-        <a href="{{ url_for('nomina.registrar_quincena') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-cash"></i> Registrar quincena</a>
+        <a href="{{ url_for('nomina.registrar_quincena') }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-journal-check"></i> Causar quincena</a>
+        <a href="{{ url_for('nomina.pagar_quincena') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-cash"></i> Pagar quincena</a>
         <a href="{{ url_for('nomina.nuevo') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus"></i> Nuevo</a>
     </div>
 </div>

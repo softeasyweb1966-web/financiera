@@ -27,7 +27,7 @@
     <div class="d-flex gap-2 flex-wrap preliq-actions">
         <a href="{{ url_for('nomina.saldos_anteriores') }}" class="btn btn-outline-dark btn-sm">Saldos anteriores</a>
         <a href="{{ url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-secondary btn-sm">Volver a pagos</a>
-        <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-success btn-sm">Ir a registrar</a>
+        <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-success btn-sm">Ir a causar</a>
     </div>
 </div>
 
@@ -110,7 +110,7 @@
         <div class="col-12 col-lg-9">
             <small class="text-muted d-block">
                 Cada novedad debe tener concepto, valor y justificación.
-                Las novedades son solo de este periodo y viajarán a la liquidación final.
+                Las novedades son solo de este periodo y viajarán a la causación final.
             </small>
         </div>
         <div class="col-12 col-lg-3 text-lg-end">
@@ -229,7 +229,7 @@
     </div>
 
     <div class="d-flex gap-2 flex-wrap mt-3">
-        <button type="submit" class="btn btn-warning"><i class="bi bi-arrow-right-circle"></i> Continuar a liquidación</button>
+        <button type="submit" class="btn btn-warning"><i class="bi bi-arrow-right-circle"></i> Continuar a causación</button>
         <a href="{{ url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-outline-secondary">Cancelar</a>
     </div>
 </form>
