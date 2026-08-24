@@ -686,6 +686,11 @@ def pagos(anio=None, mes=None, quincena=None):
     meses_habilitados = _meses_habilitados_nomina(anio)
 
     empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo).all()
+    empleados_periodo = [
+        e for e in empleados
+        if _empleado_aplica_periodo(e, anio, mes, quincena)
+    ]
+    empleados_periodo_ids = {e.id for e in empleados_periodo}
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
 
@@ -693,6 +698,10 @@ def pagos(anio=None, mes=None, quincena=None):
     registros_quincena = RegistroNomina.query.filter_by(
         anio=anio, mes=mes, quincena=quincena
     ).all()
+    registros_quincena = [
+        r for r in registros_quincena
+        if r.empleado_id is None or r.empleado_id in empleados_periodo_ids
+    ]
 
     # Agrupar por empleado
     registros_por_empleado = {}
@@ -724,7 +733,7 @@ def pagos(anio=None, mes=None, quincena=None):
 
     # Total esperado del periodo segun la frecuencia configurada
     esperado_quincena = sum(
-        _valor_periodo_empleado(e, anio, mes, quincena) for e in empleados
+        _valor_periodo_empleado(e, anio, mes, quincena) for e in empleados_periodo
     )
 
     # Quincenas sin pagar de periodos anteriores
@@ -769,7 +778,7 @@ def pagos(anio=None, mes=None, quincena=None):
             'manual': True,
         })
 
-    for e in empleados:
+    for e in empleados_periodo:
         # Check si hay quincenas anteriores sin registros
         for m_check in range(meses_habilitados[0], mes + 1):
             q_range = [1, 2] if m_check < mes else list(range(1, quincena))
@@ -817,7 +826,7 @@ def pagos(anio=None, mes=None, quincena=None):
 
     # Tarjetas por empleado
     empleados_mes = []
-    for e in empleados:
+    for e in empleados_periodo:
         registros_emp = registros_por_empleado.get(e.id, [])
         total_registrado = sum(float(r.valor) for r in registros_emp)
         total_pagado = sum(float(r.valor) for r in registros_emp if r.fecha_pago)
@@ -1068,8 +1077,14 @@ def registrar_quincena():
     empleado_seleccionado = None
     if empleado_id_filtro:
         empleado_seleccionado = empleados_query.filter_by(id=empleado_id_filtro).first_or_404()
+        if not _empleado_aplica_periodo(empleado_seleccionado, anio, mes, quincena):
+            flash('Ese empleado no aplica para la quincena seleccionada.', 'warning')
+            return redirect(url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena))
         empleados_query = empleados_query.filter_by(id=empleado_id_filtro)
-    empleados = empleados_query.order_by(Empleado.cargo).all()
+    empleados = [
+        e for e in empleados_query.order_by(Empleado.cargo).all()
+        if _empleado_aplica_periodo(e, anio, mes, quincena)
+    ]
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
     draft = session.get(_preliquidacion_session_key(anio, mes, quincena), {})
