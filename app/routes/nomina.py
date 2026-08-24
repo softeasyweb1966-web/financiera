@@ -938,7 +938,9 @@ def detalle(id):
         if items and all(r.fecha_pago for r in items):
             estados_quincena[key] = 'pagado'
         elif items:
-            estados_quincena[key] = 'causado'
+            mes_key, quincena_key = key
+            _, periodo_fin = _rango_periodo_nomina(anio, mes_key, quincena_key)
+            estados_quincena[key] = 'vencido' if periodo_fin < date.today() else 'causado'
     for key, aplica in aplica_quincena.items():
         if not aplica and key not in estados_quincena:
             estados_quincena[key] = 'no_aplica'
@@ -951,6 +953,8 @@ def detalle(id):
         ]
         if estados_mes_actual and all(estado == 'no_aplica' for estado in estados_mes_actual):
             estados_mes[mes] = 'no_aplica'
+        elif 'vencido' in estados_mes_actual:
+            estados_mes[mes] = 'vencido'
         elif estados_mes_actual:
             estados_mes[mes] = 'pagado' if all(estado == 'pagado' for estado in estados_mes_actual) else 'causado'
     saldos_anteriores = SaldoAnteriorNomina.query.filter_by(empleado_id=id).order_by(
