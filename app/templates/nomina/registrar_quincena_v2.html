@@ -14,8 +14,11 @@
 <div class="card liquidacion-card p-3">
     <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
         <div>
-            <h5 class="fw-bold mb-1"><i class="bi bi-cash text-success"></i> Registrar Nómina - {{ meses[mes-1] }} {{ anio }} - Quincena {{ quincena }}</h5>
-            <small class="text-muted">Liquidación del periodo. Puede venir cargada desde la preliquidación o registrar directamente.</small>
+            <h5 class="fw-bold mb-1"><i class="bi bi-cash text-success"></i> Registrar Nomina - {{ meses[mes-1] }} {{ anio }} - Quincena {{ quincena }}</h5>
+            <small class="text-muted">Liquidacion del periodo. Puede venir cargada desde la preliquidacion o registrar directamente.</small>
+            {% if empleado_seleccionado %}
+            <div><small class="text-primary fw-semibold">Pago individual: {{ empleado_seleccionado.nombre }}</small></div>
+            {% endif %}
         </div>
         <div class="d-flex gap-2 flex-wrap liquidacion-actions">
             <a href="{{ url_for('nomina.saldos_anteriores') }}" class="btn btn-outline-dark btn-sm">Saldos anteriores</a>
@@ -30,8 +33,8 @@
 
     {% if preliquidacion_rows %}
     <div class="alert alert-preliq mb-3">
-        <div class="fw-semibold mb-1"><i class="bi bi-check-circle text-warning"></i> Preliquidación aplicada</div>
-        <small class="text-muted">Los valores e inclusiones de esta pantalla se cargaron desde la preliquidación del mismo periodo.</small>
+        <div class="fw-semibold mb-1"><i class="bi bi-check-circle text-warning"></i> Preliquidacion aplicada</div>
+        <small class="text-muted">Los valores e inclusiones de esta pantalla se cargaron desde la preliquidacion del mismo periodo.</small>
     </div>
     {% endif %}
 
@@ -39,6 +42,9 @@
         <input type="hidden" name="anio" value="{{ anio }}">
         <input type="hidden" name="mes" value="{{ mes }}">
         <input type="hidden" name="quincena" value="{{ quincena }}">
+        {% if empleado_id_filtro %}
+        <input type="hidden" name="empleado_id" value="{{ empleado_id_filtro }}">
+        {% endif %}
 
         <div class="row mb-3 g-3">
             <div class="col-12 col-md-4">
@@ -54,7 +60,7 @@
             </div>
             <div class="col-6 col-md-2">
                 <label class="form-label">Mes</label>
-                <select class="form-select form-select-sm" onchange="location.href='?anio={{ anio }}&mes='+this.value+'&quincena={{ quincena }}'">
+                <select class="form-select form-select-sm" onchange="location.href='?anio={{ anio }}&mes='+this.value+'&quincena={{ quincena }}{% if empleado_id_filtro %}&empleado_id={{ empleado_id_filtro }}{% endif %}'">
                     {% for i in meses_habilitados %}
                     <option value="{{ i }}" {{ 'selected' if i == mes else '' }}>{{ meses[i-1] }}</option>
                     {% endfor %}
@@ -62,7 +68,7 @@
             </div>
             <div class="col-6 col-md-2">
                 <label class="form-label">Quincena</label>
-                <select class="form-select form-select-sm" onchange="location.href='?anio={{ anio }}&mes={{ mes }}&quincena='+this.value">
+                <select class="form-select form-select-sm" onchange="location.href='?anio={{ anio }}&mes={{ mes }}&quincena='+this.value+'{% if empleado_id_filtro %}&empleado_id={{ empleado_id_filtro }}{% endif %}'">
                     <option value="1" {{ 'selected' if quincena == 1 else '' }}>Quincena 1</option>
                     <option value="2" {{ 'selected' if quincena == 2 else '' }}>Quincena 2</option>
                 </select>
@@ -90,7 +96,7 @@
                             <small class="text-muted">
                                 {{ e.cargo or '' }} - ${{ "{:,.0f}".format(e.salario_base) if e.salario_base else '0' }}
                                 {% if row %}
-                                · {{ formas_pago_labels.get(row.get('forma_pago_aplicada'), row.get('forma_pago_aplicada', 'quincenal')|title) }}
+                                - {{ formas_pago_labels.get(row.get('forma_pago_aplicada'), row.get('forma_pago_aplicada', 'quincenal')|title) }}
                                 {% endif %}
                             </small>
                             {% if row and row.get('pendiente_anterior', 0) > 0 %}
@@ -106,8 +112,8 @@
                             </div>
                             <small class="text-muted d-block mt-1">
                                 Devengados: ${{ "{:,.0f}".format(row.get('total_devengados', 0)) }}
-                                · Deducciones: ${{ "{:,.0f}".format(row.get('total_deducciones', 0)) }}
-                                · Neto novedades: ${{ "{:,.0f}".format(row.get('total_novedades', 0)) }}
+                                - Deducciones: ${{ "{:,.0f}".format(row.get('total_deducciones', 0)) }}
+                                - Neto novedades: ${{ "{:,.0f}".format(row.get('total_novedades', 0)) }}
                             </small>
                             {% endif %}
                         </td>

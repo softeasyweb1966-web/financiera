@@ -8,10 +8,12 @@
     .estado-pendiente { border-left-color: #fb923c; }
     .estado-causado { border-left-color: #facc15; }
     .estado-pagado { border-left-color: #10b981; }
+    .estado-no_aplica { border-left-color: #9ca3af; }
     .indicador { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .ind-pendiente { background: #fb923c; }
     .ind-causado { background: #facc15; }
     .ind-pagado { background: #10b981; }
+    .ind-no_aplica { background: #9ca3af; }
     .alerta-deuda { background: #fef2f2; border-left: 3px solid #ef4444; }
     .nav-mes .btn { min-width: 44px; }
     .nav-mes .btn.activo { background: #2563eb; color: #fff; font-weight: 700; }
@@ -168,9 +170,9 @@
                     <thead><tr><th>Empleado</th><th>Estado</th><th>Esperado</th><th>Pagado</th></tr></thead>
                     <tbody>
                     {% for item in empleados_mes %}
-                    <tr>
+                    <tr class="{{ 'table-secondary text-muted' if item.estado == 'no_aplica' else '' }}">
                         <td><a href="{{ url_for('nomina.detalle', id=item.empleado.id, anio=anio) }}" class="text-decoration-none">{{ item.empleado.nombre }}</a></td>
-                        <td><span class="indicador ind-{{ item.estado }}"></span> {{ item.estado }}</td>
+                        <td><span class="indicador ind-{{ item.estado }}"></span> {{ item.estado.replace('_', ' ')|title }}</td>
                         <td>${{ "{:,.0f}".format(item.valor_quincena) }}</td>
                         <td>${{ "{:,.0f}".format(item.total_pagado) if item.tiene_pago else '—' }}</td>
                     </tr>
@@ -238,6 +240,7 @@
     <span><span class="indicador ind-pendiente"></span> Sin pago</span>
     <span><span class="indicador ind-causado"></span> Causado</span>
     <span><span class="indicador ind-pagado"></span> Pagado</span>
+    <span><span class="indicador ind-no_aplica"></span> No aplica</span>
 </div>
 
 <!-- Tabla compacta de empleados (escritorio) -->
@@ -259,7 +262,7 @@
             <tbody>
                 {% for item in empleados_mes %}
                 {% set e = item.empleado %}
-                <tr class="{{ 'table-success' if item.tiene_pago else 'table-warning' if item.tiene_registro else '' }}">
+                <tr class="{{ 'table-secondary text-muted' if item.estado == 'no_aplica' else 'table-success' if item.tiene_pago else 'table-warning' if item.tiene_registro else '' }}">
                     <td><span class="indicador ind-{{ item.estado }}"></span></td>
                     <td>
                         <strong>{{ e.nombre }}</strong>
@@ -281,8 +284,8 @@
                         {% endif %}
                     </td>
                     <td class="text-center text-nowrap">
-                        {% if not item.tiene_pago %}
-                        <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-sm btn-outline-success py-0" title="Registrar"><i class="bi bi-cash"></i></a>
+                        {% if item.aplica_periodo and not item.tiene_pago %}
+                        <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena, empleado_id=e.id) }}" class="btn btn-sm btn-outline-success py-0" title="Registrar"><i class="bi bi-cash"></i></a>
                         {% endif %}
                         <a href="{{ url_for('nomina.detalle', id=e.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary py-0" title="Historial"><i class="bi bi-clock-history"></i></a>
                     </td>
@@ -318,6 +321,8 @@
         <div class="text-end">
             {% if item.tiene_pago %}
             <span class="fw-bold text-success">${{ "{:,.0f}".format(item.total_pagado) }}</span>
+            {% elif item.estado == 'no_aplica' %}
+            <span class="text-muted">No aplica</span>
             {% elif item.tiene_registro %}
             <span class="fw-bold text-warning">${{ "{:,.0f}".format(item.total_registrado) }}</span>
             {% else %}
@@ -325,8 +330,8 @@
             {% endif %}
             <br>
             <a href="{{ url_for('nomina.detalle', id=e.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary py-0 px-1" style="font-size:0.65rem;"><i class="bi bi-clock-history"></i></a>
-            {% if not item.tiene_pago %}
-            <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena) }}" class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.65rem;"><i class="bi bi-cash"></i></a>
+            {% if item.aplica_periodo and not item.tiene_pago %}
+            <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena, empleado_id=e.id) }}" class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.65rem;"><i class="bi bi-cash"></i></a>
             {% endif %}
         </div>
     </div>

@@ -176,12 +176,29 @@ def _dias_periodo_nomina(anio, mes, quincena):
     return 15 if quincena == 1 else max(dias_mes - 15, 0)
 
 
+def _rango_periodo_nomina(anio, mes, quincena):
+    inicio_dia = 1 if quincena == 1 else 16
+    fin_dia = 15 if quincena == 1 else calendar.monthrange(anio, mes)[1]
+    return date(anio, mes, inicio_dia), date(anio, mes, fin_dia)
+
+
+def _empleado_aplica_periodo(empleado, anio, mes, quincena):
+    periodo_inicio, periodo_fin = _rango_periodo_nomina(anio, mes, quincena)
+    if empleado.fecha_ingreso and empleado.fecha_ingreso > periodo_fin:
+        return False
+    if empleado.fecha_retiro and empleado.fecha_retiro < periodo_inicio:
+        return False
+    return True
+
+
 def _valor_periodo_empleado(empleado, anio, mes, quincena, forma_pago=None):
     salario = float(empleado.salario_base or 0)
     frecuencia = forma_pago or empleado.forma_pago or 'quincenal'
     dias_mes = calendar.monthrange(anio, mes)[1]
     dias_periodo = _dias_periodo_nomina(anio, mes, quincena)
 
+    if not _empleado_aplica_periodo(empleado, anio, mes, quincena):
+        return 0
     if not salario:
         return 0
     if frecuencia == 'mensual':
@@ -200,6 +217,8 @@ def _pendiente_anterior_empleado(empleado, anio, mes, quincena):
     for m_check in range(meses_habilitados[0], mes + 1):
         q_range = [1, 2] if m_check < mes else list(range(1, quincena))
         for q_check in q_range:
+            if not _empleado_aplica_periodo(empleado, anio, m_check, q_check):
+                continue
             tiene_registro = RegistroNomina.query.filter_by(
                 empleado_id=empleado.id, anio=anio, mes=m_check, quincena=q_check
             ).first()
@@ -755,6 +774,8 @@ def pagos(anio=None, mes=None, quincena=None):
         for m_check in range(meses_habilitados[0], mes + 1):
             q_range = [1, 2] if m_check < mes else list(range(1, quincena))
             for q_check in q_range:
+                if not _empleado_aplica_periodo(e, anio, m_check, q_check):
+                    continue
                 registros_previos = RegistroNomina.query.filter_by(
                     empleado_id=e.id, anio=anio, mes=m_check, quincena=q_check
                 ).all()
@@ -802,6 +823,7 @@ def pagos(anio=None, mes=None, quincena=None):
         total_pagado = sum(float(r.valor) for r in registros_emp if r.fecha_pago)
         tiene_registro = len(registros_emp) > 0
         esta_pagado = tiene_registro and all(r.fecha_pago for r in registros_emp)
+        aplica_periodo = _empleado_aplica_periodo(e, anio, mes, quincena)
         valor_quincena = _valor_periodo_empleado(e, anio, mes, quincena)
 
         empleados_mes.append({
@@ -811,12 +833,13 @@ def pagos(anio=None, mes=None, quincena=None):
             'total_pagado': total_pagado,
             'tiene_pago': esta_pagado,
             'tiene_registro': tiene_registro,
+            'aplica_periodo': aplica_periodo,
             'valor_quincena': valor_quincena,
-            'estado': 'pagado' if esta_pagado else 'causado' if tiene_registro else 'pendiente',
+            'estado': 'pagado' if esta_pagado else 'causado' if tiene_registro else 'pendiente' if aplica_periodo else 'no_aplica',
         })
 
     empleados_pagados_count = sum(1 for item in empleados_mes if item['tiene_pago'])
-    empleados_pendientes_count = len(empleados_mes) - empleados_pagados_count
+    empleados_pendientes_count = sum(1 for item in empleados_mes if item['estado'] in ('pendiente', 'causado'))
     registros_quincena_count = len(registros_quincena)
 
     # Acumulado pagado por empleado (para drill-down)
@@ -880,6 +903,7 @@ def detalle(id):
     pagos_dict = {}
     causaciones_dict = {}
     estados_quincena = {}
+    aplica_quincena = {}
     for r in registros:
         key = (r.mes, r.quincena)
         if key not in pagos_dict:
@@ -887,11 +911,18 @@ def detalle(id):
         pagos_dict[key].append(r)
         if key not in causaciones_dict and r.created_at:
             causaciones_dict[key] = r.created_at.date()
+    for mes in meses_habilitados:
+        for quincena_check in (1, 2):
+            key = (mes, quincena_check)
+            aplica_quincena[key] = _empleado_aplica_periodo(empleado, anio, mes, quincena_check)
     for key, items in pagos_dict.items():
         if items and all(r.fecha_pago for r in items):
             estados_quincena[key] = 'pagado'
         elif items:
             estados_quincena[key] = 'causado'
+    for key, aplica in aplica_quincena.items():
+        if not aplica and key not in estados_quincena:
+            estados_quincena[key] = 'no_aplica'
     estados_mes = {}
     for mes in meses_habilitados:
         estados_mes_actual = [
@@ -899,7 +930,9 @@ def detalle(id):
             for quincena in (1, 2)
             if estados_quincena.get((mes, quincena))
         ]
-        if estados_mes_actual:
+        if estados_mes_actual and all(estado == 'no_aplica' for estado in estados_mes_actual):
+            estados_mes[mes] = 'no_aplica'
+        elif estados_mes_actual:
             estados_mes[mes] = 'pagado' if all(estado == 'pagado' for estado in estados_mes_actual) else 'causado'
     saldos_anteriores = SaldoAnteriorNomina.query.filter_by(empleado_id=id).order_by(
         SaldoAnteriorNomina.anio, SaldoAnteriorNomina.mes, SaldoAnteriorNomina.quincena, SaldoAnteriorNomina.id
@@ -907,6 +940,7 @@ def detalle(id):
     return render_template('nomina/detalle.html', empleado=empleado, anio=anio,
                            meses=MESES, pagos=pagos_dict, causaciones=causaciones_dict,
                            meses_habilitados=meses_habilitados,
+                           aplica_quincena=aplica_quincena,
                            estados_quincena=estados_quincena,
                            estados_mes=estados_mes,
                            saldos_anteriores=saldos_anteriores,
@@ -1028,18 +1062,31 @@ def registrar_quincena():
     anio = request.args.get('anio', date.today().year, type=int)
     mes = request.args.get('mes', date.today().month, type=int)
     quincena = request.args.get('quincena', 1, type=int)
+    empleado_id_filtro = request.args.get('empleado_id', type=int)
     anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
-    empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo).all()
+    empleados_query = Empleado.query.filter_by(activo=True)
+    empleado_seleccionado = None
+    if empleado_id_filtro:
+        empleado_seleccionado = empleados_query.filter_by(id=empleado_id_filtro).first_or_404()
+        empleados_query = empleados_query.filter_by(id=empleado_id_filtro)
+    empleados = empleados_query.order_by(Empleado.cargo).all()
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
     draft = session.get(_preliquidacion_session_key(anio, mes, quincena), {})
     draft_rows = draft.get('rows', {}) if draft else {}
+    valores_periodo = {
+        e.id: _valor_periodo_empleado(e, anio, mes, quincena)
+        for e in empleados
+    }
 
-    return render_template('nomina/registrar_quincena.html',
+    return render_template('nomina/registrar_quincena_v2.html',
                            empleados=empleados, conceptos=conceptos,
                            medios=medios, anio=anio, mes=mes,
                            quincena=quincena, meses=MESES,
+                           empleado_id_filtro=empleado_id_filtro,
+                           empleado_seleccionado=empleado_seleccionado,
                            formas_pago_labels=FORMAS_PAGO_LABELS,
+                           valores_periodo=valores_periodo,
                            preliquidacion_rows=draft_rows,
                            meses_habilitados=_meses_habilitados_nomina(anio),
                            nomina_inicio_anio=NOMINA_INICIO_ANIO,

@@ -82,6 +82,8 @@
                 {% for i in meses_habilitados %}
                 {% set registros_q1 = pagos.get((i, 1), []) %}
                 {% set registros_q2 = pagos.get((i, 2), []) %}
+                {% set aplica_q1 = aplica_quincena.get((i, 1), True) %}
+                {% set aplica_q2 = aplica_quincena.get((i, 2), True) %}
                 {% set estado_q1 = estados_quincena.get((i, 1)) %}
                 {% set estado_q2 = estados_quincena.get((i, 2)) %}
                 {% set estado_mes = estados_mes.get(i) %}
@@ -89,10 +91,12 @@
                 {% set total_q2 = registros_q2|sum(attribute='valor')|float %}
                 {% set total_mes = total_q1 + total_q2 %}
                 {% set ns.total_anual = ns.total_anual + total_mes %}
-                <tr class="{{ 'table-success' if estado_mes == 'pagado' else 'table-warning' if estado_mes == 'causado' else '' }}">
+                <tr class="{{ 'table-secondary text-muted' if estado_mes == 'no_aplica' else 'table-success' if estado_mes == 'pagado' else 'table-warning' if estado_mes == 'causado' else '' }}">
                     <td class="fw-semibold">{{ meses[i-1] }}</td>
                     <td class="celda-quincena">
-                        {% if registros_q1 %}
+                        {% if not aplica_q1 and not registros_q1 %}
+                            <span class="text-muted">No aplica</span>
+                        {% elif registros_q1 %}
                             {% for r in registros_q1 %}
                             <span class="badge {{ 'badge-deduccion' if r.concepto_nomina and r.concepto_nomina.tipo == 'deduccion' else 'badge-concepto' }}">
                                 {{ r.concepto_nomina.nombre if r.concepto_nomina else 'N/A' }}
@@ -109,7 +113,9 @@
                         {% endif %}
                     </td>
                     <td class="celda-quincena">
-                        {% if registros_q1 %}
+                        {% if not aplica_q1 and not registros_q1 %}
+                            <span class="text-muted">No aplica</span>
+                        {% elif registros_q1 %}
                             {% if causaciones.get((i, 1)) %}
                             <small class="text-muted d-block">Causado: {{ causaciones[(i, 1)].strftime('%d/%m/%Y') }}</small>
                             {% endif %}
@@ -124,7 +130,9 @@
                         {{ "${:,.0f}".format(total_q1) if total_q1 > 0 else '-' }}
                     </td>
                     <td class="celda-quincena">
-                        {% if registros_q2 %}
+                        {% if not aplica_q2 and not registros_q2 %}
+                            <span class="text-muted">No aplica</span>
+                        {% elif registros_q2 %}
                             {% for r in registros_q2 %}
                             <span class="badge {{ 'badge-deduccion' if r.concepto_nomina and r.concepto_nomina.tipo == 'deduccion' else 'badge-concepto' }}">
                                 {{ r.concepto_nomina.nombre if r.concepto_nomina else 'N/A' }}
@@ -141,7 +149,9 @@
                         {% endif %}
                     </td>
                     <td class="celda-quincena">
-                        {% if registros_q2 %}
+                        {% if not aplica_q2 and not registros_q2 %}
+                            <span class="text-muted">No aplica</span>
+                        {% elif registros_q2 %}
                             {% if causaciones.get((i, 2)) %}
                             <small class="text-muted d-block">Causado: {{ causaciones[(i, 2)].strftime('%d/%m/%Y') }}</small>
                             {% endif %}
