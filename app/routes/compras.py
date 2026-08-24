@@ -187,7 +187,7 @@ def nueva():
         )
         db.session.add(compra)
         db.session.commit()
-        flash('Compra registrada.', 'success')
+        flash('Registro guardado en Compras y Gastos.', 'success')
         return redirect(url_for('compras.lista'))
 
     conceptos = ConceptoCompra.query.filter_by(activo=True).order_by(ConceptoCompra.nombre).all()
@@ -213,7 +213,7 @@ def editar(id):
         compra.estado = request.form.get('estado', 'pendiente')
         compra.observaciones = request.form.get('observaciones', '').strip()
         db.session.commit()
-        flash('Compra actualizada.', 'success')
+        flash('Registro actualizado en Compras y Gastos.', 'success')
         return redirect(url_for('compras.lista'))
 
     conceptos = ConceptoCompra.query.filter_by(activo=True).order_by(ConceptoCompra.nombre).all()
@@ -238,7 +238,7 @@ def marcar_pagado(id):
     compra.fecha_pago = request.form.get('fecha_pago') or date.today()
     compra.medio_pago_id = request.form.get('medio_pago_id') or None
     db.session.commit()
-    flash('Compra marcada como pagada.', 'success')
+    flash('Registro marcado como pagado.', 'success')
     return redirect(url_for('compras.lista', anio=compra.fecha.year, mes=compra.fecha.month))
 
 

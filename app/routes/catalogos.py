@@ -193,7 +193,11 @@ def conceptos_nomina_toggle(id):
 @catalogos_bp.route('/conceptos-compras')
 def conceptos_compras():
     conceptos = ConceptoCompra.query.order_by(ConceptoCompra.nombre).all()
-    return render_template('catalogos/conceptos_compras.html', conceptos=conceptos)
+    productos = ProductoCompra.query.join(ConceptoCompra).order_by(
+        ConceptoCompra.nombre, ProductoCompra.nombre
+    ).all()
+    return render_template('catalogos/conceptos_compras.html',
+                           conceptos=conceptos, productos=productos)
 
 
 @catalogos_bp.route('/conceptos-compras/guardar', methods=['POST'])
@@ -228,8 +232,8 @@ def conceptos_compras_toggle(id):
 
 @catalogos_bp.route('/conceptos-gastos')
 def conceptos_gastos():
-    conceptos = ConceptoGasto.query.order_by(ConceptoGasto.nombre).all()
-    return render_template('catalogos/conceptos_gastos.html', conceptos=conceptos)
+    flash('Los catalogos de Gastos ya no se administran por separado.', 'info')
+    return redirect(url_for('catalogos.conceptos_compras'))
 
 
 @catalogos_bp.route('/conceptos-gastos/guardar', methods=['POST'])
@@ -264,12 +268,8 @@ def conceptos_gastos_toggle(id):
 
 @catalogos_bp.route('/productos-compras')
 def productos_compras():
-    conceptos = ConceptoCompra.query.order_by(ConceptoCompra.nombre).all()
-    productos = ProductoCompra.query.join(ConceptoCompra).order_by(
-        ConceptoCompra.nombre, ProductoCompra.nombre
-    ).all()
-    return render_template('catalogos/productos_compras.html',
-                           conceptos=conceptos, productos=productos)
+    flash('Los items de compras ahora se administran junto con los conceptos.', 'info')
+    return redirect(url_for('catalogos.conceptos_compras'))
 
 
 @catalogos_bp.route('/productos-compras/guardar', methods=['POST'])
@@ -295,7 +295,7 @@ def productos_compras_guardar():
         flash(f'Item de compra "{nombre}" creado.', 'success')
 
     db.session.commit()
-    return redirect(url_for('catalogos.productos_compras'))
+    return redirect(url_for('catalogos.conceptos_compras'))
 
 
 @catalogos_bp.route('/productos-compras/<int:id>/toggle', methods=['POST'])
@@ -303,19 +303,15 @@ def productos_compras_toggle(id):
     producto = ProductoCompra.query.get_or_404(id)
     producto.activo = not producto.activo
     db.session.commit()
-    return redirect(url_for('catalogos.productos_compras'))
+    return redirect(url_for('catalogos.conceptos_compras'))
 
 
 # ==================== ITEMS DE GASTOS ====================
 
 @catalogos_bp.route('/items-gastos')
 def items_gastos():
-    conceptos = ConceptoGasto.query.order_by(ConceptoGasto.nombre).all()
-    items = ItemGasto.query.join(ConceptoGasto).order_by(
-        ConceptoGasto.nombre, ItemGasto.nombre
-    ).all()
-    return render_template('catalogos/items_gastos.html',
-                           conceptos=conceptos, items=items)
+    flash('Los catalogos de Gastos ya no se administran por separado.', 'info')
+    return redirect(url_for('catalogos.conceptos_compras'))
 
 
 @catalogos_bp.route('/items-gastos/guardar', methods=['POST'])

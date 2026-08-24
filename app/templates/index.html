@@ -45,23 +45,14 @@
         <a href="{{ url_for('compras.lista') }}" class="text-decoration-none">
             <div class="card card-modulo p-3 text-center">
                 <i class="bi bi-cart text-danger fs-3"></i>
-                <div class="fw-bold small mt-1">Compras</div>
-                <div class="text-primary fw-bold">${{ "{:,.0f}".format(total_compras) }}</div>
-            </div>
-        </a>
-    </div>
-    <div class="col-6 col-md-4 col-lg">
-        <a href="{{ url_for('gastos.lista') }}" class="text-decoration-none">
-            <div class="card card-modulo p-3 text-center">
-                <i class="bi bi-cash-stack text-secondary fs-3"></i>
-                <div class="fw-bold small mt-1">Gastos</div>
-                <div class="text-primary fw-bold">${{ "{:,.0f}".format(total_gastos) }}</div>
+                <div class="fw-bold small mt-1">Compras y Gastos</div>
+                <div class="text-primary fw-bold">${{ "{:,.0f}".format(total_compras_gastos) }}</div>
             </div>
         </a>
     </div>
 </div>
 
-{% set gran_total = total_servicios + total_obligaciones + total_nomina + total_compras + total_gastos %}
+{% set gran_total = total_servicios + total_obligaciones + total_nomina + total_compras_gastos %}
 <div class="row g-3">
     <div class="col-md-6">
         <div class="card p-3">

@@ -122,6 +122,7 @@ def index():
         db.extract('year', Gasto.fecha) == anio,
         db.extract('month', Gasto.fecha) == mes
     ).scalar()
+    total_compras_gastos = total_compras + total_gastos
 
     # Pendientes del mes (causado + vencido + sin_causar que ya pasó el día)
     servicios_pendientes = PagoServicio.query.filter(
@@ -141,5 +142,6 @@ def index():
                            total_nomina=total_nomina,
                            total_compras=total_compras,
                            total_gastos=total_gastos,
+                           total_compras_gastos=total_compras_gastos,
                            servicios_pendientes=servicios_pendientes,
                            obligaciones_pendientes=obligaciones_pendientes)

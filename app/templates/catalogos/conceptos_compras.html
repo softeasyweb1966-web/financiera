@@ -1,13 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Conceptos Compras{% endblock %}
+{% block title %}Conceptos e Items Compras{% endblock %}
 
 {% block content %}
-<h5 class="fw-bold mb-3"><i class="bi bi-bag"></i> Conceptos de Compras</h5>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h5 class="fw-bold mb-1"><i class="bi bi-bag"></i> Conceptos e Items de Compras y Gastos</h5>
+        <small class="text-muted">Todo el catalogo operativo de este modulo se administra desde esta misma pantalla.</small>
+    </div>
+</div>
 
 <div class="row g-3">
     <div class="col-md-5">
         <div class="card p-3">
-            <h6 class="fw-bold">Agregar / Editar</h6>
+            <h6 class="fw-bold">Agregar / Editar concepto</h6>
             <form method="POST" action="{{ url_for('catalogos.conceptos_compras_guardar') }}">
                 <input type="hidden" name="id" id="cc_id">
                 <div class="mb-2">
@@ -31,13 +36,69 @@
                             <td>{{ c.nombre }}</td>
                             <td><span class="badge {{ 'bg-success' if c.activo else 'bg-secondary' }}">{{ 'Activo' if c.activo else 'Inactivo' }}</span></td>
                             <td>
-                                <button class="btn btn-sm btn-outline-secondary py-0" onclick="editarCC({{ c.id }}, '{{ c.nombre }}', '{{ c.descripcion or '' }}')"><i class="bi bi-pencil"></i></button>
+                                <button class="btn btn-sm btn-outline-secondary py-0" onclick='editarCC({{ c.id }}, {{ c.nombre|tojson }}, {{ (c.descripcion or "")|tojson }})'><i class="bi bi-pencil"></i></button>
                                 <form method="POST" action="{{ url_for('catalogos.conceptos_compras_toggle', id=c.id) }}" class="d-inline">
                                     <button class="btn btn-sm btn-outline-{{ 'warning' if c.activo else 'success' }} py-0"><i class="bi bi-{{ 'pause' if c.activo else 'play' }}"></i></button>
                                 </form>
                             </td>
                         </tr>
                         {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mt-1" id="items-compra">
+    <div class="col-md-5">
+        <div class="card p-3">
+            <h6 class="fw-bold">Agregar / Editar item</h6>
+            <form method="POST" action="{{ url_for('catalogos.productos_compras_guardar') }}">
+                <input type="hidden" name="id" id="pc_id">
+                <div class="mb-2">
+                    <select name="concepto_compra_id" id="pc_concepto" class="form-select form-select-sm" required>
+                        <option value="">Concepto padre</option>
+                        {% for c in conceptos %}
+                        <option value="{{ c.id }}">{{ c.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <input type="text" name="nombre" id="pc_nombre" class="form-control form-control-sm" required placeholder="Nombre del item">
+                </div>
+                <div class="mb-2">
+                    <input type="text" name="descripcion" id="pc_desc" class="form-control form-control-sm" placeholder="Descripcion">
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check"></i> Guardar item</button>
+            </form>
+        </div>
+    </div>
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-body border-bottom py-2">
+                <h6 class="fw-bold mb-0">Items por concepto</h6>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light"><tr><th>Concepto</th><th>Item</th><th>Estado</th><th></th></tr></thead>
+                    <tbody>
+                        {% for p in productos %}
+                        <tr class="{{ 'text-muted' if not p.activo else '' }}">
+                            <td>{{ p.concepto_compra.nombre if p.concepto_compra else '-' }}</td>
+                            <td>{{ p.nombre }}</td>
+                            <td><span class="badge {{ 'bg-success' if p.activo else 'bg-secondary' }}">{{ 'Activo' if p.activo else 'Inactivo' }}</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-secondary py-0" onclick='editarPC({{ p.id }}, {{ p.concepto_compra_id }}, {{ p.nombre|tojson }}, {{ (p.descripcion or "")|tojson }})'><i class="bi bi-pencil"></i></button>
+                                <form method="POST" action="{{ url_for('catalogos.productos_compras_toggle', id=p.id) }}" class="d-inline">
+                                    <button class="btn btn-sm btn-outline-{{ 'warning' if p.activo else 'success' }} py-0"><i class="bi bi-{{ 'pause' if p.activo else 'play' }}"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if not productos %}
+                        <tr><td colspan="4" class="text-muted">No hay items creados todavia.</td></tr>
+                        {% endif %}
                     </tbody>
                 </table>
             </div>
@@ -52,6 +113,13 @@ function editarCC(id, nombre, desc) {
     document.getElementById('cc_id').value = id;
     document.getElementById('cc_nombre').value = nombre;
     document.getElementById('cc_desc').value = desc;
+}
+
+function editarPC(id, conceptoId, nombre, desc) {
+    document.getElementById('pc_id').value = id;
+    document.getElementById('pc_concepto').value = conceptoId;
+    document.getElementById('pc_nombre').value = nombre;
+    document.getElementById('pc_desc').value = desc;
 }
 </script>
 {% endblock %}

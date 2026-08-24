@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Compras - {{ meses[mes-1] }} {{ anio }}{% endblock %}
+{% block title %}Compras y Gastos - {{ meses[mes-1] }} {{ anio }}{% endblock %}
 
 {% block content %}
 <style>
@@ -22,7 +22,7 @@
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h5 class="fw-bold mb-0"><i class="bi bi-cart text-danger"></i> Compras - {{ meses[mes-1] }} {{ anio }}</h5>
+    <h5 class="fw-bold mb-0"><i class="bi bi-cart text-danger"></i> Compras y Gastos - {{ meses[mes-1] }} {{ anio }}</h5>
     <div class="d-flex gap-1 align-items-center flex-wrap">
         <a href="{{ url_for('compras.lista', anio=anio-1, mes=mes) }}" class="btn btn-outline-secondary btn-sm">{{ anio-1 }}</a>
         <span class="fw-bold mx-1">{{ anio }}</span>
@@ -156,7 +156,7 @@
 
 {% if pendientes_anteriores %}
 <div class="alerta-deuda p-3 rounded mb-3">
-    <h6 class="fw-bold text-danger mb-2"><i class="bi bi-exclamation-triangle"></i> Compras pendientes de meses anteriores</h6>
+    <h6 class="fw-bold text-danger mb-2"><i class="bi bi-exclamation-triangle"></i> Registros pendientes de meses anteriores</h6>
     <div class="row g-2">
         {% for item in pendientes_anteriores[:6] %}
         <div class="col-12 col-md-6 col-lg-4">
@@ -268,7 +268,7 @@
 </div>
 
 {% if not compras_cards %}
-<div class="text-center text-muted mt-4"><i class="bi bi-inbox fs-1"></i><p>No hay compras en {{ meses[mes-1] }}. <a href="{{ url_for('compras.nueva') }}">Registrar una</a></p></div>
+<div class="text-center text-muted mt-4"><i class="bi bi-inbox fs-1"></i><p>No hay registros en {{ meses[mes-1] }}. <a href="{{ url_for('compras.nueva') }}">Registrar uno</a></p></div>
 {% endif %}
 
 <div class="modal fade" id="modalPago" tabindex="-1">

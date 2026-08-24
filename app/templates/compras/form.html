@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Editar' if compra else 'Nueva' }} Compra{% endblock %}
+{% block title %}{{ 'Editar' if compra else 'Nuevo' }} Registro{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-8">
         <div class="card p-4">
-            <h5 class="fw-bold mb-3"><i class="bi bi-cart text-danger"></i> {{ 'Editar' if compra else 'Nueva' }} Compra</h5>
+            <h5 class="fw-bold mb-3"><i class="bi bi-cart text-danger"></i> {{ 'Editar' if compra else 'Nuevo' }} registro de Compras y Gastos</h5>
             <form method="POST" id="form-compra">
                 <div class="row g-3">
                     <div class="col-12 col-md-4">
@@ -103,7 +103,7 @@
         <div class="modal-content">
             <form id="formNuevoConcepto">
                 <div class="modal-header py-2">
-                    <h6 class="modal-title fw-bold"><i class="bi bi-plus-lg text-success"></i> Nuevo concepto de compra</h6>
+                    <h6 class="modal-title fw-bold"><i class="bi bi-plus-lg text-success"></i> Nuevo concepto</h6>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">

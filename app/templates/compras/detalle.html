@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Compra - {{ compra.descripcion }}{% endblock %}
+{% block title %}Registro - {{ compra.descripcion }}{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    <h5 class="fw-bold mb-0"><i class="bi bi-cart text-danger"></i> Detalle de Compra</h5>
+    <h5 class="fw-bold mb-0"><i class="bi bi-cart text-danger"></i> Detalle de Compras y Gastos</h5>
     <div class="d-flex gap-1">
         <a href="{{ url_for('compras.lista', anio=compra.fecha.year, mes=compra.fecha.month) }}" class="btn btn-outline-secondary btn-sm">Volver</a>
         <a href="{{ url_for('compras.editar', id=compra.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> Editar</a>
@@ -31,7 +31,7 @@
                         <td>{{ compra.concepto_compra.nombre if compra.concepto_compra else '-' }}</td>
                     </tr>
                     <tr>
-                        <td class="text-muted">Item de compra</td>
+                        <td class="text-muted">Item</td>
                         <td>{{ compra.producto_compra.nombre if compra.producto_compra else '-' }}</td>
                     </tr>
                     <tr>
