@@ -9,7 +9,14 @@ migrate = Migrate()
 
 
 def _ensure_schema():
-    from app.models import AmortizacionObligacion, HistorialPagoObligacion, SaldoAnteriorNomina, AbonoNomina
+    from app.models import (
+        AbonoCompra,
+        AbonoGasto,
+        AbonoNomina,
+        AmortizacionObligacion,
+        HistorialPagoObligacion,
+        SaldoAnteriorNomina,
+    )
 
     inspector = inspect(db.engine)
     if not inspector.has_table('tipo_tercero'):
@@ -36,6 +43,14 @@ def _ensure_schema():
 
     if not inspector.has_table('abonos_nomina'):
         AbonoNomina.__table__.create(bind=db.engine, checkfirst=True)
+        inspector = inspect(db.engine)
+
+    if not inspector.has_table('abonos_compras'):
+        AbonoCompra.__table__.create(bind=db.engine, checkfirst=True)
+        inspector = inspect(db.engine)
+
+    if not inspector.has_table('abonos_gastos'):
+        AbonoGasto.__table__.create(bind=db.engine, checkfirst=True)
         inspector = inspect(db.engine)
 
     if inspector.has_table('historial_estados'):

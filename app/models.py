@@ -672,6 +672,12 @@ class Compra(db.Model):
     concepto_compra = db.relationship('ConceptoCompra', backref='compras')
     producto_compra = db.relationship('ProductoCompra', backref='compras')
     medio_pago = db.relationship('MedioPago')
+    abonos = db.relationship(
+        'AbonoCompra',
+        backref='compra',
+        lazy='dynamic',
+        order_by='desc(AbonoCompra.fecha_pago), desc(AbonoCompra.id)'
+    )
 
     def __repr__(self):
         return f'<Compra {self.descripcion}>'
@@ -719,6 +725,52 @@ class Gasto(db.Model):
     concepto_gasto = db.relationship('ConceptoGasto', backref='gastos')
     item_gasto = db.relationship('ItemGasto', backref='gastos')
     medio_pago = db.relationship('MedioPago')
+    abonos = db.relationship(
+        'AbonoGasto',
+        backref='gasto',
+        lazy='dynamic',
+        order_by='desc(AbonoGasto.fecha_pago), desc(AbonoGasto.id)'
+    )
 
     def __repr__(self):
         return f'<Gasto {self.descripcion}>'
+
+
+class AbonoCompra(db.Model):
+    """Bitacora de abonos aplicados a una compra."""
+    __tablename__ = 'abonos_compras'
+
+    id = db.Column(db.Integer, primary_key=True)
+    compra_id = db.Column(db.Integer, db.ForeignKey('compras.id'), nullable=False)
+    valor_abono = db.Column(db.Numeric(14, 2), nullable=False)
+    fecha_pago = db.Column(db.Date, nullable=False)
+    medio_pago_id = db.Column(db.Integer, db.ForeignKey('medios_pago.id'))
+    descripcion = db.Column(db.Text)
+    registrado_por = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    medio_pago = db.relationship('MedioPago')
+
+    def __repr__(self):
+        return f'<AbonoCompra {self.compra_id}: ${self.valor_abono}>'
+
+
+class AbonoGasto(db.Model):
+    """Bitacora de abonos aplicados a un gasto."""
+    __tablename__ = 'abonos_gastos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    gasto_id = db.Column(db.Integer, db.ForeignKey('gastos.id'), nullable=False)
+    valor_abono = db.Column(db.Numeric(14, 2), nullable=False)
+    fecha_pago = db.Column(db.Date, nullable=False)
+    medio_pago_id = db.Column(db.Integer, db.ForeignKey('medios_pago.id'))
+    descripcion = db.Column(db.Text)
+    registrado_por = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    medio_pago = db.relationship('MedioPago')
+
+    def __repr__(self):
+        return f'<AbonoGasto {self.gasto_id}: ${self.valor_abono}>'

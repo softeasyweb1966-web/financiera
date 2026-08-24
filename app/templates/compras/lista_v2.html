@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% block title %}Compras y Gastos - {{ meses[mes-1] }} {{ anio }}{% endblock %}
+
+{% block content %}
+<style>
+    .nav-mes .btn { min-width: 44px; }
+    .nav-mes .btn.activo { background: #2563eb; color: #fff; font-weight: 700; }
+    .summary-card { border: 1px solid #dbeafe; }
+    .summary-inline { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .summary-inline-label { font-size: 0.78rem; color: #475569; }
+    .summary-inline-value { font-size: 1rem; font-weight: 700; line-height: 1; white-space: nowrap; }
+    .estado-card { border-left: 4px solid #e2e8f0; }
+    .estado-pendiente { border-left-color: #fb923c; }
+    .estado-parcial { border-left-color: #0ea5e9; }
+    .estado-pagado { border-left-color: #10b981; }
+    .indicador { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
+    .ind-pendiente { background: #fb923c; }
+    .ind-parcial { background: #0ea5e9; }
+    .ind-pagado { background: #10b981; }
+    .money-soft { font-size: 0.75rem; color: #64748b; }
+    .card-detalle-line { display: flex; justify-content: space-between; gap: 12px; font-size: 0.78rem; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h5 class="fw-bold mb-0"><i class="bi bi-cart text-danger"></i> Compras y Gastos - {{ meses[mes-1] }} {{ anio }}</h5>
+    <div class="d-flex gap-1 align-items-center flex-wrap">
+        <a href="{{ url_for('compras.lista', anio=anio-1, mes=mes) }}" class="btn btn-outline-secondary btn-sm">{{ anio-1 }}</a>
+        <span class="fw-bold mx-1">{{ anio }}</span>
+        <a href="{{ url_for('compras.lista', anio=anio+1, mes=mes) }}" class="btn btn-outline-secondary btn-sm">{{ anio+1 }}</a>
+        <a href="{{ url_for('compras.nueva') }}" class="btn btn-primary btn-sm ms-2"><i class="bi bi-plus"></i> Nuevo</a>
+    </div>
+</div>
+
+<div class="nav-mes d-flex flex-wrap gap-1 mb-3">
+    {% for i in range(1, 13) %}
+    <a href="{{ url_for('compras.lista', anio=anio, mes=i) }}"
+       class="btn btn-sm {{ 'activo' if i == mes else 'btn-outline-secondary' }}">{{ meses[i-1][:3] }}</a>
+    {% endfor %}
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-md-3">
+        <div class="card p-3 summary-card" style="background:#f0fdf4; border-color:#bbf7d0;">
+            <div class="summary-inline">
+                <span class="summary-inline-label">Abonado meses anteriores</span>
+                <span class="summary-inline-value text-success">${{ "{:,.0f}".format(acum_pagado_anterior) }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 summary-card" style="background:#fef2f2; border-color:#fecaca;">
+            <div class="summary-inline">
+                <span class="summary-inline-label">Saldo meses anteriores</span>
+                <span class="summary-inline-value text-danger">${{ "{:,.0f}".format(total_deuda_anterior) }}</span>
+            </div>
+            {% if pendientes_anteriores %}
+            <small class="text-danger mt-1 d-block">{{ pendientes_anteriores|length }} pendientes</small>
+            {% endif %}
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 summary-card" style="background:#eff6ff; border-color:#bfdbfe;">
+            <div class="summary-inline">
+                <span class="summary-inline-label">{{ meses[mes-1] }} abonado / total</span>
+                <span class="summary-inline-value text-primary">${{ "{:,.0f}".format(pagado_mes) }}</span>
+            </div>
+            <small class="text-muted mt-1 d-block">Total causado: ${{ "{:,.0f}".format(total_mes) }}</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card p-3 summary-card" style="background:#fff7ed; border-color:#fdba74;">
+            <div class="summary-inline">
+                <span class="summary-inline-label">Saldo del mes</span>
+                <span class="summary-inline-value" style="color:#c2410c;">${{ "{:,.0f}".format(pendiente_mes) }}</span>
+            </div>
+            <small class="text-muted mt-1 d-block">{{ top_concepto.nombre if top_concepto else 'Sin movimientos' }}</small>
+        </div>
+    </div>
+</div>
+
+{% if pendientes_anteriores %}
+<div class="card mb-3">
+    <div class="card-body p-3">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h6 class="fw-bold text-danger mb-1"><i class="bi bi-exclamation-triangle"></i> Pendientes anteriores</h6>
+                <small class="text-muted">Se muestra el saldo real restante, no solo el valor original del registro.</small>
+            </div>
+            <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="collapse" data-bs-target="#pendientesAnteriores">
+                Ver / ocultar
+            </button>
+        </div>
+        <div class="collapse mt-3" id="pendientesAnteriores">
+            <div class="row g-2">
+                {% for item in pendientes_anteriores %}
+                <div class="col-12 col-lg-6">
+                    <div class="border rounded p-2 bg-white d-flex justify-content-between gap-2">
+                        <div>
+                            <div class="fw-semibold">{{ item.compra.producto_compra.nombre if item.compra.producto_compra else item.compra.descripcion }}</div>
+                            <small class="text-muted">{{ item.mes_nombre }} {{ item.anio }}{% if item.compra.tercero %} | {{ item.compra.tercero.nombre }}{% endif %}</small>
+                        </div>
+                        <div class="text-end">
+                            <div class="text-danger fw-bold">${{ "{:,.0f}".format(item.valor) }}</div>
+                            <small class="text-muted text-uppercase">{{ item.estado }}</small>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if resumen_grupos %}
+<div class="card p-3 mb-3">
+    <h6 class="fw-bold mb-2"><i class="bi bi-pie-chart text-primary"></i> Resumen {{ meses[mes-1] }} por concepto</h6>
+    <div class="row g-2">
+        {% for grupo in resumen_grupos %}
+        <div class="col-6 col-md-3">
+            <div class="border rounded p-2 h-100">
+                <div class="fw-semibold">
+                    <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:{{ grupo.color }};"></span>
+                    {{ grupo.nombre }}
+                </div>
+                <div class="small text-success">Abonado: ${{ "{:,.0f}".format(grupo.pagado) }}</div>
+                <div class="small text-danger">Saldo: ${{ "{:,.0f}".format(grupo.pendiente) }}</div>
+                <small class="text-muted">{{ grupo.cantidad }} registros</small>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="d-flex flex-wrap gap-3 mb-3" style="font-size:0.75rem;">
+    <span><span class="indicador ind-pendiente"></span> Pendiente</span>
+    <span><span class="indicador ind-parcial"></span> Parcial</span>
+    <span><span class="indicador ind-pagado"></span> Pagado</span>
+</div>
+
+<div class="row g-2">
+    {% for item in compras_cards %}
+    {% set compra = item.compra %}
+    <div class="col-12 col-md-6 col-xl-4">
+        <div class="card estado-card estado-{{ item.estado }} p-3 h-100">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+                <div>
+                    <div class="fw-bold">{{ compra.producto_compra.nombre if compra.producto_compra else compra.descripcion }}</div>
+                    <small class="text-muted">
+                        {{ compra.concepto_compra.nombre if compra.concepto_compra else 'Sin concepto' }}
+                        {% if compra.tercero %}| {{ compra.tercero.nombre }}{% endif %}
+                    </small>
+                </div>
+                <span class="indicador ind-{{ item.estado }}"></span>
+            </div>
+
+            <div class="mt-3">
+                <div class="fs-5 fw-bold">${{ "{:,.0f}".format(compra.valor) }}</div>
+                <div class="money-soft">Causado el {{ compra.fecha.strftime('%d/%m/%Y') }}</div>
+            </div>
+
+            <div class="mt-3 border-top pt-2">
+                <div class="card-detalle-line">
+                    <span class="text-muted">Abonado</span>
+                    <span class="fw-semibold text-success">${{ "{:,.0f}".format(item.abonado) }}</span>
+                </div>
+                <div class="card-detalle-line mt-1">
+                    <span class="text-muted">Saldo</span>
+                    <span class="fw-semibold {{ 'text-danger' if item.saldo > 0 else 'text-success' }}">${{ "{:,.0f}".format(item.saldo) }}</span>
+                </div>
+                <div class="card-detalle-line mt-1">
+                    <span class="text-muted">Estado</span>
+                    <span class="text-uppercase fw-semibold">{{ item.estado }}</span>
+                </div>
+                {% if item.ultima_fecha %}
+                <div class="card-detalle-line mt-1">
+                    <span class="text-muted">Ultimo pago</span>
+                    <span>{{ item.ultima_fecha.strftime('%d/%m/%Y') }}</span>
+                </div>
+                {% elif item.fuente == 'legacy' %}
+                <div class="card-detalle-line mt-1">
+                    <span class="text-muted">Pago legado</span>
+                    <span>{{ compra.fecha_pago.strftime('%d/%m/%Y') if compra.fecha_pago else 'Cargado sin fecha' }}</span>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="mt-3 d-flex gap-1 flex-wrap">
+                {% if item.saldo > 0 %}
+                <button class="btn btn-sm btn-outline-success"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalAbono"
+                        onclick='prepararAbono({{ compra.id }}, {{ (compra.producto_compra.nombre if compra.producto_compra else compra.descripcion)|tojson }}, "{{ "{:,.0f}".format(item.saldo) }}", "{{ '%.0f'|format(item.saldo) }}", "{{ request.full_path if request.query_string else request.path }}")'>
+                    <i class="bi bi-cash-coin"></i> Abonar
+                </button>
+                {% endif %}
+                <a href="{{ url_for('compras.detalle', id=compra.id) }}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-eye"></i>
+                </a>
+                <a href="{{ url_for('compras.editar', id=compra.id) }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-pencil"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if not compras_cards %}
+<div class="text-center text-muted mt-4">
+    <i class="bi bi-inbox fs-1"></i>
+    <p>No hay registros en {{ meses[mes-1] }}. <a href="{{ url_for('compras.nueva') }}">Registrar uno</a></p>
+</div>
+{% endif %}
+
+<div class="modal fade" id="modalAbono" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="formAbonoCompra">
+                <div class="modal-header">
+                    <h6 class="modal-title fw-bold" id="abonoTitulo">Registrar abono</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="next" id="abonoNext">
+                    <div class="mb-2">
+                        <label class="form-label">Valor del abono</label>
+                        <input type="text" name="valor_abono" id="abonoValor" class="form-control js-money" data-money-scale="0">
+                        <div class="form-text" id="abonoSaldoInfo"></div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Fecha de pago</label>
+                        <input type="date" name="fecha_pago" class="form-control" value="{{ '%04d-%02d-%02d'|format(anio, mes, 1) }}">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Medio de pago</label>
+                        <select name="medio_pago_id" class="form-select">
+                            <option value="">-- Seleccione --</option>
+                            {% for medio in medios %}
+                            <option value="{{ medio.id }}">{{ medio.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">Descripcion</label>
+                        <textarea name="descripcion" class="form-control" rows="2" placeholder="Referencia, soporte o nota del abono"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-check-lg"></i> Guardar abono</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function prepararAbono(id, descripcion, saldoTexto, saldoRaw, nextUrl) {
+    document.getElementById('formAbonoCompra').action = '/compras/' + id + '/abonar';
+    document.getElementById('abonoTitulo').textContent = 'Registrar abono - ' + descripcion;
+    document.getElementById('abonoNext').value = nextUrl || '';
+    document.getElementById('abonoSaldoInfo').textContent = 'Saldo pendiente actual: $' + saldoTexto;
+    if (window.FinancieraMoney) {
+        window.FinancieraMoney.setValue(document.getElementById('abonoValor'), saldoRaw);
+    } else {
+        document.getElementById('abonoValor').value = saldoTexto;
+    }
+}
+</script>
+{% endblock %}

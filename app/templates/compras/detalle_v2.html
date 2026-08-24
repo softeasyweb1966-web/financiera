@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Registro - {{ compra.descripcion }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <h5 class="fw-bold mb-1"><i class="bi bi-cart text-danger"></i> Detalle de Compras y Gastos</h5>
+        <small class="text-muted">Trazabilidad del causado, los abonos y el saldo real del registro.</small>
+    </div>
+    <div class="d-flex gap-1">
+        <a href="{{ url_for('compras.lista', anio=compra.fecha.year, mes=compra.fecha.month) }}" class="btn btn-outline-secondary btn-sm">Volver</a>
+        <a href="{{ url_for('compras.editar', id=compra.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> Editar</a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                    <div>
+                        <h4 class="fw-bold mb-1">{{ compra.producto_compra.nombre if compra.producto_compra else compra.descripcion }}</h4>
+                        <small class="text-muted">{{ compra.concepto_compra.nombre if compra.concepto_compra else 'Sin concepto' }}</small>
+                    </div>
+                    <span class="badge {{ 'bg-success' if totales.estado == 'pagado' else ('bg-info text-dark' if totales.estado == 'parcial' else 'bg-warning text-dark') }}">
+                        {{ totales.estado|upper }}
+                    </span>
+                </div>
+
+                <div class="row g-3 mt-1">
+                    <div class="col-md-6">
+                        <table class="table table-sm table-borderless mb-0">
+                            <tr>
+                                <td class="text-muted" style="width:150px;">Fecha</td>
+                                <td class="fw-semibold">{{ compra.fecha.strftime('%d/%m/%Y') }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Proveedor</td>
+                                <td>{{ compra.tercero.nombre if compra.tercero else '-' }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Descripcion</td>
+                                <td>{{ compra.descripcion }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Observaciones</td>
+                                <td>{{ compra.observaciones or '-' }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <table class="table table-sm table-borderless mb-0">
+                            <tr>
+                                <td class="text-muted" style="width:150px;">Valor causado</td>
+                                <td class="fs-5 fw-bold text-primary">${{ "{:,.0f}".format(totales.valor_total) }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Total abonado</td>
+                                <td class="fw-semibold text-success">${{ "{:,.0f}".format(totales.abonado) }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Saldo pendiente</td>
+                                <td class="fw-semibold {{ 'text-danger' if totales.saldo > 0 else 'text-success' }}">${{ "{:,.0f}".format(totales.saldo) }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Ultimo pago</td>
+                                <td>{{ totales.ultima_fecha.strftime('%d/%m/%Y') if totales.ultima_fecha else '-' }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3"><i class="bi bi-cash-coin text-success"></i> Registrar abono</h6>
+                {% if totales.saldo > 0 %}
+                <form method="POST" action="{{ url_for('compras.registrar_abono', id=compra.id) }}">
+                    <input type="hidden" name="next" value="{{ request.path }}">
+                    <div class="mb-2">
+                        <label class="form-label">Valor del abono</label>
+                        <input type="text" name="valor_abono" class="form-control js-money" data-money-scale="0" value="{{ "{:,.0f}".format(totales.saldo).replace(',', '') }}">
+                        <div class="form-text">Puede registrar un pago parcial o total.</div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Fecha de pago</label>
+                        <input type="date" name="fecha_pago" class="form-control" value="{{ fecha_hoy.strftime('%Y-%m-%d') }}">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Medio de pago</label>
+                        <select name="medio_pago_id" class="form-select">
+                            <option value="">-- Seleccione --</option>
+                            {% for medio in medios %}
+                            <option value="{{ medio.id }}">{{ medio.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripcion</label>
+                        <textarea name="descripcion" class="form-control" rows="2" placeholder="Referencia, soporte o nota del pago"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-check-lg"></i> Guardar abono</button>
+                </form>
+                {% else %}
+                <div class="alert alert-success mb-0">
+                    <small>Este registro ya se encuentra completamente pagado.</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if legacy_pago %}
+<div class="alert alert-warning mt-3 mb-0">
+    <small>
+        Este registro aparece como pagado por un dato legado cargado antes de la bitacora de abonos.
+        {% if compra.fecha_pago %}Fecha registrada: {{ compra.fecha_pago.strftime('%d/%m/%Y') }}.{% endif %}
+        Los nuevos pagos ya quedaran trazados uno a uno.
+    </small>
+</div>
+{% endif %}
+
+<div class="card mt-3">
+    <div class="card-body">
+        <h6 class="fw-bold mb-3"><i class="bi bi-clock-history text-primary"></i> Trazabilidad de abonos</h6>
+        {% if abonos %}
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Valor</th>
+                        <th>Medio</th>
+                        <th>Descripcion</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for abono in abonos %}
+                    <tr>
+                        <td>{{ abono.fecha_pago.strftime('%d/%m/%Y') }}</td>
+                        <td class="fw-semibold text-success">${{ "{:,.0f}".format(abono.valor_abono) }}</td>
+                        <td>{{ abono.medio_pago.nombre if abono.medio_pago else '-' }}</td>
+                        <td>{{ abono.descripcion or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <small class="text-muted">Aun no hay abonos registrados para este movimiento.</small>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

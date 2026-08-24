@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if compra else 'Nuevo' }} Registro{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-9">
+        <div class="card p-4">
+            <h5 class="fw-bold mb-3"><i class="bi bi-cart text-danger"></i> {{ 'Editar' if compra else 'Nuevo' }} registro de Compras y Gastos</h5>
+            <form method="POST" id="form-compra">
+                <div class="row g-3">
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Fecha *</label>
+                        <input type="date" name="fecha" class="form-control" required value="{{ compra.fecha.strftime('%Y-%m-%d') if compra else '' }}">
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Concepto *</label>
+                        <div class="input-group">
+                            <select name="concepto_compra_id" id="concepto_compra_id" class="form-select" required>
+                                <option value="">Seleccione...</option>
+                                {% for concepto in conceptos %}
+                                <option value="{{ concepto.id }}" {{ 'selected' if compra and compra.concepto_compra_id == concepto.id else '' }}>{{ concepto.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" class="btn btn-outline-success" title="Crear concepto" data-bs-toggle="modal" data-bs-target="#modalNuevoConcepto">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label">Item</label>
+                        <div class="input-group">
+                            <select name="producto_compra_id" id="producto_compra_id" class="form-select">
+                                <option value="">-- Sin catalogar --</option>
+                                {% for producto in productos %}
+                                <option value="{{ producto.id }}" data-concepto="{{ producto.concepto_compra_id }}" {{ 'selected' if compra and compra.producto_compra_id == producto.id else '' }}>{{ producto.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" class="btn btn-outline-success" title="Crear item" data-bs-toggle="modal" data-bs-target="#modalNuevoItem">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
+                        <div class="form-text">Esto ayuda al diagnostico fino del gasto por item.</div>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Descripcion *</label>
+                        <input type="text" name="descripcion" class="form-control" required value="{{ compra.descripcion if compra else '' }}" placeholder="Detalle del movimiento">
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Proveedor o tercero</label>
+                        <select name="tercero_id" class="form-select">
+                            <option value="">-- Opcional --</option>
+                            {% for tercero in terceros %}
+                            <option value="{{ tercero.id }}" {{ 'selected' if compra and compra.tercero_id == tercero.id else '' }}>{{ tercero.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label">Valor causado *</label>
+                        <input type="text" name="valor" class="form-control js-money" data-money-scale="0" required value="{{ compra.valor if compra else '' }}">
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Observaciones</label>
+                        <textarea name="observaciones" class="form-control" rows="2">{{ compra.observaciones if compra else '' }}</textarea>
+                    </div>
+                </div>
+
+                {% if compra %}
+                <div class="card mt-4" style="background:#f8fafc;">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-2"><i class="bi bi-cash-coin text-success"></i> Estado actual del pago</h6>
+                        <div class="row g-2 small">
+                            <div class="col-md-4"><strong>Estado:</strong> {{ totales_actuales.estado|upper }}</div>
+                            <div class="col-md-4"><strong>Abonado:</strong> ${{ "{:,.0f}".format(totales_actuales.abonado) }}</div>
+                            <div class="col-md-4"><strong>Saldo:</strong> ${{ "{:,.0f}".format(totales_actuales.saldo) }}</div>
+                        </div>
+                        <div class="form-text mt-2">Los abonos ya no se editan aqui. Se registran desde el detalle para conservar trazabilidad completa.</div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="card mt-4" style="background:#f8fafc;">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-3"><i class="bi bi-cash-coin text-success"></i> Situacion inicial del pago</h6>
+                        <div class="row g-3">
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Situacion</label>
+                                <select name="situacion_pago" class="form-select">
+                                    <option value="pendiente">Pendiente</option>
+                                    <option value="parcial">Parcial</option>
+                                    <option value="pagado">Pagado</option>
+                                </select>
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Valor abonado inicial</label>
+                                <input type="text" name="valor_abono_inicial" class="form-control js-money" data-money-scale="0">
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Fecha de pago</label>
+                                <input type="date" name="fecha_pago" class="form-control">
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Medio de pago</label>
+                                <select name="medio_pago_id" class="form-select">
+                                    <option value="">-- Seleccione --</option>
+                                    {% for medio in medios %}
+                                    <option value="{{ medio.id }}">{{ medio.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Descripcion del pago</label>
+                                <input type="text" name="descripcion_pago" class="form-control" placeholder="Referencia o nota del abono inicial">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="d-flex gap-2 flex-wrap mt-4">
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Guardar</button>
+                    <a href="{{ url_for('compras.lista') }}" class="btn btn-outline-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalNuevoConcepto" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form id="formNuevoConcepto">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold"><i class="bi bi-plus-lg text-success"></i> Nuevo concepto</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label">Nombre *</label>
+                        <input type="text" id="nuevo_concepto_nombre" class="form-control" required placeholder="Ej: Medicamentos, Herramientas">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Descripcion</label>
+                        <input type="text" id="nuevo_concepto_desc" class="form-control form-control-sm" placeholder="Opcional">
+                    </div>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="button" class="btn btn-success btn-sm" onclick="crearConcepto()"><i class="bi bi-check"></i> Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalNuevoItem" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form id="formNuevoItem">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold"><i class="bi bi-plus-lg text-success"></i> Nuevo item</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label">Concepto padre *</label>
+                        <select id="nuevo_item_concepto" class="form-select form-select-sm" required>
+                            <option value="">Seleccione...</option>
+                            {% for concepto in conceptos %}
+                            <option value="{{ concepto.id }}">{{ concepto.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Nombre del item *</label>
+                        <input type="text" id="nuevo_item_nombre" class="form-control" required placeholder="Ej: Guantes, Toner, Monitor">
+                    </div>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="button" class="btn btn-success btn-sm" onclick="crearItem()"><i class="bi bi-check"></i> Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filtrarProductosCompra() {
+    const concepto = document.getElementById('concepto_compra_id').value;
+    const select = document.getElementById('producto_compra_id');
+    Array.from(select.options).forEach(function(option, index) {
+        if (index === 0) {
+            option.hidden = false;
+            return;
+        }
+        option.hidden = concepto && option.dataset.concepto !== concepto;
+    });
+    const selected = select.options[select.selectedIndex];
+    if (selected && selected.dataset && selected.dataset.concepto && selected.dataset.concepto !== concepto) {
+        select.value = '';
+    }
+}
+
+function crearConcepto() {
+    const nombre = document.getElementById('nuevo_concepto_nombre').value.trim();
+    const desc = document.getElementById('nuevo_concepto_desc').value.trim();
+    if (!nombre) {
+        alert('Ingrese un nombre');
+        return;
+    }
+
+    fetch('/compras/api/crear-concepto', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({nombre: nombre, descripcion: desc})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+        const select = document.getElementById('concepto_compra_id');
+        select.add(new Option(data.nombre, data.id, true, true));
+        document.getElementById('nuevo_item_concepto').add(new Option(data.nombre, data.id));
+        bootstrap.Modal.getInstance(document.getElementById('modalNuevoConcepto')).hide();
+        document.getElementById('nuevo_concepto_nombre').value = '';
+        document.getElementById('nuevo_concepto_desc').value = '';
+        filtrarProductosCompra();
+    })
+    .catch(err => alert('Error: ' + err));
+}
+
+function crearItem() {
+    const conceptoId = document.getElementById('nuevo_item_concepto').value;
+    const nombre = document.getElementById('nuevo_item_nombre').value.trim();
+    if (!conceptoId || !nombre) {
+        alert('Complete concepto y nombre');
+        return;
+    }
+
+    fetch('/compras/api/crear-item', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({concepto_compra_id: conceptoId, nombre: nombre})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+        const select = document.getElementById('producto_compra_id');
+        const option = new Option(data.nombre, data.id, true, true);
+        option.dataset.concepto = data.concepto_compra_id;
+        select.add(option);
+        bootstrap.Modal.getInstance(document.getElementById('modalNuevoItem')).hide();
+        document.getElementById('nuevo_item_nombre').value = '';
+        filtrarProductosCompra();
+    })
+    .catch(err => alert('Error: ' + err));
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('concepto_compra_id').addEventListener('change', function() {
+        filtrarProductosCompra();
+        document.getElementById('nuevo_item_concepto').value = this.value;
+    });
+    filtrarProductosCompra();
+});
+</script>
+{% endblock %}
