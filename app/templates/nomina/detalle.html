@@ -6,9 +6,19 @@
     .badge-concepto { background: #e0f2fe; color: #1e40af; font-size: 0.65rem; }
     .badge-deduccion { background: #fef2f2; color: #dc2626; font-size: 0.65rem; }
     .celda-quincena { vertical-align: top; }
-    .quincena-pagado { background: #d1fae5; }
-    .quincena-causado { background: #fef3c7; }
-    .quincena-no-aplica { background: #e5e7eb; color: #6b7280; }
+    .table .quincena-pagado {
+        --bs-table-bg-state: #d1fae5;
+        background-color: #d1fae5 !important;
+    }
+    .table .quincena-causado {
+        --bs-table-bg-state: #fef3c7;
+        background-color: #fef3c7 !important;
+    }
+    .table .quincena-no-aplica {
+        --bs-table-bg-state: #e5e7eb;
+        background-color: #e5e7eb !important;
+        color: #6b7280;
+    }
     .table td:nth-child(2) small.text-muted,
     .table td:nth-child(5) small.text-muted,
     .table td:nth-child(2) br,
