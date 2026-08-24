@@ -182,12 +182,17 @@ def _rango_periodo_nomina(anio, mes, quincena):
     return date(anio, mes, inicio_dia), date(anio, mes, fin_dia)
 
 
-def _empleado_aplica_periodo(empleado, anio, mes, quincena):
+def _empleado_aplica_periodo(empleado, anio, mes, quincena, forma_pago=None):
     periodo_inicio, periodo_fin = _rango_periodo_nomina(anio, mes, quincena)
     if empleado.fecha_ingreso and empleado.fecha_ingreso > periodo_fin:
         return False
     if empleado.fecha_retiro and empleado.fecha_retiro < periodo_inicio:
         return False
+    frecuencia = forma_pago or empleado.forma_pago or 'quincenal'
+    if frecuencia == 'mensual':
+        quincena_pago = empleado.quincena_pago_mensual or 2
+        if quincena != quincena_pago:
+            return False
     return True
 
 
@@ -202,7 +207,8 @@ def _valor_periodo_empleado(empleado, anio, mes, quincena, forma_pago=None):
     if not salario:
         return 0
     if frecuencia == 'mensual':
-        return salario if quincena == 2 else 0
+        quincena_pago = empleado.quincena_pago_mensual or 2
+        return salario if quincena == quincena_pago else 0
     if frecuencia in ('diaria', 'semanal'):
         return salario / dias_mes * dias_periodo if dias_mes else 0
     return salario / 2
@@ -565,6 +571,10 @@ def preliquidar(anio=None, mes=None, quincena=None):
     meses_habilitados = _meses_habilitados_nomina(anio)
 
     empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo).all()
+    empleados_periodo = [
+        e for e in empleados
+        if _empleado_aplica_periodo(e, anio, mes, quincena)
+    ]
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
     conceptos_dict = {c.id: c for c in conceptos}
     draft_key = _preliquidacion_session_key(anio, mes, quincena)
@@ -574,7 +584,7 @@ def preliquidar(anio=None, mes=None, quincena=None):
         actualizados = 0
         total_novedades_periodo = 0
 
-        for e in empleados:
+        for e in empleados_periodo:
             incluir = bool(request.form.get(f'incluir_{e.id}'))
             forma_aplicada = request.form.get(f'forma_pago_{e.id}', e.forma_pago or 'quincenal')
             valor_preliquidado = float(request.form.get(f'valor_{e.id}') or 0)
@@ -619,7 +629,7 @@ def preliquidar(anio=None, mes=None, quincena=None):
     total_pendiente = 0
     total_novedades_periodo = 0
 
-    for e in empleados:
+    for e in empleados_periodo:
         draft_row = draft.get('rows', {}).get(str(e.id), {})
         forma_aplicada = draft_row.get('forma_pago_aplicada', e.forma_pago or 'quincenal')
         valor_preliquidado = float(draft_row.get('valor_preliquidado', _valor_periodo_empleado(e, anio, mes, quincena, forma_aplicada)))

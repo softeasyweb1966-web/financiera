@@ -125,7 +125,7 @@
         {% for item in empleados_preliquidacion %}
         {% set e = item.empleado %}
         <div class="col-12 col-xl-6">
-            <div class="card preliq-card p-3 h-100" data-empleado-id="{{ e.id }}" data-salario="{{ e.salario_base or 0 }}">
+            <div class="card preliq-card p-3 h-100" data-empleado-id="{{ e.id }}" data-salario="{{ e.salario_base or 0 }}" data-quincena-pago-mensual="{{ e.quincena_pago_mensual or 2 }}">
                 <input type="hidden" name="pendiente_{{ e.id }}" value="{{ item.pendiente_anterior }}">
                 <input type="hidden" name="novedades_{{ e.id }}" class="novedades-json" value='{{ item.novedades|tojson }}'>
 
@@ -251,10 +251,13 @@ document.addEventListener('DOMContentLoaded', function () {
         return '$' + Number(valor || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 });
     }
 
-    function calcularBase(salario, frecuencia) {
+    function calcularBase(card, salario, frecuencia) {
         salario = Number(salario || 0);
         if (!salario) return 0;
-        if (frecuencia === 'mensual') return {{ 1 if quincena == 2 else 0 }} ? salario : 0;
+        if (frecuencia === 'mensual') {
+            const quincenaPagoMensual = Number(card.dataset.quincenaPagoMensual || 2);
+            return quincenaPagoMensual === {{ quincena }} ? salario : 0;
+        }
         if (frecuencia === 'diaria' || frecuencia === 'semanal') {
             return diasMes ? (salario / diasMes) * diasPeriodo : 0;
         }
@@ -365,7 +368,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const empleadoId = event.target.dataset.target;
                 const salario = Number(card.dataset.salario || 0);
                 const inputValor = document.getElementById('valor_' + empleadoId);
-                window.FinancieraMoney.setValue(inputValor, Math.round(calcularBase(salario, event.target.value)));
+                window.FinancieraMoney.setValue(inputValor, Math.round(calcularBase(card, salario, event.target.value)));
                 refreshCard(card);
             }
             if (event.target.closest('.novedad-row')) {
