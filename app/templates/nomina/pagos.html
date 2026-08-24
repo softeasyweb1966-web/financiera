@@ -103,7 +103,7 @@
                 </div>
             </div>
             <div>
-                <div class="card summary-side-card" style="background:#fef2f2; border:1px solid #fecaca; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-deuda-nom">
+                <div class="card summary-side-card" id="toggle-deuda-nom" style="background:#fef2f2; border:1px solid #fecaca; cursor:pointer;">
                     <div class="summary-inline">
                         <span class="summary-inline-label">Quincenas sin pagar <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></span>
                         <span class="summary-inline-value text-danger">${{ "{:,.0f}".format(total_deuda_anterior) }}</span>
@@ -185,7 +185,7 @@
 </div>
 
 {% if pendientes_anteriores %}
-<div class="collapse show mb-3" id="detalle-pendientes-nom">
+<div class="collapse mb-3" id="detalle-pendientes-nom">
     <div class="alerta-deuda p-3 rounded">
         <h6 class="fw-bold text-danger mb-2"><i class="bi bi-exclamation-triangle"></i> Quincenas pendientes anteriores ({{ pendientes_anteriores|length }})</h6>
         <div class="row g-2" style="max-height:300px; overflow-y:auto;">
@@ -347,7 +347,9 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const toggle = document.getElementById('toggle-detalle-mes-nom');
+    const toggleDeuda = document.getElementById('toggle-deuda-nom');
     const detalleMesEl = document.getElementById('detalle-mes-nom');
+    const detalleDeudaEl = document.getElementById('detalle-deuda-nom');
     const pendientesEl = document.getElementById('detalle-pendientes-nom');
 
     if (!toggle || !detalleMesEl || typeof bootstrap === 'undefined') {
@@ -355,18 +357,30 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     const detalleMes = bootstrap.Collapse.getOrCreateInstance(detalleMesEl, { toggle: false });
+    const detalleDeuda = detalleDeudaEl ? bootstrap.Collapse.getOrCreateInstance(detalleDeudaEl, { toggle: false }) : null;
     const pendientes = pendientesEl ? bootstrap.Collapse.getOrCreateInstance(pendientesEl, { toggle: false }) : null;
 
     toggle.addEventListener('click', function() {
         const abierto = detalleMesEl.classList.contains('show');
         if (abierto) {
             detalleMes.hide();
-            if (pendientes) pendientes.hide();
         } else {
             detalleMes.show();
-            if (pendientes) pendientes.show();
         }
     });
+
+    if (toggleDeuda && detalleDeuda && pendientes) {
+        toggleDeuda.addEventListener('click', function() {
+            const abierto = detalleDeudaEl.classList.contains('show') || pendientesEl.classList.contains('show');
+            if (abierto) {
+                detalleDeuda.hide();
+                pendientes.hide();
+            } else {
+                detalleDeuda.show();
+                pendientes.show();
+            }
+        });
+    }
 });
 </script>
 {% endblock %}
