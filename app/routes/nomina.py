@@ -78,6 +78,23 @@ def _date_or_none(valor):
         return None
 
 
+def _normalizar_forma_pago_nomina(forma_pago):
+    forma = (forma_pago or 'quincenal')
+    if not isinstance(forma, str):
+        forma = str(forma)
+    forma = forma.strip().lower().replace(' ', '_')
+    equivalencias = {
+        'prestacion_servicios': 'prestacion_servicios',
+        'prestacion-de-servicios': 'prestacion_servicios',
+        'mensualidad': 'mensual',
+        'quincena': 'quincenal',
+        'mes': 'mensual',
+        'semana': 'semanal',
+        'dia': 'diaria',
+    }
+    return equivalencias.get(forma, forma or 'quincenal')
+
+
 def _ordenar_empleados_catalogo(empleados):
     prioridad_estado = {
         'activo': 0,
@@ -381,7 +398,7 @@ def _empleado_aplica_periodo(empleado, anio, mes, quincena, forma_pago=None):
         return False
     if empleado.fecha_retiro and empleado.fecha_retiro < periodo_inicio:
         return False
-    frecuencia = forma_pago or empleado.forma_pago or 'quincenal'
+    frecuencia = _normalizar_forma_pago_nomina(forma_pago or empleado.forma_pago)
     if frecuencia == 'mensual':
         quincena_pago = empleado.quincena_pago_mensual or 2
         if quincena != quincena_pago:
@@ -391,11 +408,11 @@ def _empleado_aplica_periodo(empleado, anio, mes, quincena, forma_pago=None):
 
 def _valor_periodo_empleado(empleado, anio, mes, quincena, forma_pago=None):
     salario = float(empleado.salario_base or 0)
-    frecuencia = forma_pago or empleado.forma_pago or 'quincenal'
+    frecuencia = _normalizar_forma_pago_nomina(forma_pago or empleado.forma_pago)
     dias_mes = calendar.monthrange(anio, mes)[1]
     dias_periodo = _dias_periodo_nomina(anio, mes, quincena)
 
-    if not _empleado_aplica_periodo(empleado, anio, mes, quincena):
+    if not _empleado_aplica_periodo(empleado, anio, mes, quincena, frecuencia):
         return 0
     if not salario:
         return 0
@@ -405,6 +422,19 @@ def _valor_periodo_empleado(empleado, anio, mes, quincena, forma_pago=None):
     if frecuencia in ('diaria', 'semanal'):
         return salario / dias_mes * dias_periodo if dias_mes else 0
     return salario / 2
+
+
+def _empleados_nomina_periodo(anio, mes, quincena, empleado_id=None, solo_activos=True):
+    query = Empleado.query
+    if solo_activos:
+        query = query.filter_by(activo=True)
+    if empleado_id:
+        query = query.filter_by(id=empleado_id)
+    empleados = query.order_by(Empleado.cargo, Empleado.id).all()
+    return [
+        empleado for empleado in empleados
+        if _empleado_aplica_periodo(empleado, anio, mes, quincena)
+    ]
 
 
 def _pendiente_anterior_empleado(empleado, anio, mes, quincena):
@@ -576,7 +606,7 @@ def nuevo():
             cargo=request.form.get('cargo', '').strip(),
             salario_base=request.form.get('salario_base') or None,
             tipo_contrato=request.form.get('tipo_contrato', 'laboral'),
-            forma_pago=request.form.get('forma_pago', 'quincenal'),
+            forma_pago=_normalizar_forma_pago_nomina(request.form.get('forma_pago', 'quincenal')),
             quincena_pago_mensual=request.form.get('quincena_pago_mensual', type=int) or 2,
             whatsapp=request.form.get('whatsapp', '').strip() or None,
             autoriza_whatsapp=bool(request.form.get('autoriza_whatsapp')),
@@ -652,7 +682,7 @@ def editar(id):
         empleado.cargo = request.form.get('cargo', '').strip()
         empleado.salario_base = nuevo_salario
         empleado.tipo_contrato = request.form.get('tipo_contrato', 'laboral')
-        empleado.forma_pago = request.form.get('forma_pago', 'quincenal')
+        empleado.forma_pago = _normalizar_forma_pago_nomina(request.form.get('forma_pago', 'quincenal'))
         empleado.quincena_pago_mensual = request.form.get('quincena_pago_mensual', type=int) or 2
         empleado.whatsapp = request.form.get('whatsapp', '').strip() or None
         empleado.autoriza_whatsapp = bool(request.form.get('autoriza_whatsapp'))
@@ -749,11 +779,7 @@ def preliquidar(anio=None, mes=None, quincena=None):
     anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
     meses_habilitados = _meses_habilitados_nomina(anio)
 
-    empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo).all()
-    empleados_periodo = [
-        e for e in empleados
-        if _empleado_aplica_periodo(e, anio, mes, quincena)
-    ]
+    empleados_periodo = _empleados_nomina_periodo(anio, mes, quincena)
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
     conceptos_dict = {c.id: c for c in conceptos}
     draft_key = _preliquidacion_session_key(anio, mes, quincena)
@@ -765,7 +791,9 @@ def preliquidar(anio=None, mes=None, quincena=None):
 
         for e in empleados_periodo:
             incluir = bool(request.form.get(f'incluir_{e.id}'))
-            forma_aplicada = request.form.get(f'forma_pago_{e.id}', e.forma_pago or 'quincenal')
+            forma_aplicada = _normalizar_forma_pago_nomina(
+                request.form.get(f'forma_pago_{e.id}', e.forma_pago or 'quincenal')
+            )
             valor_preliquidado = float(request.form.get(f'valor_{e.id}') or 0)
             pendiente_anterior = float(request.form.get(f'pendiente_{e.id}') or 0)
             actualizar_catalogo = bool(request.form.get(f'actualizar_catalogo_{e.id}'))
@@ -810,7 +838,9 @@ def preliquidar(anio=None, mes=None, quincena=None):
 
     for e in empleados_periodo:
         draft_row = draft.get('rows', {}).get(str(e.id), {})
-        forma_aplicada = draft_row.get('forma_pago_aplicada', e.forma_pago or 'quincenal')
+        forma_aplicada = _normalizar_forma_pago_nomina(
+            draft_row.get('forma_pago_aplicada', e.forma_pago or 'quincenal')
+        )
         valor_preliquidado = float(draft_row.get('valor_preliquidado', _valor_periodo_empleado(e, anio, mes, quincena, forma_aplicada)))
         pendiente_anterior = float(draft_row.get('pendiente_anterior', _pendiente_anterior_empleado(e, anio, mes, quincena)))
         incluir = draft_row.get('incluir', True)
@@ -874,11 +904,7 @@ def pagos(anio=None, mes=None, quincena=None):
     anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
     meses_habilitados = _meses_habilitados_nomina(anio)
 
-    empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo).all()
-    empleados_periodo = [
-        e for e in empleados
-        if _empleado_aplica_periodo(e, anio, mes, quincena)
-    ]
+    empleados_periodo = _empleados_nomina_periodo(anio, mes, quincena)
     empleados_periodo_ids = {e.id for e in empleados_periodo}
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
@@ -1308,6 +1334,7 @@ def registrar_quincena():
 
         empleados_ids = request.form.getlist('empleado_ids')
         count = 0
+        omitidos_no_aplican = 0
         for emp_id in empleados_ids:
             empleado = Empleado.query.get(int(emp_id))
             if not empleado:
@@ -1324,7 +1351,12 @@ def registrar_quincena():
                 }
 
             draft_row = draft_rows.get(str(emp_id), {})
-            forma_aplicada = draft_row.get('forma_pago_aplicada', empleado.forma_pago or 'quincenal')
+            forma_aplicada = _normalizar_forma_pago_nomina(
+                draft_row.get('forma_pago_aplicada', empleado.forma_pago or 'quincenal')
+            )
+            if not _empleado_aplica_periodo(empleado, anio, mes, quincena, forma_aplicada):
+                omitidos_no_aplican += 1
+                continue
             for novedad in draft_row.get('novedades', []):
                 concepto_novedad_id = int(novedad.get('concepto_id') or 0)
                 if not concepto_novedad_id:
@@ -1426,6 +1458,11 @@ def registrar_quincena():
 
         db.session.commit()
         flash(f'{count} registros de nómina guardados.', 'success')
+        if omitidos_no_aplican:
+            flash(
+                f'{omitidos_no_aplican} empleado(s) se omitieron porque no aplican a esa quincena por fecha de ingreso/retiro o forma de pago.',
+                'warning'
+            )
         session.pop(draft_key, None)
         return redirect(url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena))
 
@@ -1434,18 +1471,13 @@ def registrar_quincena():
     quincena = request.args.get('quincena', 1, type=int)
     empleado_id_filtro = request.args.get('empleado_id', type=int)
     anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
-    empleados_query = Empleado.query.filter_by(activo=True)
     empleado_seleccionado = None
     if empleado_id_filtro:
-        empleado_seleccionado = empleados_query.filter_by(id=empleado_id_filtro).first_or_404()
+        empleado_seleccionado = Empleado.query.filter_by(activo=True, id=empleado_id_filtro).first_or_404()
         if not _empleado_aplica_periodo(empleado_seleccionado, anio, mes, quincena):
             flash('Ese empleado no aplica para la quincena seleccionada.', 'warning')
             return redirect(url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena))
-        empleados_query = empleados_query.filter_by(id=empleado_id_filtro)
-    empleados = [
-        e for e in empleados_query.order_by(Empleado.cargo).all()
-        if _empleado_aplica_periodo(e, anio, mes, quincena)
-    ]
+    empleados = _empleados_nomina_periodo(anio, mes, quincena, empleado_id=empleado_id_filtro)
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
     draft = session.get(_preliquidacion_session_key(anio, mes, quincena), {})
