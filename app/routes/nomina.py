@@ -687,6 +687,7 @@ def pagos(anio=None, mes=None, quincena=None):
         func.coalesce(func.sum(RegistroNomina.valor), 0)
     ).filter(
         RegistroNomina.anio == anio,
+        RegistroNomina.fecha_pago.isnot(None),
         db.or_(
             RegistroNomina.mes < mes,
             db.and_(RegistroNomina.mes == mes, RegistroNomina.quincena < quincena)
@@ -698,7 +699,8 @@ def pagos(anio=None, mes=None, quincena=None):
         func.coalesce(func.sum(RegistroNomina.valor), 0)
     ).filter(
         RegistroNomina.anio == anio, RegistroNomina.mes == mes,
-        RegistroNomina.quincena == quincena
+        RegistroNomina.quincena == quincena,
+        RegistroNomina.fecha_pago.isnot(None)
     ).scalar()
 
     # Total esperado del periodo segun la frecuencia configurada
@@ -753,11 +755,16 @@ def pagos(anio=None, mes=None, quincena=None):
         for m_check in range(meses_habilitados[0], mes + 1):
             q_range = [1, 2] if m_check < mes else list(range(1, quincena))
             for q_check in q_range:
-                tiene_registro = RegistroNomina.query.filter_by(
+                registros_previos = RegistroNomina.query.filter_by(
                     empleado_id=e.id, anio=anio, mes=m_check, quincena=q_check
-                ).first()
-                if not tiene_registro and e.salario_base:
-                    valor_esperado = _valor_periodo_empleado(e, anio, m_check, q_check)
+                ).all()
+                esta_pagado = bool(registros_previos) and all(r.fecha_pago for r in registros_previos)
+                if not esta_pagado and e.salario_base:
+                    valor_esperado = (
+                        sum(float(r.valor) for r in registros_previos)
+                        if registros_previos else
+                        _valor_periodo_empleado(e, anio, m_check, q_check)
+                    )
                     total_deuda_anterior += valor_esperado
                     pendientes_anteriores.append({
                         'empleado': e,
@@ -791,17 +798,21 @@ def pagos(anio=None, mes=None, quincena=None):
     empleados_mes = []
     for e in empleados:
         registros_emp = registros_por_empleado.get(e.id, [])
-        total_pagado = sum(float(r.valor) for r in registros_emp)
-        tiene_pago = len(registros_emp) > 0
+        total_registrado = sum(float(r.valor) for r in registros_emp)
+        total_pagado = sum(float(r.valor) for r in registros_emp if r.fecha_pago)
+        tiene_registro = len(registros_emp) > 0
+        esta_pagado = tiene_registro and all(r.fecha_pago for r in registros_emp)
         valor_quincena = _valor_periodo_empleado(e, anio, mes, quincena)
 
         empleados_mes.append({
             'empleado': e,
             'registros': registros_emp,
+            'total_registrado': total_registrado,
             'total_pagado': total_pagado,
-            'tiene_pago': tiene_pago,
+            'tiene_pago': esta_pagado,
+            'tiene_registro': tiene_registro,
             'valor_quincena': valor_quincena,
-            'estado': 'pagado' if tiene_pago else 'pendiente',
+            'estado': 'pagado' if esta_pagado else 'causado' if tiene_registro else 'pendiente',
         })
 
     empleados_pagados_count = sum(1 for item in empleados_mes if item['tiene_pago'])
@@ -815,6 +826,7 @@ def pagos(anio=None, mes=None, quincena=None):
         sqlfunc.sum(RegistroNomina.valor).label('total')
     ).filter(
         RegistroNomina.anio == anio,
+        RegistroNomina.fecha_pago.isnot(None),
         db.or_(
             RegistroNomina.mes < mes,
             db.and_(RegistroNomina.mes == mes, RegistroNomina.quincena < quincena)
@@ -860,12 +872,14 @@ def detalle(id):
     anio = request.args.get('anio', date.today().year, type=int)
     if anio < NOMINA_INICIO_ANIO:
         anio = NOMINA_INICIO_ANIO
+    meses_habilitados = _meses_habilitados_nomina(anio)
     registros = RegistroNomina.query.filter_by(empleado_id=id, anio=anio).order_by(
         RegistroNomina.mes, RegistroNomina.quincena, RegistroNomina.created_at
     ).all()
     # Group by (mes, quincena)
     pagos_dict = {}
     causaciones_dict = {}
+    estados_quincena = {}
     for r in registros:
         key = (r.mes, r.quincena)
         if key not in pagos_dict:
@@ -873,12 +887,28 @@ def detalle(id):
         pagos_dict[key].append(r)
         if key not in causaciones_dict and r.created_at:
             causaciones_dict[key] = r.created_at.date()
+    for key, items in pagos_dict.items():
+        if items and all(r.fecha_pago for r in items):
+            estados_quincena[key] = 'pagado'
+        elif items:
+            estados_quincena[key] = 'causado'
+    estados_mes = {}
+    for mes in meses_habilitados:
+        estados_mes_actual = [
+            estados_quincena.get((mes, quincena))
+            for quincena in (1, 2)
+            if estados_quincena.get((mes, quincena))
+        ]
+        if estados_mes_actual:
+            estados_mes[mes] = 'pagado' if all(estado == 'pagado' for estado in estados_mes_actual) else 'causado'
     saldos_anteriores = SaldoAnteriorNomina.query.filter_by(empleado_id=id).order_by(
         SaldoAnteriorNomina.anio, SaldoAnteriorNomina.mes, SaldoAnteriorNomina.quincena, SaldoAnteriorNomina.id
     ).all()
     return render_template('nomina/detalle.html', empleado=empleado, anio=anio,
                            meses=MESES, pagos=pagos_dict, causaciones=causaciones_dict,
-                           meses_habilitados=_meses_habilitados_nomina(anio),
+                           meses_habilitados=meses_habilitados,
+                           estados_quincena=estados_quincena,
+                           estados_mes=estados_mes,
                            saldos_anteriores=saldos_anteriores,
                            nomina_inicio_anio=NOMINA_INICIO_ANIO,
                            nomina_inicio_mes=NOMINA_INICIO_MES)
@@ -953,7 +983,24 @@ def registrar_quincena():
                     mes=mes,
                     quincena=quincena
                 ).first()
-                if not existe:
+                if excedente_saldos > 0 and not saldos_aplicados and fecha_pago:
+                    aplicado_saldos = _aplicar_saldos_anteriores_manuales(empleado.id, excedente_saldos)
+                    if aplicado_saldos > 0:
+                        observaciones_extra.append(f'Aplico ${aplicado_saldos:,.0f} a saldos anteriores cargados.')
+                    saldos_aplicados = True
+                if existe:
+                    if fecha_pago and not existe.fecha_pago:
+                        existe.fecha_pago = fecha_pago
+                    if medio_pago_id and not existe.medio_pago_id:
+                        existe.medio_pago_id = medio_pago_id
+                    if observaciones_extra:
+                        observacion_nueva = ' | '.join(observaciones_extra)
+                        if existe.observaciones:
+                            if observacion_nueva not in existe.observaciones:
+                                existe.observaciones = f'{existe.observaciones} | {observacion_nueva}'
+                        else:
+                            existe.observaciones = observacion_nueva
+                else:
                     if excedente_saldos > 0 and not saldos_aplicados:
                         aplicado_saldos = _aplicar_saldos_anteriores_manuales(empleado.id, excedente_saldos)
                         if aplicado_saldos > 0:

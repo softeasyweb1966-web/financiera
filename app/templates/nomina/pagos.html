@@ -6,9 +6,11 @@
     .card-servicio { border-left: 4px solid #e2e8f0; transition: box-shadow 0.15s; }
     .card-servicio:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     .estado-pendiente { border-left-color: #fb923c; }
+    .estado-causado { border-left-color: #facc15; }
     .estado-pagado { border-left-color: #10b981; }
     .indicador { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .ind-pendiente { background: #fb923c; }
+    .ind-causado { background: #facc15; }
     .ind-pagado { background: #10b981; }
     .alerta-deuda { background: #fef2f2; border-left: 3px solid #ef4444; }
     .nav-mes .btn { min-width: 44px; }
@@ -234,6 +236,7 @@
 
 <div class="d-flex flex-wrap gap-3 mb-3" style="font-size:0.72rem;">
     <span><span class="indicador ind-pendiente"></span> Sin pago</span>
+    <span><span class="indicador ind-causado"></span> Causado</span>
     <span><span class="indicador ind-pagado"></span> Pagado</span>
 </div>
 
@@ -256,7 +259,7 @@
             <tbody>
                 {% for item in empleados_mes %}
                 {% set e = item.empleado %}
-                <tr class="{{ 'table-success' if item.tiene_pago else '' }}">
+                <tr class="{{ 'table-success' if item.tiene_pago else 'table-warning' if item.tiene_registro else '' }}">
                     <td><span class="indicador ind-{{ item.estado }}"></span></td>
                     <td>
                         <strong>{{ e.nombre }}</strong>
@@ -265,7 +268,7 @@
                     <td><span class="badge {{ 'bg-primary' if e.tipo_contrato == 'laboral' else 'bg-secondary' }}" style="font-size:0.6rem;">{{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</span></td>
                     <td class="text-end"><small>${{ "{:,.0f}".format(e.salario_base) if e.salario_base else '—' }}</small></td>
                     <td class="text-end">${{ "{:,.0f}".format(item.valor_quincena) }}</td>
-                    <td class="text-end fw-bold {{ 'text-success' if item.tiene_pago else 'text-muted' }}">
+                    <td class="text-end fw-bold {{ 'text-success' if item.tiene_pago else 'text-warning' if item.tiene_registro else 'text-muted' }}">
                         {{ "${:,.0f}".format(item.total_pagado) if item.tiene_pago else '—' }}
                     </td>
                     <td>
@@ -315,6 +318,8 @@
         <div class="text-end">
             {% if item.tiene_pago %}
             <span class="fw-bold text-success">${{ "{:,.0f}".format(item.total_pagado) }}</span>
+            {% elif item.tiene_registro %}
+            <span class="fw-bold text-warning">${{ "{:,.0f}".format(item.total_registrado) }}</span>
             {% else %}
             <span class="text-muted">${{ "{:,.0f}".format(item.valor_quincena) }}</span>
             {% endif %}

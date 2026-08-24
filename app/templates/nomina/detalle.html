@@ -82,11 +82,14 @@
                 {% for i in meses_habilitados %}
                 {% set registros_q1 = pagos.get((i, 1), []) %}
                 {% set registros_q2 = pagos.get((i, 2), []) %}
+                {% set estado_q1 = estados_quincena.get((i, 1)) %}
+                {% set estado_q2 = estados_quincena.get((i, 2)) %}
+                {% set estado_mes = estados_mes.get(i) %}
                 {% set total_q1 = registros_q1|sum(attribute='valor')|float %}
                 {% set total_q2 = registros_q2|sum(attribute='valor')|float %}
                 {% set total_mes = total_q1 + total_q2 %}
                 {% set ns.total_anual = ns.total_anual + total_mes %}
-                <tr class="{{ 'table-success' if total_mes > 0 else '' }}">
+                <tr class="{{ 'table-success' if estado_mes == 'pagado' else 'table-warning' if estado_mes == 'causado' else '' }}">
                     <td class="fw-semibold">{{ meses[i-1] }}</td>
                     <td class="celda-quincena">
                         {% if registros_q1 %}
@@ -117,7 +120,7 @@
                             <span class="text-muted">-</span>
                         {% endif %}
                     </td>
-                    <td class="fw-bold {{ 'text-success' if total_q1 > 0 else 'text-muted' }}">
+                    <td class="fw-bold {{ 'text-success' if estado_q1 == 'pagado' else 'text-body' if total_q1 > 0 else 'text-muted' }}">
                         {{ "${:,.0f}".format(total_q1) if total_q1 > 0 else '-' }}
                     </td>
                     <td class="celda-quincena">
@@ -149,10 +152,10 @@
                             <span class="text-muted">-</span>
                         {% endif %}
                     </td>
-                    <td class="fw-bold {{ 'text-success' if total_q2 > 0 else 'text-muted' }}">
+                    <td class="fw-bold {{ 'text-success' if estado_q2 == 'pagado' else 'text-body' if total_q2 > 0 else 'text-muted' }}">
                         {{ "${:,.0f}".format(total_q2) if total_q2 > 0 else '-' }}
                     </td>
-                    <td class="fw-bold">
+                    <td class="fw-bold {{ 'text-success' if estado_mes == 'pagado' else 'text-body' if total_mes > 0 else '' }}">
                         {{ "${:,.0f}".format(total_mes) if total_mes > 0 else '-' }}
                     </td>
                 </tr>
