@@ -436,6 +436,39 @@ def _valor_periodo_empleado(empleado, anio, mes, quincena, forma_pago=None):
     return salario / 2
 
 
+def _resumen_pago_periodo_nomina(empleado_id, anio, mes, quincena, registros=None, abonos=None):
+    if registros is None:
+        registros = RegistroNomina.query.filter_by(
+            empleado_id=empleado_id,
+            anio=anio,
+            mes=mes,
+            quincena=quincena
+        ).all()
+    if abonos is None:
+        abonos = AbonoNomina.query.filter_by(
+            empleado_id=empleado_id,
+            anio=anio,
+            mes=mes,
+            quincena=quincena
+        ).all()
+
+    total_registrado = sum(float(r.valor or 0) for r in registros)
+    total_pagado = sum(float(a.valor_abono or 0) for a in abonos)
+    if total_pagado <= 0 and registros and all(r.fecha_pago for r in registros):
+        total_pagado = total_registrado
+
+    esta_pagado = total_registrado > 0 and total_pagado + 1 >= total_registrado
+    return {
+        'registros': registros,
+        'abonos': abonos,
+        'total_registrado': total_registrado,
+        'total_pagado': total_pagado,
+        'saldo': max(total_registrado - total_pagado, 0),
+        'tiene_registro': bool(registros),
+        'esta_pagado': esta_pagado,
+    }
+
+
 def _empleados_nomina_periodo(anio, mes, quincena, empleado_id=None, solo_activos=True):
     query = Empleado.query
     if solo_activos:
@@ -1348,6 +1381,7 @@ def registrar_quincena():
         empleados_ids = request.form.getlist('empleado_ids')
         count = 0
         omitidos_no_aplican = 0
+        omitidos_pagados = 0
         for emp_id in empleados_ids:
             empleado = Empleado.query.get(int(emp_id))
             if not empleado:
@@ -1369,6 +1403,10 @@ def registrar_quincena():
             )
             if not _empleado_aplica_periodo(empleado, anio, mes, quincena, forma_aplicada):
                 omitidos_no_aplican += 1
+                continue
+            resumen_periodo = _resumen_pago_periodo_nomina(empleado.id, anio, mes, quincena)
+            if resumen_periodo['esta_pagado']:
+                omitidos_pagados += 1
                 continue
             for novedad in draft_row.get('novedades', []):
                 concepto_novedad_id = int(novedad.get('concepto_id') or 0)
@@ -1476,6 +1514,11 @@ def registrar_quincena():
                 f'{omitidos_no_aplican} empleado(s) se omitieron porque no aplican a esa quincena por fecha de ingreso/retiro o forma de pago.',
                 'warning'
             )
+        if omitidos_pagados:
+            flash(
+                f'{omitidos_pagados} empleado(s) se omitieron porque esa quincena ya estaba completamente pagada.',
+                'info'
+            )
         session.pop(draft_key, None)
         return redirect(url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena))
 
@@ -1490,7 +1533,16 @@ def registrar_quincena():
         if not _empleado_aplica_periodo(empleado_seleccionado, anio, mes, quincena):
             flash('Ese empleado no aplica para la quincena seleccionada.', 'warning')
             return redirect(url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena))
-    empleados = _empleados_nomina_periodo(anio, mes, quincena, empleado_id=empleado_id_filtro)
+    empleados_periodo = _empleados_nomina_periodo(anio, mes, quincena, empleado_id=empleado_id_filtro)
+    empleados = []
+    for empleado in empleados_periodo:
+        resumen_periodo = _resumen_pago_periodo_nomina(empleado.id, anio, mes, quincena)
+        if resumen_periodo['esta_pagado']:
+            continue
+        empleados.append(empleado)
+    if empleado_id_filtro and not empleados:
+        flash('Ese empleado ya tiene la quincena completamente pagada y por eso no aparece en Causar.', 'info')
+        return redirect(url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena))
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
     draft = session.get(_preliquidacion_session_key(anio, mes, quincena), {})
