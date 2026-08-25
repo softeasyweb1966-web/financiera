@@ -363,6 +363,8 @@ def _items_pago_historico_empleado(empleado, periodo_limite_clave=None):
     for anio, mes, quincena in sorted(claves):
         if periodo_limite_clave and _periodo_nomina_clave(anio, mes, quincena) >= periodo_limite_clave:
             continue
+        if not _empleado_aplica_periodo(empleado, anio, mes, quincena):
+            continue
 
         registros_periodo = registros_por_periodo.get((anio, mes, quincena), [])
         saldo_periodo = saldos_por_periodo.get((anio, mes, quincena))
@@ -1324,6 +1326,10 @@ def detalle(id):
             key = (mes, quincena_check)
             aplica_quincena[key] = _empleado_aplica_periodo(empleado, anio, mes, quincena_check)
     for key, items in pagos_raw_dict.items():
+        if not aplica_quincena.get(key, True):
+            pagos_dict[key] = []
+            estados_quincena[key] = 'no_aplica'
+            continue
         desglose = _desglose_registros_periodo_nomina(empleado, anio, key[0], key[1], registros=items)
         total_causado = float(desglose['total_causado'] or 0)
         total_abonado = float(abonos_totales.get(key, 0) or 0)
@@ -1338,7 +1344,7 @@ def detalle(id):
             _, periodo_fin = _rango_periodo_nomina(anio, mes_key, quincena_key)
             estados_quincena[key] = 'vencido' if periodo_fin < date.today() else 'causado'
     for key, aplica in aplica_quincena.items():
-        if not aplica and key not in estados_quincena:
+        if not aplica:
             estados_quincena[key] = 'no_aplica'
     estados_mes = {}
     for mes in meses_habilitados:
