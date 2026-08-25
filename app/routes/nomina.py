@@ -1555,14 +1555,13 @@ def registrar_quincena():
         quincena = int(request.form['quincena'])
         anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
         _normalizar_conceptos_base_periodo_nomina(anio, mes, quincena)
-        medio_pago_id = request.form.get('medio_pago_id') or None
-        fecha_pago = _date_or_none(request.form.get('fecha_pago'))
         draft_key = _preliquidacion_session_key(anio, mes, quincena)
         draft = session.get(draft_key, {})
         draft_rows = draft.get('rows', {}) if draft else {}
         conceptos_activos = ConceptoNomina.query.filter_by(activo=True).order_by(
             ConceptoNomina.tipo, ConceptoNomina.nombre
         ).all()
+        conceptos_dict = {concepto.id: concepto for concepto in conceptos_activos}
         conceptos_base_ids = {
             concepto.id for concepto in conceptos_activos
             if _es_concepto_base_nomina(concepto)
@@ -1593,7 +1592,6 @@ def registrar_quincena():
             if concepto_id_int in conceptos_base_ids and concepto_periodo and _es_concepto_base_nomina(concepto_periodo):
                 concepto_id_int = concepto_periodo.id
             registros_a_guardar = {}
-            observaciones_extra = []
 
             if concepto_id_int and valor:
                 registros_a_guardar[concepto_id_int] = {
@@ -1612,7 +1610,11 @@ def registrar_quincena():
             if resumen_periodo['esta_pagado']:
                 omitidos_pagados += 1
                 continue
-            for novedad in draft_row.get('novedades', []):
+            novedades_resumen = _parse_novedades_periodo(
+                request.form.get(f'novedades_{emp_id}'),
+                conceptos_dict
+            )
+            for novedad in novedades_resumen['items']:
                 concepto_novedad_id = int(novedad.get('concepto_id') or 0)
                 if not concepto_novedad_id:
                     continue
@@ -1630,16 +1632,6 @@ def registrar_quincena():
                 if novedad.get('justificacion'):
                     registros_a_guardar[concepto_novedad_id]['observaciones'].append(novedad['justificacion'])
 
-            valor_pagado_total = float(valor or 0)
-            base_periodo = float(draft_row.get(
-                'valor_preliquidado',
-                _valor_periodo_empleado(empleado, anio, mes, quincena, forma_aplicada)
-            ))
-            total_novedades = float(draft_row.get('total_novedades', 0))
-            excedente_saldos = max(0, valor_pagado_total - max(0, base_periodo + total_novedades))
-            saldos_aplicados = False
-            total_periodo = sum(float(data['valor'] or 0) for data in registros_a_guardar.values())
-
             for concepto_guardar_id, data in registros_a_guardar.items():
                 if not data['valor']:
                     continue
@@ -1650,41 +1642,12 @@ def registrar_quincena():
                     mes=mes,
                     quincena=quincena
                 ).first()
-                if excedente_saldos > 0 and not saldos_aplicados and fecha_pago:
-                    aplicado_saldos = _aplicar_saldos_anteriores_manuales(
-                        empleado.id,
-                        excedente_saldos,
-                        fecha_pago=fecha_pago,
-                        medio_pago_id=medio_pago_id,
-                        descripcion='Aplicacion automatica desde registro de nomina'
-                    )
-                    if aplicado_saldos > 0:
-                        observaciones_extra.append(f'Aplico ${aplicado_saldos:,.0f} a saldos anteriores cargados.')
-                    saldos_aplicados = True
                 if existe:
-                    if fecha_pago and not existe.fecha_pago:
-                        existe.fecha_pago = fecha_pago
-                    if medio_pago_id and not existe.medio_pago_id:
-                        existe.medio_pago_id = medio_pago_id
-                    if observaciones_extra:
-                        observacion_nueva = ' | '.join(observaciones_extra)
-                        if existe.observaciones:
-                            if observacion_nueva not in existe.observaciones:
-                                existe.observaciones = f'{existe.observaciones} | {observacion_nueva}'
-                        else:
-                            existe.observaciones = observacion_nueva
+                    existe.valor = data['valor']
+                    for observacion in data['observaciones']:
+                        existe.observaciones = _append_observacion(existe.observaciones, observacion)
+                    count += 1
                 else:
-                    if excedente_saldos > 0 and not saldos_aplicados:
-                        aplicado_saldos = _aplicar_saldos_anteriores_manuales(
-                            empleado.id,
-                            excedente_saldos,
-                            fecha_pago=fecha_pago,
-                            medio_pago_id=medio_pago_id,
-                            descripcion='Aplicacion automatica desde registro de nomina'
-                        )
-                        if aplicado_saldos > 0:
-                            observaciones_extra.append(f'Aplico ${aplicado_saldos:,.0f} a saldos anteriores cargados.')
-                        saldos_aplicados = True
                     registro = RegistroNomina(
                         empleado_id=emp_id,
                         concepto_nomina_id=concepto_guardar_id,
@@ -1692,45 +1655,10 @@ def registrar_quincena():
                         mes=mes,
                         quincena=quincena,
                         valor=data['valor'],
-                        medio_pago_id=medio_pago_id,
-                        fecha_pago=fecha_pago,
-                        observaciones=' | '.join(data['observaciones'] + observaciones_extra) if (data['observaciones'] or observaciones_extra) else None
+                        observaciones=' | '.join(data['observaciones']) if data['observaciones'] else None
                     )
                     db.session.add(registro)
                     count += 1
-
-            if fecha_pago and total_periodo > 0:
-                registros_periodo_actualizados = RegistroNomina.query.filter_by(
-                    empleado_id=empleado.id,
-                    anio=anio,
-                    mes=mes,
-                    quincena=quincena
-                ).all()
-                desglose_periodo = _desglose_registros_periodo_nomina(
-                    empleado, anio, mes, quincena, registros=registros_periodo_actualizados
-                )
-                if desglose_periodo['conflicto_base']:
-                    nota_conflicto = _nota_pago_periodo_nomina(
-                        total_periodo, fecha_pago, medio_pago=MedioPago.query.get(medio_pago_id) if medio_pago_id else None
-                    )
-                    for registro_base in desglose_periodo['registros_base']:
-                        if not registro_base.fecha_pago:
-                            registro_base.fecha_pago = fecha_pago
-                        if medio_pago_id and not registro_base.medio_pago_id:
-                            registro_base.medio_pago_id = medio_pago_id
-                        registro_base.observaciones = _append_observacion(registro_base.observaciones, nota_conflicto)
-
-            if fecha_pago and total_periodo > 0:
-                _registrar_abono_nomina(
-                    empleado_id=empleado.id,
-                    anio=anio,
-                    mes=mes,
-                    quincena=quincena,
-                    valor_abono=total_periodo,
-                    fecha_pago=fecha_pago,
-                    medio_pago_id=medio_pago_id,
-                    descripcion='Pago registrado desde liquidacion de nomina'
-                )
 
         db.session.commit()
         flash(f'{count} registros de nómina guardados.', 'success')
@@ -1772,7 +1700,6 @@ def registrar_quincena():
         flash('Ese empleado ya tiene la quincena completamente pagada y por eso no aparece en Causar.', 'info')
         return redirect(url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena))
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
-    medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
     draft = session.get(_preliquidacion_session_key(anio, mes, quincena), {})
     draft_rows = draft.get('rows', {}) if draft else {}
     valores_periodo = {
@@ -1786,7 +1713,7 @@ def registrar_quincena():
 
     return render_template('nomina/registrar_quincena_v2.html',
                            empleados=empleados, conceptos=conceptos,
-                           medios=medios, anio=anio, mes=mes,
+                           anio=anio, mes=mes,
                            quincena=quincena, meses=MESES,
                            empleado_id_filtro=empleado_id_filtro,
                            empleado_seleccionado=empleado_seleccionado,

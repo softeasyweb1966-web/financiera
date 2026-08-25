@@ -6,6 +6,11 @@
     .liquidacion-card { border: 1px solid #dbeafe; box-shadow: 0 10px 24px rgba(37, 99, 235, 0.06); }
     .alert-preliq { border: 1px solid #fde68a; background: #fffbeb; }
     .label-mini { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; }
+    .novedad-row { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+    .summary-chip { border-radius: 999px; padding: 0.2rem 0.65rem; font-size: 0.78rem; }
+    .summary-chip-dev { background: #dcfce7; color: #166534; }
+    .summary-chip-ded { background: #fee2e2; color: #b91c1c; }
+    .summary-chip-net { background: #e0f2fe; color: #1d4ed8; }
     @media (max-width: 767px) {
         .liquidacion-actions .btn { flex: 1 1 calc(50% - 0.5rem); }
     }
@@ -15,9 +20,9 @@
     <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
         <div>
             <h5 class="fw-bold mb-1"><i class="bi bi-journal-check text-primary"></i> Causar Nomina - {{ meses[mes-1] }} {{ anio }} - Quincena {{ quincena }}</h5>
-            <small class="text-muted">Causacion del periodo. Puede venir cargada desde la preliquidacion o generarse directamente.</small>
+            <small class="text-muted">Esta pantalla solo causa la nomina del periodo. El pago se registra despues desde <strong>Pagar</strong>.</small>
             {% if empleado_seleccionado %}
-            <div><small class="text-primary fw-semibold">Pago individual: {{ empleado_seleccionado.nombre }}</small></div>
+            <div><small class="text-primary fw-semibold">Causacion individual: {{ empleado_seleccionado.nombre }}</small></div>
             {% endif %}
         </div>
         <div class="d-flex gap-2 flex-wrap liquidacion-actions">
@@ -29,17 +34,17 @@
     </div>
 
     <div class="alert alert-info py-2 mb-3">
-        La nomina operativa inicia desde <strong>agosto {{ nomina_inicio_anio }}</strong>. Los saldos de quincenas anteriores se cargan por separado.
+        La nomina operativa inicia desde <strong>agosto {{ nomina_inicio_anio }}</strong>. Los saldos de quincenas anteriores se siguen manejando por separado.
     </div>
 
     {% if preliquidacion_rows %}
     <div class="alert alert-preliq mb-3">
         <div class="fw-semibold mb-1"><i class="bi bi-check-circle text-warning"></i> Preliquidacion aplicada</div>
-        <small class="text-muted">Los valores e inclusiones de esta pantalla se cargaron desde la preliquidacion del mismo periodo.</small>
+        <small class="text-muted">Los valores, inclusiones y novedades de esta pantalla se cargaron desde la preliquidacion del mismo periodo, pero aqui tambien puede ajustarlos antes de causar.</small>
     </div>
     {% endif %}
 
-    <form method="POST">
+    <form method="POST" id="causacion-form">
         <input type="hidden" name="anio" value="{{ anio }}">
         <input type="hidden" name="mes" value="{{ mes }}">
         <input type="hidden" name="quincena" value="{{ quincena }}">
@@ -48,17 +53,6 @@
         {% endif %}
 
         <div class="row mb-3 g-3">
-            <div class="col-12 col-md-4">
-                <label class="form-label">Fecha de pago</label>
-                <input type="date" name="fecha_pago" class="form-control form-control-sm">
-            </div>
-            <div class="col-12 col-md-4">
-                <label class="form-label">Medio de pago</label>
-                <select name="medio_pago_id" class="form-select form-select-sm">
-                    <option value="">--</option>
-                    {% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}
-                </select>
-            </div>
             <div class="col-6 col-md-2">
                 <label class="form-label">Mes</label>
                 <select class="form-select form-select-sm" onchange="location.href='?anio={{ anio }}&mes='+this.value+'&quincena={{ quincena }}{% if empleado_id_filtro %}&empleado_id={{ empleado_id_filtro }}{% endif %}'">
@@ -74,6 +68,12 @@
                     <option value="2" {{ 'selected' if quincena == 2 else '' }}>Quincena 2</option>
                 </select>
             </div>
+            <div class="col-12 col-md-8">
+                <div class="card h-100 p-3" style="background:#eff6ff; border:1px solid #bfdbfe;">
+                    <div class="label-mini">Flujo operativo</div>
+                    <div class="small text-muted">1. Defina valor base y novedades en <strong>Causar</strong>. 2. Registre fecha, medio y abono solo en <strong>Pagar</strong>.</div>
+                </div>
+            </div>
         </div>
 
         <div class="d-flex justify-content-end gap-2 mb-2">
@@ -86,8 +86,9 @@
                 <thead class="table-light">
                     <tr>
                         <th>Empleado</th>
-                        <th>Concepto</th>
-                        <th>Valor</th>
+                        <th>Concepto base</th>
+                        <th>Valor base</th>
+                        <th style="min-width:360px;">Novedades del periodo</th>
                         <th>Incluir</th>
                     </tr>
                 </thead>
@@ -95,32 +96,19 @@
                     {% for e in empleados %}
                     {% set row = preliquidacion_rows.get(e.id|string, {}) if preliquidacion_rows else {} %}
                     {% set default_val = row.get('valor_preliquidado') if row else valores_periodo.get(e.id, '') %}
-                    <tr>
+                    {% set total_novedades = row.get('total_novedades', 0) if row else 0 %}
+                    <tr class="causacion-row" data-empleado-id="{{ e.id }}">
                         <td class="fw-semibold">
                             {{ e.nombre }}
                             <br>
                             <small class="text-muted">
-                                {{ e.cargo or '' }} - ${{ "{:,.0f}".format(e.salario_base) if e.salario_base else '0' }}
+                                {{ e.cargo or 'Sin cargo' }} - ${{ "{:,.0f}".format(e.salario_base) if e.salario_base else '0' }}
                                 {% if row %}
                                 - {{ formas_pago_labels.get(row.get('forma_pago_aplicada'), row.get('forma_pago_aplicada', 'quincenal')|title) }}
                                 {% endif %}
                             </small>
                             {% if row and row.get('pendiente_anterior', 0) > 0 %}
-                            <br><small class="text-danger">Pendiente anterior: ${{ "{:,.0f}".format(row.get('pendiente_anterior', 0)) }}</small>
-                            {% endif %}
-                            {% if row and row.get('novedades') %}
-                            <div class="mt-1 d-flex flex-wrap gap-1">
-                                {% for novedad in row.get('novedades', []) %}
-                                <span class="badge {{ 'bg-danger-subtle text-danger border border-danger-subtle' if novedad.tipo == 'deduccion' else 'bg-success-subtle text-success border border-success-subtle' }}">
-                                    {{ novedad.concepto_nombre }}: {{ '-' if novedad.tipo == 'deduccion' else '+' }}${{ "{:,.0f}".format(novedad.valor) }}
-                                </span>
-                                {% endfor %}
-                            </div>
-                            <small class="text-muted d-block mt-1">
-                                Devengados: ${{ "{:,.0f}".format(row.get('total_devengados', 0)) }}
-                                - Deducciones: ${{ "{:,.0f}".format(row.get('total_deducciones', 0)) }}
-                                - Neto novedades: ${{ "{:,.0f}".format(row.get('total_novedades', 0)) }}
-                            </small>
+                            <br><small class="text-danger">Pendiente anterior: ${{ "{:,.0f}".format(row.get('pendiente_anterior', 0)) }}. Se paga por separado.</small>
                             {% endif %}
                         </td>
                         <td>
@@ -131,8 +119,36 @@
                             </select>
                         </td>
                         <td>
-                            <input type="text" name="valor_{{ e.id }}" class="form-control form-control-sm js-money"
-                                   value="{{ default_val }}" style="max-width:140px">
+                            <input type="text" id="valor_{{ e.id }}" name="valor_{{ e.id }}" class="form-control form-control-sm js-money valor-causado" value="{{ default_val }}" style="max-width:160px">
+                            <small class="text-muted d-block mt-1">Valor base del periodo</small>
+                        </td>
+                        <td>
+                            <input type="hidden" name="novedades_{{ e.id }}" class="novedades-json" value='{{ row.get("novedades", [])|tojson if row else "[]" }}'>
+                            <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+                                <small class="text-muted">Devengados, descuentos, recargos, bonificaciones y otras novedades temporales.</small>
+                                <button type="button" class="btn btn-outline-warning btn-sm add-novedad" data-empleado-id="{{ e.id }}">
+                                    <i class="bi bi-plus-lg"></i> Agregar novedad
+                                </button>
+                            </div>
+
+                            {% if row and row.get('novedades') %}
+                            <div class="d-flex flex-wrap gap-1 mb-2">
+                                {% for novedad in row.get('novedades', []) %}
+                                <span class="badge {{ 'bg-danger-subtle text-danger border border-danger-subtle' if novedad.tipo == 'deduccion' else 'bg-success-subtle text-success border border-success-subtle' }}">
+                                    {{ novedad.concepto_nombre }}: {{ '-' if novedad.tipo == 'deduccion' else '+' }}${{ "{:,.0f}".format(novedad.valor) }}
+                                </span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+
+                            <div class="novedades-list" id="novedades-list-{{ e.id }}"></div>
+
+                            <div class="d-flex flex-wrap gap-2 mt-2">
+                                <span class="summary-chip summary-chip-dev">Devengados: <strong id="devengados-{{ e.id }}">${{ "{:,.0f}".format(row.get('total_devengados', 0) if row else 0) }}</strong></span>
+                                <span class="summary-chip summary-chip-ded">Deducciones: <strong id="deducciones-{{ e.id }}">${{ "{:,.0f}".format(row.get('total_deducciones', 0) if row else 0) }}</strong></span>
+                                <span class="summary-chip summary-chip-net">Neto novedades: <strong id="neto-novedades-{{ e.id }}">${{ "{:,.0f}".format(total_novedades) }}</strong></span>
+                            </div>
+                            <small class="text-primary fw-semibold d-block mt-2">Total a causar: <span id="total-{{ e.id }}">${{ "{:,.0f}".format((default_val or 0)|float + total_novedades|float) }}</span></small>
                         </td>
                         <td class="text-center">
                             <input type="checkbox" name="empleado_ids" value="{{ e.id }}" class="form-check-input" {{ 'checked' if row.get('incluir', True) else '' }}>
@@ -143,7 +159,13 @@
             </table>
         </div>
 
-        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Guardar causacion</button>
+        {% if not empleados %}
+        <div class="alert alert-warning mb-3">
+            No hay empleados pendientes por causar en este periodo.
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary" {{ 'disabled' if not empleados else '' }}><i class="bi bi-check-lg"></i> Guardar causacion</button>
     </form>
 </div>
 
@@ -153,5 +175,158 @@ function toggleSeleccionNomina(seleccionar) {
         checkbox.checked = seleccionar;
     });
 }
+
+document.addEventListener('DOMContentLoaded', function () {
+    const conceptosData = {
+        {% for c in conceptos %}
+        "{{ c.id }}": { nombre: {{ c.nombre|tojson }}, tipo: {{ (c.tipo or 'otro')|tojson }} }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    };
+
+    function formatear(valor) {
+        return '$' + Number(valor || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+    }
+
+    function buildConceptOptions(selectedId) {
+        return Object.keys(conceptosData).map(function(id) {
+            const item = conceptosData[id];
+            const selected = String(selectedId || '') === String(id) ? 'selected' : '';
+            return `<option value="${id}" data-tipo="${item.tipo}" ${selected}>${item.nombre} (${item.tipo.slice(0, 3)})</option>`;
+        }).join('');
+    }
+
+    function createRowHtml(item) {
+        const conceptId = item && item.concepto_id ? item.concepto_id : '';
+        const valor = item && item.valor ? item.valor : '';
+        const justificacion = item && item.justificacion ? item.justificacion : '';
+        return `
+            <div class="novedad-row p-2 mb-2">
+                <div class="row g-2">
+                    <div class="col-12 col-lg-4">
+                        <label class="form-label small mb-1">Concepto</label>
+                        <select class="form-select form-select-sm novedad-concepto" required>
+                            <option value="">Seleccione</option>
+                            ${buildConceptOptions(conceptId)}
+                        </select>
+                    </div>
+                    <div class="col-12 col-lg-3">
+                        <label class="form-label small mb-1">Valor</label>
+                        <input type="text" class="form-control form-control-sm novedad-valor js-money" value="${valor}" required>
+                    </div>
+                    <div class="col-12 col-lg-4">
+                        <label class="form-label small mb-1">Justificacion</label>
+                        <input type="text" class="form-control form-control-sm novedad-justificacion" value="${justificacion.replace(/"/g, '&quot;')}" placeholder="Ej. horas extras, descuento por dia..." required>
+                    </div>
+                    <div class="col-12 col-lg-1 d-flex align-items-end">
+                        <button type="button" class="btn btn-outline-danger btn-sm w-100 remove-novedad"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function collectRows(rowEl) {
+        return Array.from(rowEl.querySelectorAll('.novedad-row')).map(function(row) {
+            const select = row.querySelector('.novedad-concepto');
+            const valor = window.FinancieraMoney.parse(row.querySelector('.novedad-valor').value) || 0;
+            const justificacion = row.querySelector('.novedad-justificacion').value.trim();
+            const conceptoId = select.value;
+            const conceptoData = conceptosData[conceptoId];
+            if (!conceptoId || !valor || !justificacion || !conceptoData) {
+                return null;
+            }
+            return {
+                concepto_id: Number(conceptoId),
+                concepto_nombre: conceptoData.nombre,
+                tipo: conceptoData.tipo,
+                valor: valor,
+                justificacion: justificacion
+            };
+        }).filter(Boolean);
+    }
+
+    function refreshRow(rowEl) {
+        const empleadoId = rowEl.dataset.empleadoId;
+        const hidden = rowEl.querySelector('.novedades-json');
+        const rows = collectRows(rowEl);
+        hidden.value = JSON.stringify(rows);
+
+        let totalDev = 0;
+        let totalDed = 0;
+        rows.forEach(function(item) {
+            if (item.tipo === 'deduccion') {
+                totalDed += Number(item.valor || 0);
+            } else {
+                totalDev += Number(item.valor || 0);
+            }
+        });
+
+        const neto = totalDev - totalDed;
+        const base = window.FinancieraMoney.parse(document.getElementById('valor_' + empleadoId).value) || 0;
+
+        document.getElementById('devengados-' + empleadoId).textContent = formatear(totalDev);
+        document.getElementById('deducciones-' + empleadoId).textContent = formatear(totalDed);
+        document.getElementById('neto-novedades-' + empleadoId).textContent = formatear(neto);
+        document.getElementById('total-' + empleadoId).textContent = formatear(base + neto);
+    }
+
+    function mountEvents(rowEl) {
+        rowEl.addEventListener('click', function(event) {
+            if (event.target.closest('.remove-novedad')) {
+                event.preventDefault();
+                event.target.closest('.novedad-row').remove();
+                refreshRow(rowEl);
+            }
+            if (event.target.closest('.add-novedad')) {
+                event.preventDefault();
+                const empleadoId = event.target.closest('.add-novedad').dataset.empleadoId;
+                const container = document.getElementById('novedades-list-' + empleadoId);
+                container.insertAdjacentHTML('beforeend', createRowHtml());
+                if (window.FinancieraMoney) {
+                    window.FinancieraMoney.init(container);
+                }
+            }
+        });
+
+        rowEl.addEventListener('change', function(event) {
+            if (event.target.classList.contains('valor-causado') || event.target.closest('.novedad-row')) {
+                refreshRow(rowEl);
+            }
+        });
+
+        rowEl.addEventListener('input', function(event) {
+            if (event.target.classList.contains('valor-causado') || event.target.closest('.novedad-row')) {
+                refreshRow(rowEl);
+            }
+        });
+    }
+
+    document.querySelectorAll('.causacion-row').forEach(function(rowEl) {
+        const empleadoId = rowEl.dataset.empleadoId;
+        const hidden = rowEl.querySelector('.novedades-json');
+        const container = document.getElementById('novedades-list-' + empleadoId);
+        let rows = [];
+
+        try {
+            rows = JSON.parse(hidden.value || '[]');
+        } catch (error) {
+            rows = [];
+        }
+
+        rows.forEach(function(item) {
+            container.insertAdjacentHTML('beforeend', createRowHtml(item));
+        });
+
+        if (window.FinancieraMoney) {
+            window.FinancieraMoney.init(container);
+        }
+        mountEvents(rowEl);
+        refreshRow(rowEl);
+    });
+
+    document.getElementById('causacion-form').addEventListener('submit', function() {
+        document.querySelectorAll('.causacion-row').forEach(refreshRow);
+    });
+});
 </script>
 {% endblock %}
