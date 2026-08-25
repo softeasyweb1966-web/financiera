@@ -95,6 +95,27 @@ def _normalizar_forma_pago_nomina(forma_pago):
     return equivalencias.get(forma, forma or 'quincenal')
 
 
+def _normalizar_tipo_contrato_nomina(tipo_contrato):
+    tipo = (tipo_contrato or '')
+    if not isinstance(tipo, str):
+        tipo = str(tipo)
+    return tipo.strip().lower().replace(' ', '_').replace('-', '_')
+
+
+def _nombre_concepto_nomina(concepto):
+    return ((concepto.nombre if concepto else '') or '').strip().lower()
+
+
+def _es_concepto_base_nomina(concepto):
+    return _nombre_concepto_nomina(concepto) in ('salario', 'honorarios')
+
+
+def _concepto_base_preferido_nombre(empleado):
+    if _normalizar_tipo_contrato_nomina(getattr(empleado, 'tipo_contrato', None)) == 'prestacion_servicios':
+        return 'honorarios'
+    return 'salario'
+
+
 def _ordenar_empleados_catalogo(empleados):
     prioridad_estado = {
         'activo': 0,
@@ -346,9 +367,14 @@ def _items_pago_historico_empleado(empleado, periodo_limite_clave=None):
         registros_periodo = registros_por_periodo.get((anio, mes, quincena), [])
         saldo_periodo = saldos_por_periodo.get((anio, mes, quincena))
         abonos_periodo = abonos_por_periodo.get((anio, mes, quincena), [])
-        total_causado = sum(float(r.valor or 0) for r in registros_periodo)
+        desglose = _desglose_registros_periodo_nomina(
+            empleado, anio, mes, quincena, registros=registros_periodo
+        )
+        total_causado = float(desglose['total_causado'] or 0)
         total_abonado = sum(float(a.valor_abono or 0) for a in abonos_periodo)
-        if not total_abonado and registros_periodo and all(r.fecha_pago for r in registros_periodo):
+        if not total_abonado and desglose['registros'] and desglose['base_pagada'] and all(
+            r.fecha_pago for r in desglose['otros_registros']
+        ):
             total_abonado = total_causado
         valor_deuda = 0
         valor_abonado = 0
@@ -436,7 +462,117 @@ def _valor_periodo_empleado(empleado, anio, mes, quincena, forma_pago=None):
     return salario / 2
 
 
+def _concepto_base_predeterminado_empleado(empleado, conceptos):
+    preferido = _concepto_base_preferido_nombre(empleado)
+    conceptos = conceptos or []
+
+    for concepto in conceptos:
+        if _nombre_concepto_nomina(concepto) == preferido:
+            return concepto
+    for nombre in ('honorarios', 'salario'):
+        for concepto in conceptos:
+            if _nombre_concepto_nomina(concepto) == nombre:
+                return concepto
+    for concepto in conceptos:
+        if (concepto.tipo or '').strip().lower() != 'deduccion':
+            return concepto
+    return conceptos[0] if conceptos else None
+
+
+def _concepto_principal_periodo_nomina(empleado, anio, mes, quincena, conceptos, registros=None):
+    if registros is None:
+        registros = RegistroNomina.query.filter_by(
+            empleado_id=empleado.id,
+            anio=anio,
+            mes=mes,
+            quincena=quincena
+        ).order_by(RegistroNomina.id).all()
+
+    preferido = _concepto_base_preferido_nombre(empleado)
+    registros_devengados = [
+        registro for registro in (registros or [])
+        if registro.concepto_nomina and (registro.concepto_nomina.tipo or '').strip().lower() != 'deduccion'
+    ]
+
+    for registro in registros_devengados:
+        if _nombre_concepto_nomina(registro.concepto_nomina) == preferido:
+            return registro.concepto_nomina
+    for registro in registros_devengados:
+        if _es_concepto_base_nomina(registro.concepto_nomina):
+            return registro.concepto_nomina
+    for registro in registros_devengados:
+        if float(registro.valor or 0) > 0:
+            return registro.concepto_nomina
+    return _concepto_base_predeterminado_empleado(empleado, conceptos)
+
+
+def _desglose_registros_periodo_nomina(empleado, anio, mes, quincena, registros=None):
+    if registros is None:
+        registros = RegistroNomina.query.filter_by(
+            empleado_id=empleado.id,
+            anio=anio,
+            mes=mes,
+            quincena=quincena
+        ).order_by(RegistroNomina.id).all()
+
+    registros = list(registros or [])
+    registros_base = [registro for registro in registros if _es_concepto_base_nomina(registro.concepto_nomina)]
+    nombres_base = {_nombre_concepto_nomina(registro.concepto_nomina) for registro in registros_base}
+    conflicto_base = len(nombres_base) > 1
+    preferido = _concepto_base_preferido_nombre(empleado)
+    principal = next(
+        (registro for registro in registros_base if _nombre_concepto_nomina(registro.concepto_nomina) == preferido),
+        registros_base[0] if registros_base else None
+    )
+    valor_base_efectivo = float(principal.valor or 0) if principal else 0
+    if conflicto_base and principal:
+        valor_base_efectivo = _valor_periodo_empleado(empleado, anio, mes, quincena) or valor_base_efectivo
+
+    registros_visibles = []
+    conceptos_visibles = []
+    otros_registros = []
+    for registro in registros:
+        if _es_concepto_base_nomina(registro.concepto_nomina):
+            if not principal or registro.id != principal.id:
+                continue
+            valor_visible = valor_base_efectivo
+        else:
+            valor_visible = float(registro.valor or 0)
+            otros_registros.append(registro)
+
+        registros_visibles.append(registro)
+        conceptos_visibles.append({
+            'nombre': registro.concepto_nomina.nombre if registro.concepto_nomina else 'Concepto',
+            'valor': valor_visible,
+            'valor_mostrar': abs(valor_visible),
+            'tipo': registro.concepto_nomina.tipo if registro.concepto_nomina else 'otro',
+        })
+
+    total_otros = sum(float(registro.valor or 0) for registro in otros_registros)
+    total_causado = (valor_base_efectivo + total_otros) if principal else total_otros
+
+    return {
+        'registros': registros_visibles,
+        'registros_base': registros_base,
+        'otros_registros': otros_registros,
+        'registro_base_principal': principal,
+        'conceptos': conceptos_visibles,
+        'conflicto_base': conflicto_base,
+        'base_pagada': any(registro.fecha_pago for registro in registros_base) if registros_base else True,
+        'total_causado': total_causado,
+    }
+
+
+def _normalizar_conceptos_base_periodo_nomina(anio, mes, quincena, empleado_id=None):
+    return 0
+
+
+def _normalizar_conceptos_base_historial_empleado(empleado, anio):
+    return 0
+
+
 def _resumen_pago_periodo_nomina(empleado_id, anio, mes, quincena, registros=None, abonos=None):
+    empleado = Empleado.query.get(empleado_id)
     if registros is None:
         registros = RegistroNomina.query.filter_by(
             empleado_id=empleado_id,
@@ -452,19 +588,30 @@ def _resumen_pago_periodo_nomina(empleado_id, anio, mes, quincena, registros=Non
             quincena=quincena
         ).all()
 
-    total_registrado = sum(float(r.valor or 0) for r in registros)
+    if empleado:
+        desglose = _desglose_registros_periodo_nomina(empleado, anio, mes, quincena, registros=registros)
+        registros_resueltos = desglose['registros']
+        total_registrado = float(desglose['total_causado'] or 0)
+        base_pagada = desglose['base_pagada']
+        otros_pagados = all(r.fecha_pago for r in desglose['otros_registros'])
+    else:
+        registros_resueltos = registros
+        total_registrado = sum(float(r.valor or 0) for r in registros)
+        base_pagada = all(r.fecha_pago for r in registros) if registros else True
+        otros_pagados = True
+
     total_pagado = sum(float(a.valor_abono or 0) for a in abonos)
-    if total_pagado <= 0 and registros and all(r.fecha_pago for r in registros):
+    if total_pagado <= 0 and registros_resueltos and base_pagada and otros_pagados:
         total_pagado = total_registrado
 
     esta_pagado = total_registrado > 0 and total_pagado + 1 >= total_registrado
     return {
-        'registros': registros,
+        'registros': registros_resueltos,
         'abonos': abonos,
         'total_registrado': total_registrado,
         'total_pagado': total_pagado,
         'saldo': max(total_registrado - total_pagado, 0),
-        'tiene_registro': bool(registros),
+        'tiene_registro': bool(registros_resueltos),
         'esta_pagado': esta_pagado,
     }
 
@@ -948,8 +1095,12 @@ def pagos(anio=None, mes=None, quincena=None):
         quincena = 1 if date.today().day <= 15 else 2
     anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
     meses_habilitados = _meses_habilitados_nomina(anio)
+    normalizados = _normalizar_conceptos_base_periodo_nomina(anio, mes, quincena)
+    if normalizados:
+        db.session.commit()
 
     empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo, Empleado.id).all()
+    empleados_dict = {empleado.id: empleado for empleado in empleados}
     empleados_periodo = _empleados_nomina_periodo(anio, mes, quincena)
     empleados_periodo_ids = {e.id for e in empleados_periodo}
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
@@ -992,11 +1143,22 @@ def pagos(anio=None, mes=None, quincena=None):
         if empleado_id is None:
             continue
         registros_periodo = registros_anio_por_periodo.get((empleado_id, mes_pago, quincena_pago), [])
-        total_causado_periodo = sum(float(r.valor or 0) for r in registros_periodo)
+        empleado_periodo = empleados_dict.get(empleado_id) or Empleado.query.get(empleado_id)
+        if empleado_periodo:
+            desglose_periodo = _desglose_registros_periodo_nomina(
+                empleado_periodo, anio, mes_pago, quincena_pago, registros=registros_periodo
+            )
+            total_causado_periodo = float(desglose_periodo['total_causado'] or 0)
+            base_pagada = desglose_periodo['base_pagada']
+            otros_pagados = all(r.fecha_pago for r in desglose_periodo['otros_registros'])
+        else:
+            total_causado_periodo = sum(float(r.valor or 0) for r in registros_periodo)
+            base_pagada = all(r.fecha_pago for r in registros_periodo) if registros_periodo else True
+            otros_pagados = True
         total_abonado_periodo = float(abonos_anio_por_periodo.get((empleado_id, mes_pago, quincena_pago), 0) or 0)
         if total_abonado_periodo > 0:
             pagado_periodo = min(total_abonado_periodo, total_causado_periodo) if total_causado_periodo > 0 else total_abonado_periodo
-        elif registros_periodo and all(r.fecha_pago for r in registros_periodo):
+        elif registros_periodo and base_pagada and otros_pagados:
             pagado_periodo = total_causado_periodo
         else:
             pagado_periodo = 0
@@ -1035,39 +1197,42 @@ def pagos(anio=None, mes=None, quincena=None):
 
     # Resumen por concepto de nómina
     resumen_conceptos = {}
-    for r in registros_quincena:
-        concepto_nombre = r.concepto_nomina.nombre if r.concepto_nomina else 'Sin concepto'
-        tipo = r.concepto_nomina.tipo if r.concepto_nomina else 'otro'
-        if concepto_nombre not in resumen_conceptos:
-            resumen_conceptos[concepto_nombre] = {
-                'nombre': concepto_nombre,
-                'tipo': tipo,
-                'color': '#10b981' if tipo == 'devengado' else '#ef4444',
-                'total': 0,
-                'cantidad': 0
-            }
-        resumen_conceptos[concepto_nombre]['total'] += float(r.valor)
-        resumen_conceptos[concepto_nombre]['cantidad'] += 1
-
-    resumen_grupos = list(resumen_conceptos.values())
 
     # Tarjetas por empleado
     empleados_mes = []
     for e in empleados_periodo:
         registros_emp = registros_por_empleado.get(e.id, [])
-        total_registrado = sum(float(r.valor) for r in registros_emp)
+        desglose = _desglose_registros_periodo_nomina(e, anio, mes, quincena, registros=registros_emp)
+        registros_visibles = desglose['registros']
+        total_registrado = float(desglose['total_causado'] or 0)
         total_pagado = float(abonos_anio_por_periodo.get((e.id, mes, quincena), 0) or 0)
-        if total_pagado <= 0 and registros_emp and all(r.fecha_pago for r in registros_emp):
+        if total_pagado <= 0 and registros_visibles and desglose['base_pagada'] and all(
+            r.fecha_pago for r in desglose['otros_registros']
+        ):
             total_pagado = total_registrado
-        tiene_registro = len(registros_emp) > 0
+        tiene_registro = len(registros_visibles) > 0
         esta_pagado = total_registrado > 0 and total_pagado + 1 >= total_registrado
         aplica_periodo = _empleado_aplica_periodo(e, anio, mes, quincena)
         valor_quincena = _valor_periodo_empleado(e, anio, mes, quincena)
         tiene_saldos_historicos = bool(_items_pago_historico_empleado(e, periodo_actual_clave))
 
+        for concepto in desglose['conceptos']:
+            concepto_nombre = concepto['nombre']
+            tipo = concepto['tipo']
+            if concepto_nombre not in resumen_conceptos:
+                resumen_conceptos[concepto_nombre] = {
+                    'nombre': concepto_nombre,
+                    'tipo': tipo,
+                    'color': '#10b981' if tipo == 'devengado' else '#ef4444',
+                    'total': 0,
+                    'cantidad': 0
+                }
+            resumen_conceptos[concepto_nombre]['total'] += float(concepto['valor'] or 0)
+            resumen_conceptos[concepto_nombre]['cantidad'] += 1
+
         empleados_mes.append({
             'empleado': e,
-            'registros': registros_emp,
+            'registros': registros_visibles,
             'total_registrado': total_registrado,
             'total_pagado': total_pagado,
             'tiene_pago': esta_pagado,
@@ -1077,6 +1242,8 @@ def pagos(anio=None, mes=None, quincena=None):
             'tiene_saldos_historicos': tiene_saldos_historicos,
             'estado': 'pagado' if esta_pagado else 'causado' if tiene_registro else 'pendiente' if aplica_periodo else 'no_aplica',
         })
+
+    resumen_grupos = list(resumen_conceptos.values())
 
     empleados_pagados_count = sum(1 for item in empleados_mes if item['tiene_pago'])
     empleados_pendientes_count = sum(1 for item in empleados_mes if item['estado'] in ('pendiente', 'causado'))
@@ -1121,6 +1288,9 @@ def detalle(id):
     anio = request.args.get('anio', date.today().year, type=int)
     if anio < NOMINA_INICIO_ANIO:
         anio = NOMINA_INICIO_ANIO
+    normalizados = _normalizar_conceptos_base_historial_empleado(empleado, anio)
+    if normalizados:
+        db.session.commit()
     meses_habilitados = _meses_habilitados_nomina(anio)
     registros = RegistroNomina.query.filter_by(empleado_id=id, anio=anio).order_by(
         RegistroNomina.mes, RegistroNomina.quincena, RegistroNomina.created_at
@@ -1130,6 +1300,7 @@ def detalle(id):
     ).all()
     # Group by (mes, quincena)
     pagos_dict = {}
+    pagos_raw_dict = {}
     causaciones_dict = {}
     abonos_dict = {}
     abonos_totales = {}
@@ -1137,11 +1308,13 @@ def detalle(id):
     aplica_quincena = {}
     for r in registros:
         key = (r.mes, r.quincena)
-        if key not in pagos_dict:
-            pagos_dict[key] = []
-        pagos_dict[key].append(r)
+        pagos_raw_dict.setdefault(key, []).append(r)
         if key not in causaciones_dict and r.created_at:
             causaciones_dict[key] = r.created_at.date()
+    for key, items in pagos_raw_dict.items():
+        pagos_dict[key] = _desglose_registros_periodo_nomina(
+            empleado, anio, key[0], key[1], registros=items
+        )['registros']
     for abono in abonos:
         key = (abono.mes, abono.quincena)
         abonos_dict.setdefault(key, []).append(abono)
@@ -1150,14 +1323,17 @@ def detalle(id):
         for quincena_check in (1, 2):
             key = (mes, quincena_check)
             aplica_quincena[key] = _empleado_aplica_periodo(empleado, anio, mes, quincena_check)
-    for key, items in pagos_dict.items():
-        total_causado = sum(float(r.valor or 0) for r in items)
+    for key, items in pagos_raw_dict.items():
+        desglose = _desglose_registros_periodo_nomina(empleado, anio, key[0], key[1], registros=items)
+        total_causado = float(desglose['total_causado'] or 0)
         total_abonado = float(abonos_totales.get(key, 0) or 0)
-        if total_abonado <= 0 and items and all(r.fecha_pago for r in items):
+        if total_abonado <= 0 and desglose['registros'] and desglose['base_pagada'] and all(
+            r.fecha_pago for r in desglose['otros_registros']
+        ):
             total_abonado = total_causado
-        if items and total_causado > 0 and total_abonado + 1 >= total_causado:
+        if desglose['registros'] and total_causado > 0 and total_abonado + 1 >= total_causado:
             estados_quincena[key] = 'pagado'
-        elif items:
+        elif desglose['registros']:
             mes_key, quincena_key = key
             _, periodo_fin = _rango_periodo_nomina(anio, mes_key, quincena_key)
             estados_quincena[key] = 'vencido' if periodo_fin < date.today() else 'causado'
@@ -1372,11 +1548,19 @@ def registrar_quincena():
         mes = int(request.form['mes'])
         quincena = int(request.form['quincena'])
         anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
+        _normalizar_conceptos_base_periodo_nomina(anio, mes, quincena)
         medio_pago_id = request.form.get('medio_pago_id') or None
         fecha_pago = _date_or_none(request.form.get('fecha_pago'))
         draft_key = _preliquidacion_session_key(anio, mes, quincena)
         draft = session.get(draft_key, {})
         draft_rows = draft.get('rows', {}) if draft else {}
+        conceptos_activos = ConceptoNomina.query.filter_by(activo=True).order_by(
+            ConceptoNomina.tipo, ConceptoNomina.nombre
+        ).all()
+        conceptos_base_ids = {
+            concepto.id for concepto in conceptos_activos
+            if _es_concepto_base_nomina(concepto)
+        }
 
         empleados_ids = request.form.getlist('empleado_ids')
         count = 0
@@ -1388,11 +1572,25 @@ def registrar_quincena():
                 continue
             concepto_id = request.form.get(f'concepto_{emp_id}')
             valor = request.form.get(f'valor_{emp_id}')
+            registros_existentes = RegistroNomina.query.filter_by(
+                empleado_id=empleado.id,
+                anio=anio,
+                mes=mes,
+                quincena=quincena
+            ).order_by(RegistroNomina.id).all()
+            concepto_periodo = _concepto_principal_periodo_nomina(
+                empleado, anio, mes, quincena, conceptos_activos, registros=registros_existentes
+            )
+            if not concepto_id and concepto_periodo:
+                concepto_id = str(concepto_periodo.id)
+            concepto_id_int = int(concepto_id) if concepto_id else None
+            if concepto_id_int in conceptos_base_ids and concepto_periodo and _es_concepto_base_nomina(concepto_periodo):
+                concepto_id_int = concepto_periodo.id
             registros_a_guardar = {}
             observaciones_extra = []
 
-            if concepto_id and valor:
-                registros_a_guardar[int(concepto_id)] = {
+            if concepto_id_int and valor:
+                registros_a_guardar[concepto_id_int] = {
                     'valor': float(valor),
                     'observaciones': []
                 }
@@ -1496,6 +1694,27 @@ def registrar_quincena():
                     count += 1
 
             if fecha_pago and total_periodo > 0:
+                registros_periodo_actualizados = RegistroNomina.query.filter_by(
+                    empleado_id=empleado.id,
+                    anio=anio,
+                    mes=mes,
+                    quincena=quincena
+                ).all()
+                desglose_periodo = _desglose_registros_periodo_nomina(
+                    empleado, anio, mes, quincena, registros=registros_periodo_actualizados
+                )
+                if desglose_periodo['conflicto_base']:
+                    nota_conflicto = _nota_pago_periodo_nomina(
+                        total_periodo, fecha_pago, medio_pago=MedioPago.query.get(medio_pago_id) if medio_pago_id else None
+                    )
+                    for registro_base in desglose_periodo['registros_base']:
+                        if not registro_base.fecha_pago:
+                            registro_base.fecha_pago = fecha_pago
+                        if medio_pago_id and not registro_base.medio_pago_id:
+                            registro_base.medio_pago_id = medio_pago_id
+                        registro_base.observaciones = _append_observacion(registro_base.observaciones, nota_conflicto)
+
+            if fecha_pago and total_periodo > 0:
                 _registrar_abono_nomina(
                     empleado_id=empleado.id,
                     anio=anio,
@@ -1527,6 +1746,9 @@ def registrar_quincena():
     quincena = request.args.get('quincena', 1, type=int)
     empleado_id_filtro = request.args.get('empleado_id', type=int)
     anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
+    normalizados = _normalizar_conceptos_base_periodo_nomina(anio, mes, quincena, empleado_id=empleado_id_filtro)
+    if normalizados:
+        db.session.commit()
     empleado_seleccionado = None
     if empleado_id_filtro:
         empleado_seleccionado = Empleado.query.filter_by(activo=True, id=empleado_id_filtro).first_or_404()
@@ -1551,6 +1773,10 @@ def registrar_quincena():
         e.id: _valor_periodo_empleado(e, anio, mes, quincena)
         for e in empleados
     }
+    conceptos_sugeridos = {}
+    for empleado in empleados:
+        concepto_sugerido = _concepto_principal_periodo_nomina(empleado, anio, mes, quincena, conceptos)
+        conceptos_sugeridos[empleado.id] = concepto_sugerido.id if concepto_sugerido else None
 
     return render_template('nomina/registrar_quincena_v2.html',
                            empleados=empleados, conceptos=conceptos,
@@ -1560,6 +1786,7 @@ def registrar_quincena():
                            empleado_seleccionado=empleado_seleccionado,
                            formas_pago_labels=FORMAS_PAGO_LABELS,
                            valores_periodo=valores_periodo,
+                           conceptos_sugeridos=conceptos_sugeridos,
                            preliquidacion_rows=draft_rows,
                            meses_habilitados=_meses_habilitados_nomina(anio),
                            nomina_inicio_anio=NOMINA_INICIO_ANIO,
@@ -1574,6 +1801,7 @@ def pagar_quincena():
         quincena = int(request.form['quincena'])
         anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
         empleado_id_filtro = request.form.get('empleado_id_filtro', type=int)
+        _normalizar_conceptos_base_periodo_nomina(anio, mes, quincena, empleado_id=empleado_id_filtro)
         fecha_pago = _date_or_none(request.form.get('fecha_pago'))
         medio_pago_id = request.form.get('medio_pago_id') or None
         observaciones = (request.form.get('observaciones') or '').strip()
@@ -1603,14 +1831,17 @@ def pagar_quincena():
             if not registros:
                 continue
 
-            total_causado = sum(float(r.valor or 0) for r in registros)
+            desglose = _desglose_registros_periodo_nomina(empleado, anio, mes, quincena, registros=registros)
+            total_causado = float(desglose['total_causado'] or 0)
             total_abonado = sum(
                 float(a.valor_abono or 0)
                 for a in AbonoNomina.query.filter_by(
                     empleado_id=empleado.id, anio=anio, mes=mes, quincena=quincena
                 ).all()
             )
-            if total_abonado <= 0 and registros and all(r.fecha_pago for r in registros):
+            if total_abonado <= 0 and desglose['registros'] and desglose['base_pagada'] and all(
+                r.fecha_pago for r in desglose['otros_registros']
+            ):
                 total_abonado = total_causado
             saldo_pendiente = max(total_causado - total_abonado, 0)
             if saldo_pendiente <= 0:
@@ -1675,6 +1906,9 @@ def pagar_quincena():
     empleado_id_filtro = request.args.get('empleado_id', type=int)
     anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
     meses_habilitados = _meses_habilitados_nomina(anio)
+    normalizados = _normalizar_conceptos_base_periodo_nomina(anio, mes, quincena, empleado_id=empleado_id_filtro)
+    if normalizados:
+        db.session.commit()
 
     empleado_seleccionado = None
     if empleado_id_filtro:
@@ -1707,31 +1941,28 @@ def pagar_quincena():
         registros = registros_por_empleado.get(empleado.id, [])
         if not registros:
             continue
-        causado = sum(float(r.valor or 0) for r in registros)
+        desglose = _desglose_registros_periodo_nomina(empleado, anio, mes, quincena, registros=registros)
+        registros_visibles = desglose['registros']
+        causado = float(desglose['total_causado'] or 0)
         abonado = float(abonos_por_empleado.get(empleado.id, 0) or 0)
-        if abonado <= 0 and registros and all(r.fecha_pago for r in registros):
+        if abonado <= 0 and registros_visibles and desglose['base_pagada'] and all(
+            r.fecha_pago for r in desglose['otros_registros']
+        ):
             abonado = causado
         saldo = max(causado - abonado, 0)
-        conceptos = []
-        for registro in registros:
-            conceptos.append({
-                'nombre': registro.concepto_nomina.nombre if registro.concepto_nomina else 'Concepto',
-                'valor': float(registro.valor or 0),
-                'valor_mostrar': abs(float(registro.valor or 0)),
-                'tipo': registro.concepto_nomina.tipo if registro.concepto_nomina else 'otro',
-            })
+        conceptos = desglose['conceptos']
         total_causado += causado
         total_abonado += abonado
         total_saldo += saldo
         rows.append({
             'empleado': empleado,
-            'registros': registros,
+            'registros': registros_visibles,
             'conceptos': conceptos,
             'total_causado': causado,
             'total_abonado': abonado,
             'saldo': saldo,
             'incluir': saldo > 0,
-            'tiene_novedades': len(registros) > 1,
+            'tiene_novedades': len(registros_visibles) > 1,
         })
 
     return render_template(

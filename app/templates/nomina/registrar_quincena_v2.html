@@ -126,7 +126,7 @@
                         <td>
                             <select name="concepto_{{ e.id }}" class="form-select form-select-sm">
                                 {% for c in conceptos %}
-                                <option value="{{ c.id }}" {{ 'selected' if c.nombre == 'Salario' else '' }}>{{ c.nombre }} ({{ c.tipo[:3] }})</option>
+                                <option value="{{ c.id }}" {{ 'selected' if conceptos_sugeridos.get(e.id) == c.id else '' }}>{{ c.nombre }} ({{ c.tipo[:3] }})</option>
                                 {% endfor %}
                             </select>
                         </td>
