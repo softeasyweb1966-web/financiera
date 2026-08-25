@@ -288,7 +288,7 @@
                         {% if item.aplica_periodo %}
                         <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena, empleado_id=e.id) }}" class="btn btn-sm btn-outline-primary py-0" title="Causar"><i class="bi bi-journal-check"></i></a>
                         {% endif %}
-                        {% if item.aplica_periodo and item.tiene_registro and not item.tiene_pago %}
+                        {% if item.aplica_periodo and not item.tiene_pago %}
                         <a href="{{ url_for('nomina.pagar_quincena', anio=anio, mes=mes, quincena=quincena, empleado_id=e.id) }}" class="btn btn-sm btn-outline-success py-0" title="Pagar"><i class="bi bi-cash"></i></a>
                         {% endif %}
                         {% if item.tiene_saldos_historicos %}
@@ -343,7 +343,7 @@
             {% if item.aplica_periodo %}
             <a href="{{ url_for('nomina.registrar_quincena', anio=anio, mes=mes, quincena=quincena, empleado_id=e.id) }}" class="btn btn-sm btn-outline-primary py-0 px-1" style="font-size:0.65rem;"><i class="bi bi-journal-check"></i></a>
             {% endif %}
-            {% if item.aplica_periodo and item.tiene_registro and not item.tiene_pago %}
+            {% if item.aplica_periodo and not item.tiene_pago %}
             <a href="{{ url_for('nomina.pagar_quincena', anio=anio, mes=mes, quincena=quincena, empleado_id=e.id) }}" class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:0.65rem;"><i class="bi bi-cash"></i></a>
             {% endif %}
         </div>

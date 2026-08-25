@@ -1898,6 +1898,9 @@ def pagar_quincena():
             'tiene_novedades': len(registros_visibles) > 1,
         })
 
+    if empleado_id_filtro and not rows:
+        flash('Ese empleado todavia no tiene una causacion registrada en esa quincena. Primero use Causar.', 'info')
+
     return render_template(
         'nomina/pagar_quincena.html',
         empleados_pago=rows,
