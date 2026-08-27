@@ -670,15 +670,20 @@
                         <strong>Periodo:</strong> <span id="pago_periodo">-</span>
                     </div>
                     <div id="seccion-causar" style="display:none">
-                        <p class="small text-muted mb-2">Confirme el valor de la cuota para este mes. La fecha de causacion se asigna automaticamente.</p>
+                        <p class="small text-muted mb-2">Confirme el valor de la cuota para este mes y registre la fecha de causacion.</p>
                         <p class="small text-info mb-2" id="texto_causacion_tabla" style="display:none;">Para esta modalidad, la causacion se toma directamente de la tabla de amortizacion del periodo.</p>
                         <div class="row">
-                            <div class="col-md-7 mb-2">
+                            <div class="col-md-4 mb-2">
                                 <label class="form-label">Valor a causar (cuota)</label>
                                 <input type="text" name="valor_causado" id="pago_valor_causado" class="form-control js-money">
                                 <div class="form-text">Valor de la cuota o interes del mes</div>
                             </div>
-                            <div class="col-md-5 mb-2">
+                            <div class="col-md-4 mb-2">
+                                <label class="form-label">Fecha de causacion</label>
+                                <input type="date" name="fecha_causacion" id="causar_fecha_causacion" class="form-control">
+                                <div class="form-text">Fecha real en que se causo la cuota</div>
+                            </div>
+                            <div class="col-md-4 mb-2">
                                 <label class="form-label">Dia de pago</label>
                                 <input type="number" name="dia_pago_reportado" id="causar_dia_reportado" class="form-control" min="1" max="31" placeholder="1-31">
                                 <div class="form-text">Dia que aplicara como referencia para el siguiente mes</div>
@@ -865,10 +870,14 @@ function syncObligacionFechaPagoRequerida() {
     const accion = document.getElementById('pago_accion');
     const estado = document.getElementById('pago_estado');
     const fecha = document.getElementById('pago_fecha_pago');
+    const fechaCausacion = document.getElementById('causar_fecha_causacion');
     if (!accion || !estado || !fecha) {
         return;
     }
     fecha.required = accion.value === 'pagar' && (estado.value === 'pagado' || estado.value === 'parcial');
+    if (fechaCausacion) {
+        fechaCausacion.required = accion.value === 'causar';
+    }
 }
 
 function toggleDesglose(requiereDesglose, usaTablaAmortizacion = false) {
@@ -910,6 +919,7 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
     document.getElementById('pago_destino_excedente').value = 'anticipo';
     document.getElementById('pago_detalle_otros').value = '';
     document.getElementById('pago_fecha_pago').value = '';
+    document.getElementById('causar_fecha_causacion').value = '';
     document.getElementById('causar_dia_reportado').value = '';
     document.getElementById('pago_accion').value = 'pagar';
     document.getElementById('pago_estado').value = 'pagado';
@@ -937,6 +947,7 @@ function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorC
     document.getElementById('pago_anticipo').value = '';
     document.getElementById('pago_destino_excedente').value = 'anticipo';
     document.getElementById('pago_detalle_otros').value = '';
+    document.getElementById('causar_fecha_causacion').value = '';
     document.getElementById('causar_dia_reportado').value = diaBase || '';
     document.getElementById('pago_accion').value = 'causar';
     document.getElementById('pago_titulo').textContent = 'Causar - ' + nombre + ' - ' + periodo;

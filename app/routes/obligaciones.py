@@ -1914,7 +1914,8 @@ def registrar_pago():
     otros_incluye_excedente = request.form.get('componente_otros_incluye_excedente') == '1'
     estado = request.form.get('estado', 'pagado')
     medio_pago_id = request.form.get('medio_pago_id') or None
-    fecha_pago = request.form.get('fecha_pago') or None
+    fecha_pago = _date_or_none(request.form.get('fecha_pago'))
+    fecha_causacion = _date_or_none(request.form.get('fecha_causacion'))
     dia_pago_reportado, error_dia = _resolver_dia_pago(
         request.form.get('dia_pago_reportado')
     )
@@ -1923,6 +1924,9 @@ def registrar_pago():
         dia_pago_reportado = fila_amortizacion.fecha_pago.day
     if accion == 'causar' and error_dia:
         flash(error_dia, 'danger')
+        return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
+    if accion == 'causar' and not fecha_causacion:
+        flash('Al causar debe registrar una fecha de causacion valida.', 'danger')
         return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
     if accion == 'causar' and dia_pago_reportado is None:
         flash('Al causar debe registrar el dia de pago.', 'danger')
@@ -2043,7 +2047,7 @@ def registrar_pago():
         if accion == 'causar':
             pago.valor_causado = valor_causado
             pago.dia_pago_reportado = dia_pago_reportado
-            pago.fecha_causacion = date.today()
+            pago.fecha_causacion = fecha_causacion
             if pago.estado in ('sin_causar', 'anulado'):
                 pago.estado = 'causado'
         else:
@@ -2070,7 +2074,7 @@ def registrar_pago():
                 obligacion_id=obligacion_id, anio=anio, mes=mes,
                 valor_causado=valor_causado, estado='causado',
                 dia_pago_reportado=dia_pago_reportado,
-                fecha_causacion=date.today(),
+                fecha_causacion=fecha_causacion,
                 numero_cuota=numero_cuota,
                 observaciones=observaciones
             )
