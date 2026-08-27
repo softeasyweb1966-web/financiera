@@ -718,6 +718,15 @@ def _resumen_pago_periodo_nomina(empleado_id, anio, mes, quincena, registros=Non
     }
 
 
+def _valor_esperado_periodo_nomina(empleado, anio, mes, quincena, registros=None):
+    if empleado:
+        desglose = _desglose_registros_periodo_nomina(empleado, anio, mes, quincena, registros=registros)
+        total_registrado = float(desglose['total_causado'] or 0)
+        if total_registrado > 0:
+            return total_registrado
+    return _valor_periodo_empleado(empleado, anio, mes, quincena)
+
+
 def _empleados_nomina_periodo(anio, mes, quincena, empleado_id=None, solo_activos=True):
     query = Empleado.query
     if solo_activos:
@@ -1290,7 +1299,14 @@ def pagos(anio=None, mes=None, quincena=None):
 
     # Total esperado del periodo segun la frecuencia configurada
     esperado_quincena = sum(
-        _valor_periodo_empleado(e, anio, mes, quincena) for e in empleados_periodo
+        _valor_esperado_periodo_nomina(
+            e,
+            anio,
+            mes,
+            quincena,
+            registros=registros_por_empleado.get(e.id, [])
+        )
+        for e in empleados_periodo
     )
 
     # Quincenas sin pagar de periodos anteriores
@@ -1331,7 +1347,13 @@ def pagos(anio=None, mes=None, quincena=None):
         tiene_registro = len(registros_visibles) > 0
         esta_pagado = total_registrado > 0 and total_pagado + 1 >= total_registrado
         aplica_periodo = _empleado_aplica_periodo(e, anio, mes, quincena)
-        valor_quincena = _valor_periodo_empleado(e, anio, mes, quincena)
+        valor_quincena = _valor_esperado_periodo_nomina(
+            e,
+            anio,
+            mes,
+            quincena,
+            registros=registros_emp
+        )
         tiene_saldos_historicos = bool(_items_pago_historico_empleado(e, periodo_actual_clave))
 
         for concepto in desglose['conceptos']:
