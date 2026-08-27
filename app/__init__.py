@@ -1,11 +1,38 @@
-from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
+import logging
+import os
+import time
+
+from flask import Flask, current_app
 from flask_migrate import Migrate
+from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect, text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
+
+logger = logging.getLogger(__name__)
 
 db = SQLAlchemy()
 migrate = Migrate()
+
+
+def _env_int(name, default):
+    try:
+        return max(1, int(os.environ.get(name, default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_float(name, default):
+    try:
+        return max(0.0, float(os.environ.get(name, default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_flag(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
 def _ensure_schema():
@@ -148,6 +175,42 @@ def _ensure_schema():
         db.session.commit()
 
 
+def _ensure_schema_with_retries(max_attempts=None, retry_delay=None, strict=None):
+    attempts = max_attempts if max_attempts is not None else _env_int('SCHEMA_INIT_MAX_ATTEMPTS', 2)
+    delay_seconds = retry_delay if retry_delay is not None else _env_float('SCHEMA_INIT_RETRY_DELAY', 2.0)
+    fail_hard = strict if strict is not None else _env_flag('SCHEMA_INIT_STRICT', False)
+    last_error = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            _ensure_schema()
+            if attempt > 1:
+                logger.info('Database schema initialization recovered on attempt %s.', attempt)
+            return True
+        except (OperationalError, SQLAlchemyError) as exc:
+            last_error = exc
+            db.session.remove()
+            logger.warning(
+                'Database schema initialization failed on attempt %s/%s: %s',
+                attempt,
+                attempts,
+                exc,
+            )
+            if attempt < attempts and delay_seconds > 0:
+                time.sleep(delay_seconds)
+
+    if fail_hard and last_error is not None:
+        raise last_error
+
+    logger.error(
+        'Skipping startup schema initialization after %s failed attempt(s): %s. '
+        'The application will stay online and retry later.',
+        attempts,
+        last_error,
+    )
+    return False
+
+
 def create_app():
     app = Flask(__name__)
     app.config.from_object('config.Config')
@@ -163,9 +226,31 @@ def create_app():
     for bp in all_blueprints:
         app.register_blueprint(bp)
 
-    # En despliegues nuevos, Railway puede partir de una base vacía.
-    # Creamos el esquema base para evitar 500s por tablas inexistentes.
+    app.extensions['schema_ready'] = False
+    app.extensions['schema_retry_after'] = 0.0
+    app.extensions['schema_retry_cooldown'] = _env_float('SCHEMA_INIT_REQUEST_RETRY_DELAY', 30.0)
+
     with app.app_context():
-        _ensure_schema()
+        app.extensions['schema_ready'] = _ensure_schema_with_retries()
+
+    @app.before_request
+    def ensure_schema_when_needed():
+        if current_app.extensions.get('schema_ready'):
+            return None
+
+        now = time.time()
+        retry_after = current_app.extensions.get('schema_retry_after', 0.0)
+        if now < retry_after:
+            return None
+
+        current_app.extensions['schema_retry_after'] = (
+            now + current_app.extensions.get('schema_retry_cooldown', 30.0)
+        )
+        current_app.extensions['schema_ready'] = _ensure_schema_with_retries(
+            max_attempts=1,
+            retry_delay=0,
+            strict=False,
+        )
+        return None
 
     return app
