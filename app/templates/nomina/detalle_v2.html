@@ -10,27 +10,6 @@
     .ind-no_aplica { background: #94a3b8; }
     .indicador { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .quincena-cell { vertical-align: top; min-width: 140px; }
-    .franja-pagado {
-        --bs-table-bg-state: #dff3ea;
-        background-color: #dff3ea !important;
-    }
-    .franja-causado {
-        --bs-table-bg-state: #fff2c7;
-        background-color: #fff2c7 !important;
-    }
-    .franja-vencido {
-        --bs-table-bg-state: #fde2e2;
-        background-color: #fde2e2 !important;
-    }
-    .franja-no-aplica {
-        --bs-table-bg-state: #eef2f7;
-        background-color: #eef2f7 !important;
-        color: #64748b;
-    }
-    .franja-sin-registro {
-        --bs-table-bg-state: #fff3e8;
-        background-color: #fff3e8 !important;
-    }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -109,8 +88,8 @@
                     {% set pago_directo_q2 = registros_q2[0] if registros_q2 and registros_q2[0].fecha_pago else None %}
                     {% set estado_q1_label = 'Por vencer' if estado_q1 == 'causado' else 'Pagado' if estado_q1 == 'pagado' else 'Vencido' if estado_q1 == 'vencido' else 'No aplica' if estado_q1 == 'no_aplica' else 'Sin registro' %}
                     {% set estado_q2_label = 'Por vencer' if estado_q2 == 'causado' else 'Pagado' if estado_q2 == 'pagado' else 'Vencido' if estado_q2 == 'vencido' else 'No aplica' if estado_q2 == 'no_aplica' else 'Sin registro' %}
-                    {% set clase_q1 = 'franja-pagado' if estado_q1 == 'pagado' else 'franja-vencido' if estado_q1 == 'vencido' else 'franja-causado' if estado_q1 == 'causado' else 'franja-no-aplica' if estado_q1 == 'no_aplica' else 'franja-sin-registro' %}
-                    {% set clase_q2 = 'franja-pagado' if estado_q2 == 'pagado' else 'franja-vencido' if estado_q2 == 'vencido' else 'franja-causado' if estado_q2 == 'causado' else 'franja-no-aplica' if estado_q2 == 'no_aplica' else 'franja-sin-registro' %}
+                    {% set clase_q1 = 'table-success' if estado_q1 == 'pagado' else 'table-danger' if estado_q1 == 'vencido' else 'table-warning' if estado_q1 == 'causado' else 'table-secondary text-muted' if estado_q1 == 'no_aplica' else '' %}
+                    {% set clase_q2 = 'table-success' if estado_q2 == 'pagado' else 'table-danger' if estado_q2 == 'vencido' else 'table-warning' if estado_q2 == 'causado' else 'table-secondary text-muted' if estado_q2 == 'no_aplica' else '' %}
                     {% set mostrar_q2 = not (anio == current_year and i == current_month and current_quincena == 1) %}
                     {% if total_pagado_q1 <= 0 and estado_q1 == 'pagado' %}
                         {% set total_pagado_q1 = total_causado_q1 %}
