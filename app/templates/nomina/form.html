@@ -252,7 +252,7 @@ function syncTipoContratoNomina() {
     }
     if (help) {
         help.textContent = esObraLabor
-            ? 'En obra labor no se guarda salario base. La preliquidacion tomara como referencia el ultimo pago registrado.'
+            ? 'En obra labor no se guarda salario base. La preliquidacion tomara como referencia la ultima causacion; si no existe, usara el ultimo pago registrado.'
             : '';
     }
     checkCambioSalario();

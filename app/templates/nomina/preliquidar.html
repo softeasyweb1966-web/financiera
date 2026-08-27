@@ -218,7 +218,7 @@
                 <div class="mt-2">
                     <small class="text-muted">
                         {% if item.es_obra_labor %}
-                        Ultimo pago de referencia: ${{ "{:,.0f}".format(item.valor_referencia) if item.valor_referencia else '0' }}
+                        Ultima causacion o pago de referencia: ${{ "{:,.0f}".format(item.valor_referencia) if item.valor_referencia else '0' }}
                         {% else %}
                         Salario base: ${{ "{:,.0f}".format(e.salario_base) if e.salario_base else '0' }}
                         {% endif %}

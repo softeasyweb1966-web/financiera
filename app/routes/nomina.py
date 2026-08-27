@@ -171,16 +171,23 @@ def _ultimo_valor_pagado_obra_labor(empleado, anio, mes, quincena):
             periodos.add((anio_abo, mes_abo, quincena_abo))
 
     valor_referencia = 0
+    ultimo_valor_pagado = 0
     for anio_ref, mes_ref, quincena_ref in sorted(
         periodos,
         key=lambda periodo: _periodo_nomina_clave(*periodo),
         reverse=True
     ):
         resumen = _resumen_pago_periodo_nomina(empleado.id, anio_ref, mes_ref, quincena_ref)
+        valor_causado = float(resumen['total_registrado'] or 0)
         valor_pagado = float(resumen['total_pagado'] or 0)
-        if valor_pagado > 0:
-            valor_referencia = valor_pagado
+        if valor_causado > 0:
+            valor_referencia = valor_causado
             break
+        if valor_pagado > 0:
+            ultimo_valor_pagado = valor_pagado
+
+    if not valor_referencia:
+        valor_referencia = ultimo_valor_pagado
 
     cache[cache_key] = valor_referencia
     return valor_referencia
