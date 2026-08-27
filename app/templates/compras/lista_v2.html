@@ -231,7 +231,7 @@
                     </div>
                     <div class="mb-2">
                         <label class="form-label">Fecha de pago</label>
-                        <input type="date" name="fecha_pago" class="form-control" value="{{ '%04d-%02d-%02d'|format(anio, mes, 1) }}">
+                        <input type="date" name="fecha_pago" class="form-control" value="{{ '%04d-%02d-%02d'|format(anio, mes, 1) }}" required>
                     </div>
                     <div class="mb-2">
                         <label class="form-label">Medio de pago</label>

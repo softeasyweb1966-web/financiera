@@ -584,7 +584,7 @@
                         </div>
                         <div class="mb-2">
                             <label class="form-label">Estado</label>
-                            <select name="estado" id="pago_estado" class="form-select form-select-sm">
+                            <select name="estado" id="pago_estado" class="form-select form-select-sm" onchange="syncServicioFechaPagoRequerida()">
                                 <option value="pagado">Pagado</option>
                                 <option value="parcial">Pago parcial</option>
                                 <option value="vencido">Vencido</option>
@@ -609,6 +609,16 @@
 
 {% block scripts %}
 <script>
+function syncServicioFechaPagoRequerida() {
+    var accion = document.getElementById('pago_accion');
+    var estado = document.getElementById('pago_estado');
+    var fecha = document.getElementById('pago_fecha_pago');
+    if (!accion || !estado || !fecha) {
+        return;
+    }
+    fecha.required = accion.value === 'pagar' && (estado.value === 'pagado' || estado.value === 'parcial');
+}
+
 function prepararPago(id, nombre, mes, valor) {
     document.getElementById('pago_servicio_id').value = id;
     document.getElementById('pago_mes').value = mes;
@@ -622,6 +632,7 @@ function prepararPago(id, nombre, mes, valor) {
     document.getElementById('seccion-causar').style.display = 'none';
     document.getElementById('seccion-pagar').style.display = 'block';
     document.getElementById('seccion-tc').style.display = 'none';
+    syncServicioFechaPagoRequerida();
 }
 
 function prepararCausar(id, nombre, mes, valor, diaBase) {
@@ -633,6 +644,7 @@ function prepararCausar(id, nombre, mes, valor, diaBase) {
     document.getElementById('pago_titulo').textContent = 'Causar - ' + nombre;
     document.getElementById('seccion-causar').style.display = 'block';
     document.getElementById('seccion-pagar').style.display = 'none';
+    syncServicioFechaPagoRequerida();
 }
 
 function prepararComprobante(pagoId, nombre, tieneComprobante) {
@@ -651,5 +663,7 @@ function toggleTCFields() {
         seccionTC.style.display = 'none';
     }
 }
+
+document.addEventListener('DOMContentLoaded', syncServicioFechaPagoRequerida);
 </script>
 {% endblock %}

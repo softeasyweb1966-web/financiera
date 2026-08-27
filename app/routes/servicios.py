@@ -44,6 +44,15 @@ def _resolver_dia_pago(dia_valor, fecha_pago_valor=None):
     return dia, None
 
 
+def _date_or_none(valor):
+    if not valor:
+        return None
+    try:
+        return datetime.strptime(valor, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
 def _leer_comprobante(archivo):
     if not archivo or not archivo.filename:
         return None, None, None, None
@@ -741,7 +750,8 @@ def registrar_pago():
     valor_pagado = request.form.get('valor_pagado') or None
     estado = request.form.get('estado', 'pagado')
     medio_pago_id = request.form.get('medio_pago_id') or None
-    fecha_pago = request.form.get('fecha_pago') or None
+    fecha_pago = _date_or_none(request.form.get('fecha_pago'))
+    hay_pago_reportado = estado in ('pagado', 'parcial') or bool((valor_pagado or '').strip())
     dia_pago_reportado, error_dia = _resolver_dia_pago(
         request.form.get('dia_pago_reportado')
     )
@@ -750,6 +760,9 @@ def registrar_pago():
         return redirect(url_for('servicios.pagos', anio=anio, mes=mes))
     if accion == 'causar' and dia_pago_reportado is None:
         flash('Al causar debe registrar el dia de pago.', 'danger')
+        return redirect(url_for('servicios.pagos', anio=anio, mes=mes))
+    if accion == 'pagar' and hay_pago_reportado and not fecha_pago:
+        flash('Debe indicar una fecha de pago valida.', 'danger')
         return redirect(url_for('servicios.pagos', anio=anio, mes=mes))
 
     comprobante_nombre, comprobante_mime, comprobante_archivo, error_comprobante = _leer_comprobante(

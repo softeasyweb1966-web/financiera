@@ -1945,6 +1945,10 @@ def registrar_pago():
     componente_otros_num = _float_or_none(componente_otros)
     componente_anticipo_num = _float_or_none(componente_anticipo)
 
+    if accion == 'pagar' and (estado in ('pagado', 'parcial') or (valor_pagado_num is not None and valor_pagado_num > 0)) and not fecha_pago:
+        flash('Debe indicar una fecha de pago valida.', 'danger')
+        return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
+
     if usa_tabla_amortizacion and fila_amortizacion:
         if componente_capital_num is None:
             componente_capital = _money_raw_or_none(fila_amortizacion.capital)

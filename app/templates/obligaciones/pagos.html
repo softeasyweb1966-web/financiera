@@ -768,7 +768,7 @@
                             </div>
                             <div class="col-6 mb-2">
                                 <label class="form-label">Estado</label>
-                                <select name="estado" id="pago_estado" class="form-select form-select-sm">
+                                <select name="estado" id="pago_estado" class="form-select form-select-sm" onchange="syncObligacionFechaPagoRequerida()">
                                     <option value="pagado">Pagado</option>
                                     <option value="parcial">Pago parcial</option>
                                     <option value="vencido">Vencido</option>
@@ -861,6 +861,16 @@
 const mesesObligaciones = {{ meses|tojson }};
 let saldosAnterioresActuales = [];
 
+function syncObligacionFechaPagoRequerida() {
+    const accion = document.getElementById('pago_accion');
+    const estado = document.getElementById('pago_estado');
+    const fecha = document.getElementById('pago_fecha_pago');
+    if (!accion || !estado || !fecha) {
+        return;
+    }
+    fecha.required = accion.value === 'pagar' && (estado.value === 'pagado' || estado.value === 'parcial');
+}
+
 function toggleDesglose(requiereDesglose, usaTablaAmortizacion = false) {
     const visible = !!requiereDesglose;
     document.getElementById('seccion-desglose').style.display = visible ? 'flex' : 'none';
@@ -911,6 +921,7 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
     document.getElementById('texto_causacion_tabla').style.display = 'none';
     toggleDesglose(requiereDesglose, usaTablaAmortizacion);
     actualizarExcedentePago();
+    syncObligacionFechaPagoRequerida();
 }
 
 function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres, valorSeguroVida, valorOtros, usaTablaAmortizacion, diaBase) {
@@ -935,12 +946,15 @@ function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorC
     document.getElementById('causar_dia_reportado').readOnly = !!usaTablaAmortizacion;
     document.getElementById('texto_causacion_tabla').style.display = usaTablaAmortizacion ? 'block' : 'none';
     toggleDesglose(false, usaTablaAmortizacion);
+    syncObligacionFechaPagoRequerida();
 }
 
 function prepararComprobante(pagoId, nombre, tieneComprobante) {
     document.getElementById('formComprobante').action = '/obligaciones/pago/' + pagoId + '/comprobante';
     document.getElementById('comprobante_titulo').textContent = (tieneComprobante ? 'Cambiar recibo - ' : 'Adjuntar recibo - ') + nombre;
 }
+
+document.addEventListener('DOMContentLoaded', syncObligacionFechaPagoRequerida);
 
 function prepararAnulacion(actionUrl, nextUrl, nombre, periodo) {
     document.getElementById('formAnulacion').action = actionUrl;

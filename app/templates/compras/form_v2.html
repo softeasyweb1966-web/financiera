@@ -86,7 +86,7 @@
                         <div class="row g-3">
                             <div class="col-12 col-md-4">
                                 <label class="form-label">Situacion</label>
-                                <select name="situacion_pago" class="form-select">
+                                <select name="situacion_pago" id="situacion_pago" class="form-select">
                                     <option value="pendiente">Pendiente</option>
                                     <option value="parcial">Parcial</option>
                                     <option value="pagado">Pagado</option>
@@ -98,7 +98,7 @@
                             </div>
                             <div class="col-12 col-md-4">
                                 <label class="form-label">Fecha de pago</label>
-                                <input type="date" name="fecha_pago" class="form-control">
+                                <input type="date" name="fecha_pago" id="fecha_pago_inicial" class="form-control">
                             </div>
                             <div class="col-12 col-md-6">
                                 <label class="form-label">Medio de pago</label>
@@ -203,6 +203,15 @@ function filtrarProductosCompra() {
     }
 }
 
+function syncFechaPagoInicialRequerida() {
+    const situacion = document.getElementById('situacion_pago');
+    const fechaPago = document.getElementById('fecha_pago_inicial');
+    if (!situacion || !fechaPago) {
+        return;
+    }
+    fechaPago.required = situacion.value === 'parcial' || situacion.value === 'pagado';
+}
+
 function crearConcepto() {
     const nombre = document.getElementById('nuevo_concepto_nombre').value.trim();
     const desc = document.getElementById('nuevo_concepto_desc').value.trim();
@@ -268,6 +277,11 @@ document.addEventListener('DOMContentLoaded', function() {
         filtrarProductosCompra();
         document.getElementById('nuevo_item_concepto').value = this.value;
     });
+    const situacion = document.getElementById('situacion_pago');
+    if (situacion) {
+        situacion.addEventListener('change', syncFechaPagoInicialRequerida);
+        syncFechaPagoInicialRequerida();
+    }
     filtrarProductosCompra();
 });
 </script>

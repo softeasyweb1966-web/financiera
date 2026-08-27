@@ -20,7 +20,10 @@ def _date_or_none(value):
     value = (value or '').strip()
     if not value:
         return None
-    return datetime.strptime(value, '%Y-%m-%d').date()
+    try:
+        return datetime.strptime(value, '%Y-%m-%d').date()
+    except ValueError:
+        return None
 
 
 def _decimal_or_zero(value):
@@ -326,6 +329,7 @@ def nueva():
         valor = _decimal_or_zero(request.form.get('valor'))
         situacion_pago = request.form.get('situacion_pago', 'pendiente')
         valor_abono_inicial = _decimal_or_zero(request.form.get('valor_abono_inicial'))
+        fecha_pago = _date_or_none(request.form.get('fecha_pago'))
 
         if valor <= ZERO:
             flash('El valor del registro debe ser mayor a cero.', 'danger')
@@ -342,6 +346,10 @@ def nueva():
 
         if situacion_pago == 'parcial' and valor_abono_inicial <= ZERO:
             flash('Si la situacion inicial es parcial, indique el valor abonado.', 'danger')
+            return render_template('compras/form_v2.html', compra=None, **catalogos)
+
+        if situacion_pago in ('parcial', 'pagado') and not fecha_pago:
+            flash('Debe indicar una fecha de pago valida para el abono inicial.', 'danger')
             return render_template('compras/form_v2.html', compra=None, **catalogos)
 
         compra = Compra(
@@ -361,7 +369,7 @@ def nueva():
             _registrar_abono_compra(
                 compra,
                 valor_abono_inicial,
-                _date_or_none(request.form.get('fecha_pago')) or date.today(),
+                fecha_pago,
                 medio_pago_id=request.form.get('medio_pago_id') or None,
                 descripcion=request.form.get('descripcion_pago') or request.form.get('observaciones'),
             )
@@ -455,6 +463,7 @@ def registrar_abono(id):
     compra = Compra.query.get_or_404(id)
     resumen_abonos = _abonos_por_compra([compra.id])
     totales_antes = _totales_compra(compra, resumen_abonos)
+    fecha_pago = _date_or_none(request.form.get('fecha_pago'))
 
     if totales_antes['saldo'] <= ZERO:
         flash('Ese registro ya no tiene saldo pendiente.', 'info')
@@ -473,10 +482,15 @@ def registrar_abono(id):
         destino = _safe_next_url(request.form.get('next'))
         return redirect(destino or url_for('compras.detalle', id=compra.id))
 
+    if not fecha_pago:
+        flash('Debe indicar una fecha de pago valida para registrar el abono.', 'danger')
+        destino = _safe_next_url(request.form.get('next'))
+        return redirect(destino or url_for('compras.detalle', id=compra.id))
+
     _, totales_despues = _registrar_abono_compra(
         compra,
         valor_abono,
-        _date_or_none(request.form.get('fecha_pago')) or date.today(),
+        fecha_pago,
         medio_pago_id=request.form.get('medio_pago_id') or None,
         descripcion=request.form.get('descripcion'),
     )
