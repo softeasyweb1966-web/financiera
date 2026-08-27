@@ -263,14 +263,15 @@
             <tbody>
                 {% for item in empleados_mes %}
                 {% set e = item.empleado %}
+                {% set tipo_contrato_norm = (e.tipo_contrato or 'laboral')|lower|replace(' ', '_')|replace('-', '_') %}
                 <tr class="{{ 'table-secondary text-muted' if item.estado == 'no_aplica' else 'table-success' if item.tiene_pago else 'table-warning' if item.tiene_registro else '' }}">
                     <td><span class="indicador ind-{{ item.estado }}"></span></td>
                     <td>
                         <strong>{{ e.nombre }}</strong>
                         <br><small class="text-muted">{{ e.cargo or '' }}</small>
                     </td>
-                    <td><span class="badge {{ 'bg-primary' if e.tipo_contrato == 'laboral' else 'bg-secondary' }}" style="font-size:0.6rem;">{{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</span></td>
-                    <td class="text-end"><small>${{ "{:,.0f}".format(e.salario_base) if e.salario_base else '—' }}</small></td>
+                    <td><span class="badge {{ 'bg-primary' if tipo_contrato_norm != 'prestacion_servicios' else 'bg-secondary' }}" style="font-size:0.6rem;">{{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</span></td>
+                    <td class="text-end"><small>{{ '$' ~ "{:,.0f}".format(e.salario_base) if tipo_contrato_norm != 'obra_labor' and e.salario_base else 'Variable' if tipo_contrato_norm == 'obra_labor' else '—' }}</small></td>
                     <td class="text-end">${{ "{:,.0f}".format(item.valor_quincena) }}</td>
                     <td class="text-end fw-bold {{ 'text-success' if item.tiene_pago else 'text-warning' if item.tiene_registro else 'text-muted' }}">
                         {{ "${:,.0f}".format(item.total_pagado) if item.tiene_pago else '—' }}

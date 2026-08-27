@@ -95,7 +95,7 @@
                             <label class="form-label">Cargo</label>
                             <input type="text" name="cargo" class="form-control" value="{{ empleado.cargo if empleado else '' }}">
                         </div>
-                        <div class="col-12 col-md-6 col-xl-3">
+                        <div class="col-12 col-md-6 col-xl-3" id="salario-base-row">
                             <label class="form-label">Salario base</label>
                             <input type="text" name="salario_base" id="salario_input" class="form-control js-money" value="{{ empleado.salario_base if empleado and empleado.salario_base else '' }}" onchange="checkCambioSalario()" oninput="checkCambioSalario()">
                             {% if empleado %}
@@ -104,10 +104,12 @@
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
                             <label class="form-label">Tipo de contrato</label>
-                            <select name="tipo_contrato" class="form-select">
+                            <select name="tipo_contrato" id="tipo_contrato_select" class="form-select" onchange="syncTipoContratoNomina()">
                                 <option value="laboral" {{ 'selected' if not empleado or empleado.tipo_contrato == 'laboral' else '' }}>Contrato laboral</option>
+                                <option value="obra_labor" {{ 'selected' if empleado and empleado.tipo_contrato == 'obra_labor' else '' }}>Obra labor</option>
                                 <option value="prestacion_servicios" {{ 'selected' if empleado and empleado.tipo_contrato == 'prestacion_servicios' else '' }}>Prestación de servicios</option>
                             </select>
+                            <div class="form-text" id="tipo_contrato_help"></div>
                         </div>
                         <div class="col-12 col-md-6 col-xl-3">
                             <label class="form-label">Forma de pago</label>
@@ -193,6 +195,10 @@
 const estadoOriginalNomina = '{{ empleado.estado if empleado else "activo" }}';
 const salarioOriginal = '{{ empleado.salario_base if empleado and empleado.salario_base else "" }}';
 
+function normalizeTipoContratoNomina(tipo) {
+    return (tipo || '').toString().trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
 function toggleCambioEstadoNomina() {
     const select = document.getElementById('estado_select');
     const row = document.getElementById('cambio-estado-row');
@@ -227,9 +233,43 @@ function toggleQuincenaMensual() {
     }
 }
 
+function syncTipoContratoNomina() {
+    var select = document.getElementById('tipo_contrato_select');
+    var salarioRow = document.getElementById('salario-base-row');
+    var salarioInput = document.getElementById('salario_input');
+    var help = document.getElementById('tipo_contrato_help');
+    var tipo = normalizeTipoContratoNomina(select ? select.value : '');
+    var esObraLabor = tipo === 'obra_labor';
+
+    if (salarioRow) {
+        salarioRow.style.display = esObraLabor ? 'none' : '';
+    }
+    if (salarioInput) {
+        salarioInput.disabled = esObraLabor;
+        if (esObraLabor) {
+            salarioInput.value = '';
+        }
+    }
+    if (help) {
+        help.textContent = esObraLabor
+            ? 'En obra labor no se guarda salario base. La preliquidacion tomara como referencia el ultimo pago registrado.'
+            : '';
+    }
+    checkCambioSalario();
+}
+
 function checkCambioSalario() {
     var row = document.getElementById('cambio-salario-row');
     if (!row) return;
+    var tipo = normalizeTipoContratoNomina((document.getElementById('tipo_contrato_select') || {}).value || '');
+    if (tipo === 'obra_labor') {
+        row.style.display = 'none';
+        var fechaObra = document.getElementById('fecha_cambio_salario');
+        var motivoObra = document.getElementById('motivo_salario');
+        if (fechaObra) fechaObra.required = false;
+        if (motivoObra) motivoObra.required = false;
+        return;
+    }
     var inputVal = (document.getElementById('salario_input').value || '').replace(/[^0-9.]/g, '');
     var original = salarioOriginal.replace(/[^0-9.]/g, '');
     var cambio = (inputVal && original && inputVal !== original);
@@ -243,6 +283,8 @@ function checkCambioSalario() {
 document.addEventListener('DOMContentLoaded', function() {
     toggleCambioEstadoNomina();
     toggleQuincenaMensual();
+    syncTipoContratoNomina();
+    checkCambioSalario();
 });
 </script>
 {% endblock %}

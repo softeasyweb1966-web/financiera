@@ -68,6 +68,7 @@
             </thead>
             <tbody>
                 {% for e in empleados %}
+                {% set tipo_contrato_norm = (e.tipo_contrato or 'laboral')|lower|replace(' ', '_')|replace('-', '_') %}
                 <tr class="{{ 'employee-row-inactive text-muted' if not e.activo else '' }}">
                     <td>
                         <div class="fw-semibold">{{ e.nombre }}</div>
@@ -78,9 +79,9 @@
                             {{ estados_empleado_labels.get(e.estado or 'activo', (e.estado or 'activo')|title) }}
                         </span>
                     </td>
-                    <td><span class="badge {{ 'bg-primary' if e.tipo_contrato == 'laboral' else 'bg-secondary' }}">{{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</span></td>
+                    <td><span class="badge {{ 'bg-primary' if tipo_contrato_norm != 'prestacion_servicios' else 'bg-secondary' }}">{{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</span></td>
                     <td>{{ (e.forma_pago or 'quincenal')|title }}</td>
-                    <td>{{ "${:,.0f}".format(e.salario_base) if e.salario_base else '-' }}</td>
+                    <td>{{ 'Variable' if tipo_contrato_norm == 'obra_labor' else "${:,.0f}".format(e.salario_base) if e.salario_base else '-' }}</td>
                     <td class="text-end text-nowrap">
                         <a href="{{ url_for('nomina.editar', id=e.id) }}" class="btn btn-sm btn-outline-secondary" title="Editar"><i class="bi bi-pencil"></i></a>
                         <button type="button" class="btn btn-sm btn-outline-warning" title="Cambiar estado"
@@ -100,6 +101,7 @@
 
 <div class="row g-3 d-lg-none">
     {% for e in empleados %}
+    {% set tipo_contrato_norm = (e.tipo_contrato or 'laboral')|lower|replace(' ', '_')|replace('-', '_') %}
     <div class="col-12 col-md-6">
         <div class="card employee-card {{ 'employee-card-inactive' if not e.activo else '' }} p-3 h-100">
             <div class="d-flex justify-content-between align-items-start gap-2">
@@ -121,7 +123,7 @@
                 <span class="badge bg-{{ 'success' if (e.estado or 'activo') == 'activo' else 'secondary' if e.estado == 'inactivo' else 'warning text-dark' if e.estado == 'retirado' else 'danger' }}">
                     {{ estados_empleado_labels.get(e.estado or 'activo', (e.estado or 'activo')|title) }}
                 </span>
-                <span class="badge {{ 'bg-primary' if e.tipo_contrato == 'laboral' else 'bg-secondary' }}">{{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</span>
+                <span class="badge {{ 'bg-primary' if tipo_contrato_norm != 'prestacion_servicios' else 'bg-secondary' }}">{{ (e.tipo_contrato or 'laboral').replace('_',' ')|title }}</span>
                 <span class="badge bg-light text-dark border">{{ (e.forma_pago or 'quincenal')|title }}</span>
                 {% if e.autoriza_whatsapp %}
                 <span class="badge bg-success-subtle text-success border border-success-subtle">WhatsApp OK</span>
@@ -131,7 +133,7 @@
             <div class="row g-2 mt-2">
                 <div class="col-6">
                     <div class="label-mini">Salario base</div>
-                    <div class="value-mini">{{ "${:,.0f}".format(e.salario_base) if e.salario_base else '-' }}</div>
+                    <div class="value-mini">{{ 'Variable' if tipo_contrato_norm == 'obra_labor' else "${:,.0f}".format(e.salario_base) if e.salario_base else '-' }}</div>
                 </div>
                 <div class="col-6">
                     <div class="label-mini">Celular</div>

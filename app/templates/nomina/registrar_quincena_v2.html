@@ -97,12 +97,18 @@
                     {% set row = preliquidacion_rows.get(e.id|string, {}) if preliquidacion_rows else {} %}
                     {% set default_val = row.get('valor_preliquidado') if row else valores_periodo.get(e.id, '') %}
                     {% set total_novedades = row.get('total_novedades', 0) if row else 0 %}
+                    {% set tipo_contrato_norm = (e.tipo_contrato or 'laboral')|lower|replace(' ', '_')|replace('-', '_') %}
                     <tr class="causacion-row" data-empleado-id="{{ e.id }}">
                         <td class="fw-semibold">
                             {{ e.nombre }}
                             <br>
                             <small class="text-muted">
-                                {{ e.cargo or 'Sin cargo' }} - ${{ "{:,.0f}".format(e.salario_base) if e.salario_base else '0' }}
+                                {{ e.cargo or 'Sin cargo' }} -
+                                {% if tipo_contrato_norm == 'obra_labor' %}
+                                Base variable por ultimo pago
+                                {% else %}
+                                ${{ "{:,.0f}".format(e.salario_base) if e.salario_base else '0' }}
+                                {% endif %}
                                 {% if row %}
                                 - {{ formas_pago_labels.get(row.get('forma_pago_aplicada'), row.get('forma_pago_aplicada', 'quincenal')|title) }}
                                 {% endif %}
@@ -120,7 +126,13 @@
                         </td>
                         <td>
                             <input type="text" id="valor_{{ e.id }}" name="valor_{{ e.id }}" class="form-control form-control-sm js-money valor-causado" value="{{ default_val }}" style="max-width:160px">
-                            <small class="text-muted d-block mt-1">Valor base del periodo</small>
+                            <small class="text-muted d-block mt-1">
+                                {% if tipo_contrato_norm == 'obra_labor' %}
+                                Referencia tomada del ultimo pago. Puede ajustarla aqui antes de causar.
+                                {% else %}
+                                Valor base del periodo
+                                {% endif %}
+                            </small>
                         </td>
                         <td>
                             <input type="hidden" name="novedades_{{ e.id }}" class="novedades-json" value='{{ row.get("novedades", [])|tojson if row else "[]" }}'>

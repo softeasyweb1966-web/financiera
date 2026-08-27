@@ -99,7 +99,12 @@ def _normalizar_tipo_contrato_nomina(tipo_contrato):
     tipo = (tipo_contrato or '')
     if not isinstance(tipo, str):
         tipo = str(tipo)
-    return tipo.strip().lower().replace(' ', '_').replace('-', '_')
+    tipo = tipo.strip().lower().replace(' ', '_').replace('-', '_')
+    equivalencias = {
+        'obra_labor': 'obra_labor',
+        'obra__labor': 'obra_labor',
+    }
+    return equivalencias.get(tipo, tipo)
 
 
 def _nombre_concepto_nomina(concepto):
@@ -111,9 +116,74 @@ def _es_concepto_base_nomina(concepto):
 
 
 def _concepto_base_preferido_nombre(empleado):
-    if _normalizar_tipo_contrato_nomina(getattr(empleado, 'tipo_contrato', None)) == 'prestacion_servicios':
+    if _es_contrato_prestacion_servicios_nomina(empleado):
         return 'honorarios'
     return 'salario'
+
+
+def _es_contrato_prestacion_servicios_nomina(empleado_o_tipo):
+    tipo = getattr(empleado_o_tipo, 'tipo_contrato', empleado_o_tipo)
+    return _normalizar_tipo_contrato_nomina(tipo) == 'prestacion_servicios'
+
+
+def _es_contrato_obra_labor_nomina(empleado_o_tipo):
+    tipo = getattr(empleado_o_tipo, 'tipo_contrato', empleado_o_tipo)
+    return _normalizar_tipo_contrato_nomina(tipo) == 'obra_labor'
+
+
+def _ultimo_valor_pagado_obra_labor(empleado, anio, mes, quincena):
+    if not empleado or not getattr(empleado, 'id', None):
+        return 0
+
+    cache = getattr(empleado, '_obra_labor_referencia_cache', None)
+    if cache is None:
+        cache = {}
+        setattr(empleado, '_obra_labor_referencia_cache', cache)
+
+    cache_key = (anio, mes, quincena)
+    if cache_key in cache:
+        return cache[cache_key]
+
+    periodo_limite = _periodo_nomina_clave(anio, mes, quincena)
+    periodos = set()
+
+    registros_periodo = RegistroNomina.query.filter(
+        RegistroNomina.empleado_id == empleado.id
+    ).with_entities(
+        RegistroNomina.anio,
+        RegistroNomina.mes,
+        RegistroNomina.quincena
+    ).all()
+    for anio_reg, mes_reg, quincena_reg in registros_periodo:
+        if _periodo_nomina_clave(anio_reg, mes_reg, quincena_reg) < periodo_limite:
+            periodos.add((anio_reg, mes_reg, quincena_reg))
+
+    abonos_periodo = AbonoNomina.query.filter(
+        AbonoNomina.empleado_id == empleado.id,
+        AbonoNomina.saldo_anterior_nomina_id.is_(None)
+    ).with_entities(
+        AbonoNomina.anio,
+        AbonoNomina.mes,
+        AbonoNomina.quincena
+    ).all()
+    for anio_abo, mes_abo, quincena_abo in abonos_periodo:
+        if _periodo_nomina_clave(anio_abo, mes_abo, quincena_abo) < periodo_limite:
+            periodos.add((anio_abo, mes_abo, quincena_abo))
+
+    valor_referencia = 0
+    for anio_ref, mes_ref, quincena_ref in sorted(
+        periodos,
+        key=lambda periodo: _periodo_nomina_clave(*periodo),
+        reverse=True
+    ):
+        resumen = _resumen_pago_periodo_nomina(empleado.id, anio_ref, mes_ref, quincena_ref)
+        valor_pagado = float(resumen['total_pagado'] or 0)
+        if valor_pagado > 0:
+            valor_referencia = valor_pagado
+            break
+
+    cache[cache_key] = valor_referencia
+    return valor_referencia
 
 
 def _ordenar_empleados_catalogo(empleados):
@@ -395,6 +465,8 @@ def _items_pago_historico_empleado(empleado, periodo_limite_clave=None):
             if not valor_abonado and float(saldo_periodo.valor_inicial or 0) > valor_deuda:
                 valor_abonado = float(saldo_periodo.valor_inicial or 0) - valor_deuda
         else:
+            if _es_contrato_obra_labor_nomina(empleado):
+                continue
             valor_programado = _valor_periodo_empleado(empleado, anio, mes, quincena)
             if valor_programado > 0:
                 valor_deuda = valor_programado
@@ -432,6 +504,17 @@ def _rango_periodo_nomina(anio, mes, quincena):
     return date(anio, mes, inicio_dia), date(anio, mes, fin_dia)
 
 
+def _dias_vinculados_en_rango_nomina(empleado, fecha_inicio, fecha_fin):
+    if fecha_inicio > fecha_fin:
+        return 0
+
+    inicio_efectivo = max(fecha_inicio, empleado.fecha_ingreso) if empleado.fecha_ingreso else fecha_inicio
+    fin_efectivo = min(fecha_fin, empleado.fecha_retiro) if empleado.fecha_retiro else fecha_fin
+    if inicio_efectivo > fin_efectivo:
+        return 0
+    return (fin_efectivo - inicio_efectivo).days + 1
+
+
 def _empleado_aplica_periodo(empleado, anio, mes, quincena, forma_pago=None):
     periodo_inicio, periodo_fin = _rango_periodo_nomina(anio, mes, quincena)
     if empleado.fecha_ingreso and empleado.fecha_ingreso > periodo_fin:
@@ -447,21 +530,31 @@ def _empleado_aplica_periodo(empleado, anio, mes, quincena, forma_pago=None):
 
 
 def _valor_periodo_empleado(empleado, anio, mes, quincena, forma_pago=None):
-    salario = float(empleado.salario_base or 0)
     frecuencia = _normalizar_forma_pago_nomina(forma_pago or empleado.forma_pago)
     dias_mes = calendar.monthrange(anio, mes)[1]
+    mes_inicio = date(anio, mes, 1)
+    mes_fin = date(anio, mes, dias_mes)
+    dias_trabajados_mes = _dias_vinculados_en_rango_nomina(empleado, mes_inicio, mes_fin)
+    periodo_inicio, periodo_fin = _rango_periodo_nomina(anio, mes, quincena)
     dias_periodo = _dias_periodo_nomina(anio, mes, quincena)
+    dias_trabajados_periodo = _dias_vinculados_en_rango_nomina(empleado, periodo_inicio, periodo_fin)
 
     if not _empleado_aplica_periodo(empleado, anio, mes, quincena, frecuencia):
         return 0
+    if _es_contrato_obra_labor_nomina(empleado):
+        return _ultimo_valor_pagado_obra_labor(empleado, anio, mes, quincena)
+
+    salario = float(empleado.salario_base or 0)
     if not salario:
         return 0
     if frecuencia == 'mensual':
         quincena_pago = empleado.quincena_pago_mensual or 2
-        return salario if quincena == quincena_pago else 0
+        return (salario / dias_mes * dias_trabajados_mes) if quincena == quincena_pago and dias_mes else 0
     if frecuencia in ('diaria', 'semanal'):
-        return salario / dias_mes * dias_periodo if dias_mes else 0
-    return salario / 2
+        return salario / dias_mes * dias_trabajados_periodo if dias_mes else 0
+    if not dias_periodo:
+        return 0
+    return (salario / 2) * (dias_trabajados_periodo / dias_periodo)
 
 
 def _concepto_base_predeterminado_empleado(empleado, conceptos):
@@ -689,8 +782,8 @@ def lista():
         'nomina/lista.html',
         empleados=empleados,
         empleados_activos_count=len(empleados_activos),
-        empleados_laborales_count=sum(1 for e in empleados_activos if (e.tipo_contrato or 'laboral') == 'laboral'),
-        empleados_servicios_count=sum(1 for e in empleados_activos if e.tipo_contrato == 'prestacion_servicios'),
+        empleados_laborales_count=sum(1 for e in empleados_activos if not _es_contrato_prestacion_servicios_nomina(e)),
+        empleados_servicios_count=sum(1 for e in empleados_activos if _es_contrato_prestacion_servicios_nomina(e)),
         empleados_whatsapp_count=sum(1 for e in empleados_activos if e.autoriza_whatsapp),
         anio=anio,
         meses=MESES,
@@ -782,6 +875,9 @@ def saldos_anteriores():
 @nomina_bp.route('/nuevo', methods=['GET', 'POST'])
 def nuevo():
     if request.method == 'POST':
+        tipo_contrato = _normalizar_tipo_contrato_nomina(request.form.get('tipo_contrato', 'laboral'))
+        salario_base = None if _es_contrato_obra_labor_nomina(tipo_contrato) else (request.form.get('salario_base') or None)
+
         # Crear tercero si no existe
         tercero_id = request.form.get('tercero_id')
         if not tercero_id:
@@ -798,8 +894,8 @@ def nuevo():
         empleado = Empleado(
             tercero_id=tercero_id,
             cargo=request.form.get('cargo', '').strip(),
-            salario_base=request.form.get('salario_base') or None,
-            tipo_contrato=request.form.get('tipo_contrato', 'laboral'),
+            salario_base=salario_base,
+            tipo_contrato=tipo_contrato,
             forma_pago=_normalizar_forma_pago_nomina(request.form.get('forma_pago', 'quincenal')),
             quincena_pago_mensual=request.form.get('quincena_pago_mensual', type=int) or 2,
             whatsapp=request.form.get('whatsapp', '').strip() or None,
@@ -828,6 +924,7 @@ def nuevo():
 def editar(id):
     empleado = Empleado.query.get_or_404(id)
     if request.method == 'POST':
+        tipo_contrato = _normalizar_tipo_contrato_nomina(request.form.get('tipo_contrato', 'laboral'))
         nuevo_estado = (request.form.get('estado') or empleado.estado or 'activo').strip().lower()
         if nuevo_estado not in ESTADOS_EMPLEADO:
             flash('Seleccione un estado valido para el empleado.', 'danger')
@@ -851,11 +948,14 @@ def editar(id):
             _registrar_cambio_estado_empleado(empleado, nuevo_estado, fecha_cambio_estado, motivo_estado)
 
         # Verificar cambio de salario
-        nuevo_salario_str = request.form.get('salario_base', '').strip()
+        nuevo_salario_str = '' if _es_contrato_obra_labor_nomina(tipo_contrato) else request.form.get('salario_base', '').strip()
         nuevo_salario = float(nuevo_salario_str) if nuevo_salario_str else None
         salario_anterior = float(empleado.salario_base) if empleado.salario_base else None
 
-        if nuevo_salario and salario_anterior and nuevo_salario != salario_anterior:
+        if (
+            not _es_contrato_obra_labor_nomina(tipo_contrato)
+            and nuevo_salario and salario_anterior and nuevo_salario != salario_anterior
+        ):
             fecha_cambio_sal = _date_or_none(request.form.get('fecha_cambio_salario'))
             motivo_sal = (request.form.get('motivo_salario') or '').strip()
             if not fecha_cambio_sal:
@@ -875,7 +975,7 @@ def editar(id):
 
         empleado.cargo = request.form.get('cargo', '').strip()
         empleado.salario_base = nuevo_salario
-        empleado.tipo_contrato = request.form.get('tipo_contrato', 'laboral')
+        empleado.tipo_contrato = tipo_contrato
         empleado.forma_pago = _normalizar_forma_pago_nomina(request.form.get('forma_pago', 'quincenal'))
         empleado.quincena_pago_mensual = request.form.get('quincena_pago_mensual', type=int) or 2
         empleado.whatsapp = request.form.get('whatsapp', '').strip() or None
@@ -1035,7 +1135,14 @@ def preliquidar(anio=None, mes=None, quincena=None):
         forma_aplicada = _normalizar_forma_pago_nomina(
             draft_row.get('forma_pago_aplicada', e.forma_pago or 'quincenal')
         )
-        valor_preliquidado = float(draft_row.get('valor_preliquidado', _valor_periodo_empleado(e, anio, mes, quincena, forma_aplicada)))
+        valor_referencia = (
+            _ultimo_valor_pagado_obra_labor(e, anio, mes, quincena)
+            if _es_contrato_obra_labor_nomina(e)
+            else float(e.salario_base or 0)
+        )
+        valor_preliquidado = float(
+            draft_row.get('valor_preliquidado', _valor_periodo_empleado(e, anio, mes, quincena, forma_aplicada))
+        )
         pendiente_anterior = float(draft_row.get('pendiente_anterior', _pendiente_anterior_empleado(e, anio, mes, quincena)))
         incluir = draft_row.get('incluir', True)
         novedades = draft_row.get('novedades', [])
@@ -1059,6 +1166,8 @@ def preliquidar(anio=None, mes=None, quincena=None):
             'total_novedades': total_novedades,
             'total_propuesto': total_propuesto,
             'incluir': incluir,
+            'es_obra_labor': _es_contrato_obra_labor_nomina(e),
+            'valor_referencia': valor_referencia,
         })
 
     return render_template(
