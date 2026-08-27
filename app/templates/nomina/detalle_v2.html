@@ -68,6 +68,7 @@
             </thead>
             <tbody>
                 {% set ns = namespace(total_causado_q1=0, total_pagado_q1=0, total_causado_q2=0, total_pagado_q2=0) %}
+                {% set texto_oculto_liquidacion = 'pago registrado desde liquidacion de nomina' %}
                 {% for i in meses_habilitados %}
                     {% set key_q1 = (i, 1) %}
                     {% set key_q2 = (i, 2) %}
@@ -89,6 +90,8 @@
                     {% set ultimo_abono_q2 = abonos_q2[-1] if abonos_q2 else None %}
                     {% set pago_directo_q1 = registros_q1[0] if registros_q1 and registros_q1[0].fecha_pago else None %}
                     {% set pago_directo_q2 = registros_q2[0] if registros_q2 and registros_q2[0].fecha_pago else None %}
+                    {% set estado_q1_label = 'Por vencer' if estado_q1 == 'causado' else 'Pagado' if estado_q1 == 'pagado' else 'Vencido' if estado_q1 == 'vencido' else 'No aplica' if estado_q1 == 'no_aplica' else 'Sin registro' %}
+                    {% set estado_q2_label = 'Por vencer' if estado_q2 == 'causado' else 'Pagado' if estado_q2 == 'pagado' else 'Vencido' if estado_q2 == 'vencido' else 'No aplica' if estado_q2 == 'no_aplica' else 'Sin registro' %}
                     {% if total_pagado_q1 <= 0 and estado_q1 == 'pagado' %}
                         {% set total_pagado_q1 = total_causado_q1 %}
                     {% endif %}
@@ -108,7 +111,7 @@
                                 <span class="indicador ind-no_aplica"></span> No aplica
                             {% elif registros_q1 %}
                                 <span class="indicador ind-{{ estado_q1 or 'sin_registro' }}"></span>
-                                {{ (estado_q1 or 'sin_registro').replace('_', ' ')|title }}
+                                {{ estado_q1_label }}
                             {% else %}
                                 <span class="indicador ind-sin_registro"></span>
                                 <span class="text-muted">Sin registro</span>
@@ -132,7 +135,7 @@
                                         </span>
                                     {% endfor %}
                                     </div>
-                                    {% for r in registros_q1 if r.observaciones %}
+                                    {% for r in registros_q1 if r.observaciones and r.observaciones|lower|trim != texto_oculto_liquidacion %}
                                     <div class="text-muted mt-1">{{ r.observaciones }}</div>
                                     {% endfor %}
                                 {% elif not aplica_q1 %}
@@ -140,7 +143,7 @@
                                 {% else %}
                                     <div class="text-muted">-</div>
                                 {% endif %}
-                                {% if ultimo_abono_q1 and ultimo_abono_q1.descripcion %}
+                                {% if ultimo_abono_q1 and ultimo_abono_q1.descripcion and ultimo_abono_q1.descripcion|lower|trim != texto_oculto_liquidacion %}
                                 <div class="text-muted mt-1">{{ ultimo_abono_q1.descripcion }}</div>
                                 {% endif %}
                             </small>
@@ -150,7 +153,7 @@
                                 <span class="indicador ind-no_aplica"></span> No aplica
                             {% elif registros_q2 %}
                                 <span class="indicador ind-{{ estado_q2 or 'sin_registro' }}"></span>
-                                {{ (estado_q2 or 'sin_registro').replace('_', ' ')|title }}
+                                {{ estado_q2_label }}
                             {% else %}
                                 <span class="indicador ind-sin_registro"></span>
                                 <span class="text-muted">Sin registro</span>
@@ -174,7 +177,7 @@
                                         </span>
                                     {% endfor %}
                                     </div>
-                                    {% for r in registros_q2 if r.observaciones %}
+                                    {% for r in registros_q2 if r.observaciones and r.observaciones|lower|trim != texto_oculto_liquidacion %}
                                     <div class="text-muted mt-1">{{ r.observaciones }}</div>
                                     {% endfor %}
                                 {% elif not aplica_q2 %}
@@ -182,7 +185,7 @@
                                 {% else %}
                                     <div class="text-muted">-</div>
                                 {% endif %}
-                                {% if ultimo_abono_q2 and ultimo_abono_q2.descripcion %}
+                                {% if ultimo_abono_q2 and ultimo_abono_q2.descripcion and ultimo_abono_q2.descripcion|lower|trim != texto_oculto_liquidacion %}
                                 <div class="text-muted mt-1">{{ ultimo_abono_q2.descripcion }}</div>
                                 {% endif %}
                             </small>
