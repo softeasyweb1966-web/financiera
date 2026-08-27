@@ -1502,6 +1502,7 @@ def detalle(id):
     ).all()
     saldos_pago_pendientes = _items_pago_historico_empleado(empleado, _periodo_actual_nomina_clave())
     total_saldos_pago_pendientes = sum(float(item['valor_deuda'] or 0) for item in saldos_pago_pendientes)
+    hoy = date.today()
     return render_template('nomina/detalle_v2.html', empleado=empleado, anio=anio,
                            meses=MESES, pagos=pagos_dict, causaciones=causaciones_dict,
                            abonos=abonos_dict, abonos_totales=abonos_totales, abonos_lista=abonos,
@@ -1512,6 +1513,9 @@ def detalle(id):
                            saldos_anteriores=saldos_anteriores,
                            saldos_pago_pendientes=saldos_pago_pendientes,
                            total_saldos_pago_pendientes=total_saldos_pago_pendientes,
+                           current_year=hoy.year,
+                           current_month=hoy.month,
+                           current_quincena=1 if hoy.day <= 15 else 2,
                            nomina_inicio_anio=NOMINA_INICIO_ANIO,
                            nomina_inicio_mes=NOMINA_INICIO_MES)
 
