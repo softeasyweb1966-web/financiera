@@ -3,38 +3,20 @@
 
 {% block content %}
 <style>
+    .ind-sin_registro { background: #fb923c; }
+    .ind-causado { background: #facc15; }
+    .ind-pagado { background: #10b981; }
+    .ind-vencido { background: #ef4444; }
+    .ind-no_aplica { background: #94a3b8; }
+    .indicador { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .badge-concepto { background: #e0f2fe; color: #1e40af; font-size: 0.65rem; }
     .badge-deduccion { background: #fef2f2; color: #dc2626; font-size: 0.65rem; }
-    .celda-quincena { vertical-align: top; }
-    .table .quincena-pagado {
-        --bs-table-bg-state: #d1fae5;
-        background-color: #d1fae5 !important;
-    }
-    .table .quincena-causado {
-        --bs-table-bg-state: #fef3c7;
-        background-color: #fef3c7 !important;
-    }
-    .table .quincena-vencido {
-        --bs-table-bg-state: #fee2e2;
-        background-color: #fee2e2 !important;
-    }
-    .table .quincena-no-aplica {
-        --bs-table-bg-state: #e5e7eb;
-        background-color: #e5e7eb !important;
-        color: #6b7280;
-    }
-    .table td:nth-child(2) small.text-muted,
-    .table td:nth-child(5) small.text-muted,
-    .table td:nth-child(2) br,
-    .table td:nth-child(5) br {
-        display: none;
-    }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
         {% set tipo_contrato_norm = (empleado.tipo_contrato or 'laboral')|lower|replace(' ', '_')|replace('-', '_') %}
-        <h5 class="fw-bold mb-0"><i class="bi bi-clock-history text-success"></i> {{ empleado.nombre }}</h5>
+        <h5 class="fw-bold mb-0"><i class="bi bi-clock-history text-primary"></i> {{ empleado.nombre }}</h5>
         <small class="text-muted">
             {{ empleado.cargo or 'Sin cargo' }} ·
             {{ 'Base variable por ultima causacion o pago' if tipo_contrato_norm == 'obra_labor' else 'Salario: $' ~ "{:,.0f}".format(empleado.salario_base) if empleado.salario_base else 'Salario: -' }} ·
@@ -56,195 +38,114 @@
 
 {% if saldos_pago_pendientes %}
 <div class="alert alert-warning py-2 mb-3">
-    Este empleado tiene <strong>{{ saldos_pago_pendientes|length }} quincena(s)</strong> con saldo historico pendiente por
+    Este empleado tiene <strong>{{ saldos_pago_pendientes|length }} quincena(s)</strong> con saldo pendiente por
     <strong>${{ "{:,.0f}".format(total_saldos_pago_pendientes) }}</strong>.
     <a href="{{ url_for('nomina.pagar_saldos_historicos_empleado', id=empleado.id, anio_retorno=anio) }}" class="alert-link">Aplicar pago ahora</a>
 </div>
 {% endif %}
 
-{% if abonos_lista %}
 <div class="card mb-3">
-    <div class="card-body py-3">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-            <h6 class="fw-bold mb-0">Trazabilidad de abonos</h6>
-            <small class="text-muted">{{ abonos_lista|length }} movimiento(s) registrados</small>
-        </div>
-        <div class="row g-2">
-            {% for abono in abonos_lista|reverse %}
-            <div class="col-12 col-lg-6">
-                <div class="border rounded p-2 small">
-                    <div class="d-flex justify-content-between align-items-start gap-2">
-                        <div>
-                            <strong>{{ meses[abono.mes - 1] }} {{ abono.anio }} - Q{{ abono.quincena }}</strong>
-                            <br><span class="text-muted">{{ abono.fecha_pago.strftime('%d/%m/%Y') }}{% if abono.medio_pago %} · {{ abono.medio_pago.nombre }}{% endif %}</span>
-                            {% if abono.descripcion %}
-                            <br><span class="text-muted">{{ abono.descripcion }}</span>
-                            {% endif %}
-                        </div>
-                        <div class="text-end">
-                            <div class="fw-bold text-success">${{ "{:,.0f}".format(abono.valor_abono or 0) }}</div>
-                            <small class="text-muted">abono</small>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-</div>
-{% endif %}
-
-{% if saldos_anteriores %}
-<div class="card mb-3">
-    <div class="card-body py-3">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-            <h6 class="fw-bold mb-0">Saldos anteriores cargados</h6>
-            <small class="text-muted">Corresponden a quincenas anteriores a agosto {{ nomina_inicio_anio }}</small>
-        </div>
-        <div class="row g-2">
-            {% for saldo in saldos_anteriores %}
-            <div class="col-12 col-lg-6">
-                <div class="border rounded p-2 small">
-                    <div class="d-flex justify-content-between align-items-start gap-2">
-                        <div>
-                            <strong>{{ meses[saldo.mes-1] }} {{ saldo.anio }} - Q{{ saldo.quincena }}</strong>
-                            <br><span class="text-muted">{{ saldo.observaciones or 'Sin detalle adicional' }}</span>
-                        </div>
-                        <div class="text-end">
-                            <div class="fw-bold text-danger">${{ "{:,.0f}".format(saldo.saldo_pendiente or 0) }}</div>
-                            <small class="text-muted">{{ saldo.estado or 'pendiente' }}</small>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<div class="card">
     <div class="table-responsive">
         <table class="table table-hover mb-0">
             <thead class="table-light">
                 <tr>
-                    <th>Mes</th>
-                    <th class="celda-quincena">Q1 Conceptos</th>
-                    <th class="celda-quincena">Q1 Fecha</th>
-                    <th>Q1 Total</th>
-                    <th class="celda-quincena">Q2 Conceptos</th>
-                    <th class="celda-quincena">Q2 Fecha</th>
-                    <th>Q2 Total</th>
-                    <th>Total Mes</th>
+                    <th>Periodo</th>
+                    <th>Estado</th>
+                    <th>Fecha causacion</th>
+                    <th>Valor causado</th>
+                    <th>Fecha pago</th>
+                    <th>Valor pagado</th>
+                    <th>Medio</th>
+                    <th>Conceptos</th>
+                    <th>Observaciones</th>
                 </tr>
             </thead>
             <tbody>
-                {% set ns = namespace(total_anual=0) %}
+                {% set ns = namespace(total_causado=0, total_pagado=0) %}
                 {% for i in meses_habilitados %}
-                {% set registros_q1 = pagos.get((i, 1), []) %}
-                {% set registros_q2 = pagos.get((i, 2), []) %}
-                {% set abonos_q1 = abonos.get((i, 1), []) %}
-                {% set abonos_q2 = abonos.get((i, 2), []) %}
-                {% set aplica_q1 = aplica_quincena.get((i, 1), True) %}
-                {% set aplica_q2 = aplica_quincena.get((i, 2), True) %}
-                {% set estado_q1 = estados_quincena.get((i, 1)) %}
-                {% set estado_q2 = estados_quincena.get((i, 2)) %}
-                {% set estado_mes = estados_mes.get(i) %}
-                {% set clase_q1 = 'quincena-pagado' if estado_q1 == 'pagado' else 'quincena-vencido' if estado_q1 == 'vencido' else 'quincena-causado' if estado_q1 == 'causado' else 'quincena-no-aplica' if estado_q1 == 'no_aplica' else '' %}
-                {% set clase_q2 = 'quincena-pagado' if estado_q2 == 'pagado' else 'quincena-vencido' if estado_q2 == 'vencido' else 'quincena-causado' if estado_q2 == 'causado' else 'quincena-no-aplica' if estado_q2 == 'no_aplica' else '' %}
-                {% set mes_no_aplica = estado_q1 == 'no_aplica' and estado_q2 == 'no_aplica' %}
-                {% set total_q1 = registros_q1|sum(attribute='valor')|float %}
-                {% set total_q2 = registros_q2|sum(attribute='valor')|float %}
-                {% set total_mes = total_q1 + total_q2 %}
-                {% set ns.total_anual = ns.total_anual + total_mes %}
-                <tr class="{{ 'table-secondary text-muted' if mes_no_aplica else '' }}">
-                    <td class="fw-semibold">{{ meses[i - 1] }}</td>
-                    <td class="celda-quincena {{ clase_q1 }}">
-                        {% if not aplica_q1 and not registros_q1 %}
-                            <span class="text-muted">No aplica</span>
-                        {% elif registros_q1 %}
-                            {% for r in registros_q1 %}
-                            <span class="badge {{ 'badge-deduccion' if r.concepto_nomina and r.concepto_nomina.tipo == 'deduccion' else 'badge-concepto' }}">
-                                {{ r.concepto_nomina.nombre if r.concepto_nomina else 'N/A' }}
-                            </span>
-                            {% endfor %}
-                            {% if causaciones.get((i, 1)) %}
-                            <br><small class="text-muted">Causado: {{ causaciones[(i, 1)].strftime('%d/%m/%Y') }}</small>
-                            {% endif %}
-                            {% if abonos_q1 %}
-                            <br><small class="text-muted">Abonos: {{ abonos_q1|length }} por ${{ "{:,.0f}".format(abonos_totales.get((i, 1), 0)) }}</small>
-                            {% elif registros_q1[0].fecha_pago %}
-                            <br><small class="text-muted">Pagado: {{ registros_q1[0].fecha_pago.strftime('%d/%m/%Y') }}{{ ' · ' + registros_q1[0].medio_pago.nombre if registros_q1[0].medio_pago else '' }}</small>
-                            {% endif %}
-                        {% else %}
-                            <span class="text-muted">-</span>
+                    {% for quincena in (1, 2) %}
+                        {% set key = (i, quincena) %}
+                        {% set registros = pagos.get(key, []) %}
+                        {% set aplica = aplica_quincena.get(key, True) %}
+                        {% set estado = estados_quincena.get(key) if aplica else 'no_aplica' %}
+                        {% set causacion = causaciones.get(key) %}
+                        {% set abonos_periodo = abonos.get(key, []) %}
+                        {% set total_causado = registros|sum(attribute='valor')|float %}
+                        {% set total_pagado = abonos_totales.get(key, 0)|float %}
+                        {% set ultimo_abono = abonos_periodo[-1] if abonos_periodo else None %}
+                        {% set pago_directo = registros[0] if registros and registros[0].fecha_pago else None %}
+                        {% if total_pagado <= 0 and estado == 'pagado' %}
+                            {% set total_pagado = total_causado %}
                         {% endif %}
-                    </td>
-                    <td class="celda-quincena {{ clase_q1 }}">
-                        {% if not aplica_q1 and not registros_q1 %}
-                            <span class="text-muted">No aplica</span>
-                        {% elif registros_q1 %}
-                            {% if causaciones.get((i, 1)) %}
-                            <small class="text-muted d-block">Causado: {{ causaciones[(i, 1)].strftime('%d/%m/%Y') }}</small>
-                            {% endif %}
-                            {% if abonos_q1 %}
-                            {% set ultimo_abono_q1 = abonos_q1[-1] %}
-                            <small class="text-muted d-block">Ultimo abono: {{ ultimo_abono_q1.fecha_pago.strftime('%d/%m/%Y') }}</small>
-                            {% elif registros_q1[0].fecha_pago %}
-                            <small class="text-muted d-block">Pagado: {{ registros_q1[0].fecha_pago.strftime('%d/%m/%Y') }}</small>
-                            {% endif %}
-                        {% else %}
-                            <span class="text-muted">-</span>
+                        {% if total_causado > 0 %}
+                            {% set ns.total_causado = ns.total_causado + total_causado %}
                         {% endif %}
-                    </td>
-                    <td class="fw-bold {{ clase_q1 }} {{ 'text-success' if estado_q1 == 'pagado' else 'text-danger' if estado_q1 == 'vencido' else 'text-body' if total_q1 > 0 else 'text-muted' }}">
-                        {{ "${:,.0f}".format(total_q1) if total_q1 > 0 else '-' }}
-                    </td>
-                    <td class="celda-quincena {{ clase_q2 }}">
-                        {% if not aplica_q2 and not registros_q2 %}
-                            <span class="text-muted">No aplica</span>
-                        {% elif registros_q2 %}
-                            {% for r in registros_q2 %}
-                            <span class="badge {{ 'badge-deduccion' if r.concepto_nomina and r.concepto_nomina.tipo == 'deduccion' else 'badge-concepto' }}">
-                                {{ r.concepto_nomina.nombre if r.concepto_nomina else 'N/A' }}
-                            </span>
-                            {% endfor %}
-                            {% if causaciones.get((i, 2)) %}
-                            <br><small class="text-muted">Causado: {{ causaciones[(i, 2)].strftime('%d/%m/%Y') }}</small>
-                            {% endif %}
-                            {% if abonos_q2 %}
-                            <br><small class="text-muted">Abonos: {{ abonos_q2|length }} por ${{ "{:,.0f}".format(abonos_totales.get((i, 2), 0)) }}</small>
-                            {% elif registros_q2[0].fecha_pago %}
-                            <br><small class="text-muted">Pagado: {{ registros_q2[0].fecha_pago.strftime('%d/%m/%Y') }}{{ ' · ' + registros_q2[0].medio_pago.nombre if registros_q2[0].medio_pago else '' }}</small>
-                            {% endif %}
-                        {% else %}
-                            <span class="text-muted">-</span>
+                        {% if total_pagado > 0 %}
+                            {% set ns.total_pagado = ns.total_pagado + total_pagado %}
                         {% endif %}
-                    </td>
-                    <td class="celda-quincena {{ clase_q2 }}">
-                        {% if not aplica_q2 and not registros_q2 %}
-                            <span class="text-muted">No aplica</span>
-                        {% elif registros_q2 %}
-                            {% if causaciones.get((i, 2)) %}
-                            <small class="text-muted d-block">Causado: {{ causaciones[(i, 2)].strftime('%d/%m/%Y') }}</small>
-                            {% endif %}
-                            {% if abonos_q2 %}
-                            {% set ultimo_abono_q2 = abonos_q2[-1] %}
-                            <small class="text-muted d-block">Ultimo abono: {{ ultimo_abono_q2.fecha_pago.strftime('%d/%m/%Y') }}</small>
-                            {% elif registros_q2[0].fecha_pago %}
-                            <small class="text-muted d-block">Pagado: {{ registros_q2[0].fecha_pago.strftime('%d/%m/%Y') }}</small>
-                            {% endif %}
-                        {% else %}
-                            <span class="text-muted">-</span>
-                        {% endif %}
-                    </td>
-                    <td class="fw-bold {{ clase_q2 }} {{ 'text-success' if estado_q2 == 'pagado' else 'text-danger' if estado_q2 == 'vencido' else 'text-body' if total_q2 > 0 else 'text-muted' }}">
-                        {{ "${:,.0f}".format(total_q2) if total_q2 > 0 else '-' }}
-                    </td>
-                    <td class="fw-bold {{ 'text-success' if estado_mes == 'pagado' else 'text-danger' if estado_mes == 'vencido' else 'text-body' if total_mes > 0 else '' }}">
-                        {{ "${:,.0f}".format(total_mes) if total_mes > 0 else '-' }}
-                    </td>
-                </tr>
+                        {% set row_class = 'table-success' if estado == 'pagado' else 'table-warning' if estado == 'causado' else 'table-danger' if estado == 'vencido' else 'table-secondary text-muted' if estado == 'no_aplica' else '' %}
+                        <tr class="{{ row_class }}">
+                            <td class="fw-semibold">{{ meses[i - 1] }} Q{{ quincena }}</td>
+                            <td>
+                                {% if estado == 'no_aplica' %}
+                                    <span class="indicador ind-no_aplica"></span>
+                                    No aplica
+                                {% elif registros %}
+                                    <span class="indicador ind-{{ estado or 'sin_registro' }}"></span>
+                                    {{ (estado or 'sin_registro').replace('_', ' ')|title }}
+                                {% else %}
+                                    <span class="indicador ind-sin_registro"></span>
+                                    <span class="text-muted">Sin registro</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ causacion.strftime('%d/%m/%Y') if causacion else '-' }}</td>
+                            <td>{{ "${:,.0f}".format(total_causado) if total_causado > 0 else '-' }}</td>
+                            <td>
+                                {% if ultimo_abono %}
+                                    {{ ultimo_abono.fecha_pago.strftime('%d/%m/%Y') }}
+                                {% elif pago_directo %}
+                                    {{ pago_directo.fecha_pago.strftime('%d/%m/%Y') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="fw-bold">{{ "${:,.0f}".format(total_pagado) if total_pagado > 0 else '-' }}</td>
+                            <td>
+                                {% if ultimo_abono and ultimo_abono.medio_pago %}
+                                    {{ ultimo_abono.medio_pago.nombre }}
+                                {% elif pago_directo and pago_directo.medio_pago %}
+                                    {{ pago_directo.medio_pago.nombre }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if registros %}
+                                    {% for r in registros %}
+                                    <span class="badge {{ 'badge-deduccion' if r.concepto_nomina and r.concepto_nomina.tipo == 'deduccion' else 'badge-concepto' }}">
+                                        {{ r.concepto_nomina.nombre if r.concepto_nomina else 'N/A' }}
+                                    </span>
+                                    {% endfor %}
+                                {% elif not aplica %}
+                                    <span class="text-muted">No aplica</span>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small>
+                                    {% if registros %}
+                                        {% for r in registros if r.observaciones %}
+                                        <div>{{ r.observaciones }}</div>
+                                        {% endfor %}
+                                    {% endif %}
+                                    {% if ultimo_abono and ultimo_abono.descripcion %}
+                                    <div class="text-muted">{{ ultimo_abono.descripcion }}</div>
+                                    {% endif %}
+                                </small>
+                            </td>
+                        </tr>
+                    {% endfor %}
                 {% endfor %}
             </tbody>
             <tfoot class="table-light">
@@ -252,14 +153,45 @@
                     <td>TOTAL {{ anio }}</td>
                     <td></td>
                     <td></td>
+                    <td>${{ "{:,.0f}".format(ns.total_causado) }}</td>
                     <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td class="text-primary fs-6">${{ "{:,.0f}".format(ns.total_anual) }}</td>
+                    <td>${{ "{:,.0f}".format(ns.total_pagado) }}</td>
+                    <td colspan="3"></td>
                 </tr>
             </tfoot>
         </table>
     </div>
 </div>
+
+{% if saldos_anteriores %}
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th colspan="5">Saldos anteriores cargados</th>
+                </tr>
+                <tr>
+                    <th>Periodo</th>
+                    <th>Estado</th>
+                    <th>Valor inicial</th>
+                    <th>Saldo pendiente</th>
+                    <th>Observaciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for saldo in saldos_anteriores %}
+                <tr class="{{ 'table-success' if saldo.estado == 'pagado' else 'table-warning' if saldo.estado == 'parcial' else 'table-danger' if saldo.estado == 'anulado' else '' }}">
+                    <td class="fw-semibold">{{ meses[saldo.mes - 1] }} {{ saldo.anio }} Q{{ saldo.quincena }}</td>
+                    <td>{{ (saldo.estado or 'pendiente').replace('_', ' ')|title }}</td>
+                    <td>{{ "${:,.0f}".format(saldo.valor_inicial or 0) }}</td>
+                    <td class="fw-bold">{{ "${:,.0f}".format(saldo.saldo_pendiente or 0) }}</td>
+                    <td><small>{{ saldo.observaciones or '' }}</small></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
