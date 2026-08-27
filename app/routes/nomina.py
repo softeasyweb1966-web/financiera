@@ -531,10 +531,12 @@ def _empleado_aplica_periodo(empleado, anio, mes, quincena, forma_pago=None):
 
 def _valor_periodo_empleado(empleado, anio, mes, quincena, forma_pago=None):
     frecuencia = _normalizar_forma_pago_nomina(forma_pago or empleado.forma_pago)
+    dias_mes = calendar.monthrange(anio, mes)[1]
     mes_inicio = date(anio, mes, 1)
-    mes_fin = date(anio, mes, calendar.monthrange(anio, mes)[1])
+    mes_fin = date(anio, mes, dias_mes)
     dias_trabajados_mes = _dias_vinculados_en_rango_nomina(empleado, mes_inicio, mes_fin)
     periodo_inicio, periodo_fin = _rango_periodo_nomina(anio, mes, quincena)
+    dias_periodo = _dias_periodo_nomina(anio, mes, quincena)
     dias_trabajados_periodo = _dias_vinculados_en_rango_nomina(empleado, periodo_inicio, periodo_fin)
 
     if not _empleado_aplica_periodo(empleado, anio, mes, quincena, frecuencia):
@@ -545,13 +547,14 @@ def _valor_periodo_empleado(empleado, anio, mes, quincena, forma_pago=None):
     salario = float(empleado.salario_base or 0)
     if not salario:
         return 0
-    valor_dia = salario / 30
     if frecuencia == 'mensual':
         quincena_pago = empleado.quincena_pago_mensual or 2
-        return valor_dia * dias_trabajados_mes if quincena == quincena_pago else 0
+        return (salario / dias_mes * dias_trabajados_mes) if quincena == quincena_pago and dias_mes else 0
     if frecuencia in ('diaria', 'semanal'):
-        return valor_dia * dias_trabajados_periodo
-    return valor_dia * dias_trabajados_periodo
+        return salario / dias_mes * dias_trabajados_periodo if dias_mes else 0
+    if not dias_periodo:
+        return 0
+    return (salario / 2) * (dias_trabajados_periodo / dias_periodo)
 
 
 def _concepto_base_predeterminado_empleado(empleado, conceptos):
