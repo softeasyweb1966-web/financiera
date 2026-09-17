@@ -6,7 +6,8 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from sqlalchemy import and_, extract, func, or_
 
 from app import db
-from app.models import AbonoCompra, Compra, ConceptoCompra, MedioPago, ProductoCompra, Tercero
+from app.models import AbonoCompra, Compra, ConceptoCompra, CuotaCompra, MedioPago, ProductoCompra, Tercero
+from app import compras_credito
 
 
 compras_bp = Blueprint('compras', __name__, url_prefix='/compras')
@@ -33,7 +34,8 @@ def _decimal_or_zero(value):
     if not raw:
         return ZERO
     try:
-        return Decimal(raw)
+        numero = Decimal(raw)
+        return numero if numero.is_finite() else ZERO
     except (InvalidOperation, ValueError):
         return ZERO
 
@@ -298,6 +300,15 @@ def lista(anio=None, mes=None):
     )
     top_concepto = resumen_grupos[0] if resumen_grupos else None
     top_item = resumen_items[0] if resumen_items else None
+    vencimientos_mes = []
+    for compra in compras_mes + compras_previas:
+        if compra.condicion_pago != 'credito':
+            continue
+        for fila in compras_credito.calendario(compra):
+            vencimiento = fila['cuota'].fecha_vencimiento
+            if (vencimiento.year, vencimiento.month) == (anio, mes) and not fila['cuota'].es_inicial:
+                vencimientos_mes.append(dict(fila, compra=compra))
+    vencimientos_mes.sort(key=lambda fila: (fila['cuota'].fecha_vencimiento, fila['compra'].id))
 
     return render_template(
         'compras/lista_v2.html',
@@ -317,6 +328,7 @@ def lista(anio=None, mes=None):
         items_mes_actual=items_mes_actual,
         top_concepto=top_concepto,
         top_item=top_item,
+        vencimientos_mes=vencimientos_mes,
         **catalogos,
     )
 
@@ -324,6 +336,43 @@ def lista(anio=None, mes=None):
 @compras_bp.route('/nueva', methods=['GET', 'POST'])
 def nueva():
     catalogos = _catalogos_compra()
+
+    if request.method == 'POST' and 'condicion_pago' in request.form:
+        try:
+            plan = compras_credito.preparar(request.form)
+            concepto_id = request.form.get('concepto_compra_id', type=int)
+            concepto = db.session.get(ConceptoCompra, concepto_id) if concepto_id else None
+            if not concepto or not concepto.activo:
+                raise ValueError('Seleccione un concepto válido.')
+            if not (request.form.get('descripcion') or '').strip():
+                raise ValueError('Indique la descripción de la compra.')
+            for campo, modelo in [('tercero_id', Tercero), ('medio_pago_id', MedioPago), ('producto_compra_id', ProductoCompra)]:
+                if request.form.get(campo):
+                    registro_id = request.form.get(campo, type=int)
+                    registro = db.session.get(modelo, registro_id) if registro_id else None
+                    if not registro or not registro.activo:
+                        raise ValueError('Revise el proveedor, medio de pago o producto seleccionado.')
+                    if campo == 'producto_compra_id' and registro.concepto_compra_id != concepto_id:
+                        raise ValueError('El producto debe pertenecer al concepto seleccionado.')
+        except ValueError as exc:
+            flash(str(exc), 'danger')
+            return render_template('compras/form_v2.html', compra=None, **catalogos), 400
+        compra = Compra(fecha=plan['fecha'], valor=plan['total'], condicion_pago=plan['condicion'],
+            concepto_compra_id=concepto_id, producto_compra_id=request.form.get('producto_compra_id') or None,
+            tercero_id=request.form.get('tercero_id') or None, descripcion=request.form['descripcion'].strip(),
+            estado='pendiente', observaciones=(request.form.get('observaciones') or '').strip() or None)
+        db.session.add(compra)
+        db.session.flush()
+        for cuota in plan['cuotas']:
+            db.session.add(CuotaCompra(compra_id=compra.id, fecha_vencimiento=cuota['fecha'],
+                                      valor=cuota['valor'], es_inicial=cuota['es_inicial']))
+        if plan['inicial'] > ZERO:
+            _registrar_abono_compra(compra, plan['inicial'], plan['fecha_pago'],
+                medio_pago_id=request.form.get('medio_pago_id') or None,
+                descripcion=request.form.get('descripcion_pago') or 'Pago inicial de la compra')
+        db.session.commit()
+        flash('Compra guardada con su condición de pago y calendario.', 'success')
+        return redirect(url_for('compras.detalle', id=compra.id))
 
     if request.method == 'POST':
         valor = _decimal_or_zero(request.form.get('valor'))
@@ -386,13 +435,20 @@ def nueva():
 
 @compras_bp.route('/<int:id>/editar', methods=['GET', 'POST'])
 def editar(id):
-    compra = Compra.query.get_or_404(id)
+    compra = Compra.query.filter_by(id=id).with_for_update().first_or_404()
     catalogos = _catalogos_compra()
     resumen_abonos = _abonos_por_compra([compra.id])
     totales_actuales = _totales_compra(compra, resumen_abonos)
 
     if request.method == 'POST':
         nuevo_valor = _decimal_or_zero(request.form.get('valor'))
+        if compra.cuotas.count():
+            nueva_fecha = _date_or_none(request.form.get('fecha'))
+            primera_fecha = compra.cuotas.first().fecha_vencimiento
+            if nuevo_valor != compra.valor or not nueva_fecha or nueva_fecha > primera_fecha:
+                flash('La compra tiene cuotas pactadas: conserve el valor total y una fecha de compra anterior o igual al primer vencimiento.', 'danger')
+                return render_template('compras/form_v2.html', compra=compra,
+                                       totales_actuales=totales_actuales, **catalogos), 400
         if nuevo_valor <= ZERO:
             flash('El valor del registro debe ser mayor a cero.', 'danger')
             return render_template(
@@ -454,13 +510,14 @@ def detalle(id):
         legacy_pago=legacy_pago,
         medios=medios,
         fecha_hoy=date.today(),
+        calendario=compras_credito.calendario(compra),
     )
 
 
 @compras_bp.route('/<int:id>/abonar', methods=['POST'])
 @compras_bp.route('/<int:id>/pagar', methods=['POST'])
 def registrar_abono(id):
-    compra = Compra.query.get_or_404(id)
+    compra = Compra.query.filter_by(id=id).with_for_update().first_or_404()
     resumen_abonos = _abonos_por_compra([compra.id])
     totales_antes = _totales_compra(compra, resumen_abonos)
     fecha_pago = _date_or_none(request.form.get('fecha_pago'))
@@ -470,9 +527,14 @@ def registrar_abono(id):
         destino = _safe_next_url(request.form.get('next'))
         return redirect(destino or url_for('compras.detalle', id=compra.id))
 
-    valor_abono = _decimal_or_zero(request.form.get('valor_abono'))
+    try:
+        valor_abono = compras_credito.importe(request.form.get('valor_abono'))
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+        return redirect(url_for('compras.detalle', id=compra.id))
     if valor_abono <= ZERO:
-        valor_abono = totales_antes['saldo']
+        flash('Indique un valor de abono mayor que cero.', 'danger')
+        return redirect(url_for('compras.detalle', id=compra.id))
 
     if valor_abono > totales_antes['saldo']:
         flash(
@@ -482,8 +544,8 @@ def registrar_abono(id):
         destino = _safe_next_url(request.form.get('next'))
         return redirect(destino or url_for('compras.detalle', id=compra.id))
 
-    if not fecha_pago:
-        flash('Debe indicar una fecha de pago valida para registrar el abono.', 'danger')
+    if not fecha_pago or fecha_pago < compra.fecha or fecha_pago > date.today():
+        flash('La fecha del pago debe estar entre la fecha de compra y hoy.', 'danger')
         destino = _safe_next_url(request.form.get('next'))
         return redirect(destino or url_for('compras.detalle', id=compra.id))
 

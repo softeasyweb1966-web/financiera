@@ -2,6 +2,7 @@
 {% block title %}Registro - {{ compra.descripcion }}{% endblock %}
 
 {% block content %}
+{% set proximas = calendario|selectattr('saldo', 'gt', 0)|list %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
         <h5 class="fw-bold mb-1"><i class="bi bi-cart text-danger"></i> Detalle de Compras y Gastos</h5>
@@ -33,6 +34,10 @@
                             <tr>
                                 <td class="text-muted" style="width:150px;">Fecha</td>
                                 <td class="fw-semibold">{{ compra.fecha.strftime('%d/%m/%Y') }}</td>
+                            </tr>
+                            <tr>
+                                <td class="text-muted">Forma de pago</td>
+                                <td>{{ 'Crédito' if compra.condicion_pago == 'credito' else 'Contado' if compra.condicion_pago == 'contado' else 'Sin especificar (registro anterior)' }}</td>
                             </tr>
                             <tr>
                                 <td class="text-muted">Proveedor</td>
@@ -82,8 +87,8 @@
                     <input type="hidden" name="next" value="{{ request.path }}">
                     <div class="mb-2">
                         <label class="form-label">Valor del abono</label>
-                        <input type="text" name="valor_abono" class="form-control js-money" data-money-scale="0" value="{{ "{:,.0f}".format(totales.saldo).replace(',', '') }}">
-                        <div class="form-text">Puede registrar un pago parcial o total.</div>
+                        <input type="text" name="valor_abono" class="form-control js-money" data-money-scale="2" required value="{{ proximas[0].saldo if proximas else totales.saldo }}">
+                        <div class="form-text">Puede registrar un pago parcial o total. Se aplica primero a la cuota pendiente más antigua.</div>
                     </div>
                     <div class="mb-2">
                         <label class="form-label">Fecha de pago</label>
@@ -113,6 +118,25 @@
         </div>
     </div>
 </div>
+
+{% if calendario %}
+<div class="card mt-3"><div class="card-body">
+    <h6 class="fw-bold">Calendario de pagos de la compra</h6>
+    <p class="small text-muted">La fecha acordada se conserva aunque pague antes o después. Cada abono se aplica en orden a las cuotas pendientes.</p>
+    <div class="table-responsive"><table class="table table-sm align-middle">
+        <thead><tr><th>Pago</th><th>Fecha acordada</th><th>Valor</th><th>Abonado</th><th>Saldo</th><th>Estado</th><th>Pagos realizados (fecha y valor)</th></tr></thead>
+        <tbody>{% for fila in calendario %}<tr>
+            <td>{{ 'Inicial' if fila.cuota.es_inicial else 'Cuota' }}</td>
+            <td>{{ fila.cuota.fecha_vencimiento.strftime('%d/%m/%Y') }}</td>
+            <td>${{ '{:,.2f}'.format(fila.cuota.valor) }}</td>
+            <td class="text-success">${{ '{:,.2f}'.format(fila.abonado) }}</td>
+            <td>${{ '{:,.2f}'.format(fila.saldo) }}</td>
+            <td class="{{ 'text-danger' if fila.estado == 'Vencida' else 'text-success' if fila.estado == 'Pagada' else '' }}">{{ fila.estado }}</td>
+            <td>{% for pago in fila.pagos %}<small class="d-block">{{ pago.fecha.strftime('%d/%m/%Y') }} · ${{ '{:,.2f}'.format(pago.valor) }}</small>{% else %}Sin pagos{% endfor %}</td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+</div></div>
+{% endif %}
 
 {% if legacy_pago %}
 <div class="alert alert-warning mt-3 mb-0">

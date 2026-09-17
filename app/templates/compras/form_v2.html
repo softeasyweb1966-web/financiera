@@ -10,7 +10,7 @@
                 <div class="row g-3">
                     <div class="col-12 col-md-4">
                         <label class="form-label">Fecha *</label>
-                        <input type="date" name="fecha" class="form-control" required value="{{ compra.fecha.strftime('%Y-%m-%d') if compra else '' }}">
+                        <input type="date" name="fecha" class="form-control" required value="{{ request.form.get('fecha', compra.fecha.strftime('%Y-%m-%d') if compra else '') }}">
                     </div>
                     <div class="col-12 col-md-4">
                         <label class="form-label">Concepto *</label>
@@ -18,7 +18,7 @@
                             <select name="concepto_compra_id" id="concepto_compra_id" class="form-select" required>
                                 <option value="">Seleccione...</option>
                                 {% for concepto in conceptos %}
-                                <option value="{{ concepto.id }}" {{ 'selected' if compra and compra.concepto_compra_id == concepto.id else '' }}>{{ concepto.nombre }}</option>
+                                <option value="{{ concepto.id }}" {{ 'selected' if request.form.get('concepto_compra_id', compra.concepto_compra_id|string if compra else '') == concepto.id|string else '' }}>{{ concepto.nombre }}</option>
                                 {% endfor %}
                             </select>
                             <button type="button" class="btn btn-outline-success" title="Crear concepto" data-bs-toggle="modal" data-bs-target="#modalNuevoConcepto">
@@ -32,7 +32,7 @@
                             <select name="producto_compra_id" id="producto_compra_id" class="form-select">
                                 <option value="">-- Sin catalogar --</option>
                                 {% for producto in productos %}
-                                <option value="{{ producto.id }}" data-concepto="{{ producto.concepto_compra_id }}" {{ 'selected' if compra and compra.producto_compra_id == producto.id else '' }}>{{ producto.nombre }}</option>
+                                <option value="{{ producto.id }}" data-concepto="{{ producto.concepto_compra_id }}" {{ 'selected' if request.form.get('producto_compra_id', compra.producto_compra_id|string if compra else '') == producto.id|string else '' }}>{{ producto.nombre }}</option>
                                 {% endfor %}
                             </select>
                             <button type="button" class="btn btn-outline-success" title="Crear item" data-bs-toggle="modal" data-bs-target="#modalNuevoItem">
@@ -44,7 +44,7 @@
 
                     <div class="col-12">
                         <label class="form-label">Descripcion *</label>
-                        <input type="text" name="descripcion" class="form-control" required value="{{ compra.descripcion if compra else '' }}" placeholder="Detalle del movimiento">
+                        <input type="text" name="descripcion" class="form-control" required value="{{ request.form.get('descripcion', compra.descripcion if compra else '') }}" placeholder="Detalle del movimiento">
                     </div>
 
                     <div class="col-12 col-md-6">
@@ -52,18 +52,19 @@
                         <select name="tercero_id" class="form-select">
                             <option value="">-- Opcional --</option>
                             {% for tercero in terceros %}
-                            <option value="{{ tercero.id }}" {{ 'selected' if compra and compra.tercero_id == tercero.id else '' }}>{{ tercero.nombre }}</option>
+                            <option value="{{ tercero.id }}" {{ 'selected' if request.form.get('tercero_id', compra.tercero_id|string if compra else '') == tercero.id|string else '' }}>{{ tercero.nombre }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="col-12 col-md-6">
                         <label class="form-label">Valor causado *</label>
-                        <input type="text" name="valor" class="form-control js-money" data-money-scale="0" required value="{{ compra.valor if compra else '' }}">
+                        <input type="text" name="valor" class="form-control js-money" data-money-scale="2" required {{ 'readonly' if compra and compra.condicion_pago == 'credito' }} value="{{ request.form.get('valor', compra.valor if compra else '') }}">
+                        {% if compra and compra.condicion_pago == 'credito' %}<div class="form-text">El valor corresponde al calendario de cuotas pactado. Consulte las fechas y registre los abonos desde el detalle.</div>{% endif %}
                     </div>
 
                     <div class="col-12">
                         <label class="form-label">Observaciones</label>
-                        <textarea name="observaciones" class="form-control" rows="2">{{ compra.observaciones if compra else '' }}</textarea>
+                        <textarea name="observaciones" class="form-control" rows="2">{{ request.form.get('observaciones', compra.observaciones if compra else '') }}</textarea>
                     </div>
                 </div>
 
@@ -80,42 +81,7 @@
                     </div>
                 </div>
                 {% else %}
-                <div class="card mt-4" style="background:#f8fafc;">
-                    <div class="card-body">
-                        <h6 class="fw-bold mb-3"><i class="bi bi-cash-coin text-success"></i> Situacion inicial del pago</h6>
-                        <div class="row g-3">
-                            <div class="col-12 col-md-4">
-                                <label class="form-label">Situacion</label>
-                                <select name="situacion_pago" id="situacion_pago" class="form-select">
-                                    <option value="pendiente">Pendiente</option>
-                                    <option value="parcial">Parcial</option>
-                                    <option value="pagado">Pagado</option>
-                                </select>
-                            </div>
-                            <div class="col-12 col-md-4">
-                                <label class="form-label">Valor abonado inicial</label>
-                                <input type="text" name="valor_abono_inicial" class="form-control js-money" data-money-scale="0">
-                            </div>
-                            <div class="col-12 col-md-4">
-                                <label class="form-label">Fecha de pago</label>
-                                <input type="date" name="fecha_pago" id="fecha_pago_inicial" class="form-control">
-                            </div>
-                            <div class="col-12 col-md-6">
-                                <label class="form-label">Medio de pago</label>
-                                <select name="medio_pago_id" class="form-select">
-                                    <option value="">-- Seleccione --</option>
-                                    {% for medio in medios %}
-                                    <option value="{{ medio.id }}">{{ medio.nombre }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-12 col-md-6">
-                                <label class="form-label">Descripcion del pago</label>
-                                <input type="text" name="descripcion_pago" class="form-control" placeholder="Referencia o nota del abono inicial">
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                {% include 'compras/_condiciones_pago.html' %}
                 {% endif %}
 
                 <div class="d-flex gap-2 flex-wrap mt-4">
@@ -186,6 +152,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/compras_credito.js') }}"></script>
 <script>
 function filtrarProductosCompra() {
     const concepto = document.getElementById('concepto_compra_id').value;

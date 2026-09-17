@@ -41,6 +41,7 @@ def _ensure_schema():
         AbonoGasto,
         AbonoNomina,
         AmortizacionObligacion,
+        CuotaCompra,
         HistorialPagoObligacion,
         SaldoAnteriorNomina,
     )
@@ -79,6 +80,13 @@ def _ensure_schema():
     if not inspector.has_table('abonos_gastos'):
         AbonoGasto.__table__.create(bind=db.engine, checkfirst=True)
         inspector = inspect(db.engine)
+
+    if inspector.has_table('compras'):
+        columnas = {col['name'] for col in inspector.get_columns('compras')}
+        if 'condicion_pago' not in columnas:
+            db.session.execute(text('ALTER TABLE compras ADD COLUMN condicion_pago VARCHAR(20)'))
+            db.session.commit()
+        CuotaCompra.__table__.create(bind=db.engine, checkfirst=True)
 
     if inspector.has_table('abonos_capital_obligaciones'):
         columnas = {col['name'] for col in inspector.get_columns('abonos_capital_obligaciones')}

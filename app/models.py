@@ -675,6 +675,7 @@ class Compra(db.Model):
     producto_compra_id = db.Column(db.Integer, db.ForeignKey('productos_compras.id'))
     descripcion = db.Column(db.String(300), nullable=False)
     valor = db.Column(db.Numeric(14, 2), nullable=False)
+    condicion_pago = db.Column(db.String(20))  # contado, credito; null para registros anteriores
     medio_pago_id = db.Column(db.Integer, db.ForeignKey('medios_pago.id'))
     fecha_pago = db.Column(db.Date)
     estado = db.Column(db.String(20), default='pendiente')  # pendiente, pagado
@@ -696,6 +697,19 @@ class Compra(db.Model):
 
     def __repr__(self):
         return f'<Compra {self.descripcion}>'
+
+
+class CuotaCompra(db.Model):
+    """Vencimientos pactados; el dinero recibido se conserva en AbonoCompra."""
+    __tablename__ = 'cuotas_compras'
+
+    id = db.Column(db.Integer, primary_key=True)
+    compra_id = db.Column(db.Integer, db.ForeignKey('compras.id'), nullable=False, index=True)
+    fecha_vencimiento = db.Column(db.Date, nullable=False)
+    valor = db.Column(db.Numeric(14, 2), nullable=False)
+    es_inicial = db.Column(db.Boolean, nullable=False, default=False)
+    compra = db.relationship('Compra', backref=db.backref(
+        'cuotas', lazy='dynamic', order_by='CuotaCompra.fecha_vencimiento, CuotaCompra.id'))
 
 
 class PagoTC(db.Model):

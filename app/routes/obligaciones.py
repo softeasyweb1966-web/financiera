@@ -1950,16 +1950,30 @@ def pagos(anio=None, mes=None):
     total_items_mes = len(obligaciones_mes)
     total_saldo_actual = sum(float(o.saldo_actual or 0) for o in obligaciones)
     obligaciones_activas_total = len(obligaciones)
+    saldo_vencido_mes = 0
+    for item in obligaciones_mes:
+        fecha_limite = item.get('fecha_limite_actual')
+        if not fecha_limite or fecha_limite >= hoy:
+            continue
+        if item.get('estado') in ('pagado', 'acordado') or item.get('es_informativo'):
+            continue
+        saldo_pendiente_item = item.get('saldo_cuota_pendiente') or item.get('valor_pago_sugerido') or 0
+        saldo_vencido_mes += float(saldo_pendiente_item or 0)
+    saldo_vencido_mes = min(saldo_vencido_mes, por_pagar_mes)
+    saldo_por_vencer_mes = max(por_pagar_mes - saldo_vencido_mes, 0)
     inicio_abonos, fin_abonos = _rango_mes(anio, mes)
     abonos_mes = [a for a in AbonoCapitalObligacion.query.filter(
         AbonoCapitalObligacion.obligacion_id.in_(obligacion_ids),
         AbonoCapitalObligacion.fecha_abono.between(inicio_abonos, fin_abonos)
     ).all() if not a.revertido] if obligacion_ids else []
+    total_abonos_mes = sum(float(a.valor_abono) for a in abonos_mes)
+    total_descuentos_mes = sum(a.descuento_intereses for a in abonos_mes)
+    total_pagado_resumen_mes = float(pagado_mes_actual) + total_abonos_mes
 
     return render_template('obligaciones/pagos.html',
                            obligaciones_mes=obligaciones_mes,
-                           total_abonos_mes=sum(float(a.valor_abono) for a in abonos_mes),
-                           total_descuentos_mes=sum(a.descuento_intereses for a in abonos_mes),
+                           total_abonos_mes=total_abonos_mes,
+                           total_descuentos_mes=total_descuentos_mes,
                            obligaciones=obligaciones,
                            pendientes_anteriores=pendientes_anteriores,
                            anio=anio, mes=mes, meses=MESES,
@@ -1987,6 +2001,9 @@ def pagos(anio=None, mes=None):
                            diferencia_estimado_mes=diferencia_estimado_mes,
                            por_pagar_mes=por_pagar_mes,
                            saldo_favor_mes=saldo_favor_mes,
+                           total_pagado_resumen_mes=total_pagado_resumen_mes,
+                           saldo_vencido_mes=saldo_vencido_mes,
+                           saldo_por_vencer_mes=saldo_por_vencer_mes,
                            total_por_cubrir_hoy=total_por_cubrir_hoy,
                            items_por_cubrir_mes=items_por_cubrir_mes,
                            total_items_mes=total_items_mes,

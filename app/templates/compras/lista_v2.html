@@ -2,6 +2,20 @@
 {% block title %}Compras y Gastos - {{ meses[mes-1] }} {{ anio }}{% endblock %}
 
 {% block content %}
+{% if vencimientos_mes %}
+<div class="card p-3 mb-3">
+    <h6 class="fw-bold">Cuotas de compras a crédito — {{ meses[mes-1] }} {{ anio }}</h6>
+    <div class="table-responsive"><table class="table table-sm mb-0">
+        <thead><tr><th>Compra</th><th>Fecha acordada</th><th>Valor</th><th>Saldo de la cuota</th><th>Estado</th><th></th></tr></thead>
+        <tbody>{% for fila in vencimientos_mes %}<tr>
+            <td>{{ fila.compra.descripcion }}</td><td>{{ fila.cuota.fecha_vencimiento.strftime('%d/%m/%Y') }}</td>
+            <td>${{ '{:,.2f}'.format(fila.cuota.valor) }}</td><td>${{ '{:,.2f}'.format(fila.saldo) }}</td>
+            <td class="{{ 'text-danger' if fila.estado == 'Vencida' else '' }}">{{ fila.estado }}</td>
+            <td><a href="{{ url_for('compras.detalle', id=fila.compra.id) }}" class="btn btn-sm btn-outline-primary">Ver pagos{{ ' / Abonar' if fila.saldo > 0 else '' }}</a></td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+</div>
+{% endif %}
 <style>
     .nav-mes .btn { min-width: 44px; }
     .nav-mes .btn.activo { background: #2563eb; color: #fff; font-weight: 700; }
@@ -191,7 +205,7 @@
                 <button class="btn btn-sm btn-outline-success"
                         data-bs-toggle="modal"
                         data-bs-target="#modalAbono"
-                        onclick='prepararAbono({{ compra.id }}, {{ (compra.producto_compra.nombre if compra.producto_compra else compra.descripcion)|tojson }}, "{{ "{:,.0f}".format(item.saldo) }}", "{{ '%.0f'|format(item.saldo) }}", "{{ request.full_path if request.query_string else request.path }}")'>
+                        onclick='prepararAbono({{ compra.id }}, {{ (compra.producto_compra.nombre if compra.producto_compra else compra.descripcion)|tojson }}, "{{ "{:,.2f}".format(item.saldo) }}", "{{ '%.2f'|format(item.saldo) }}", "{{ request.full_path if request.query_string else request.path }}")'>
                     <i class="bi bi-cash-coin"></i> Abonar
                 </button>
                 {% endif %}
@@ -226,7 +240,7 @@
                     <input type="hidden" name="next" id="abonoNext">
                     <div class="mb-2">
                         <label class="form-label">Valor del abono</label>
-                        <input type="text" name="valor_abono" id="abonoValor" class="form-control js-money" data-money-scale="0">
+                        <input type="text" name="valor_abono" id="abonoValor" class="form-control js-money" data-money-scale="2" required>
                         <div class="form-text" id="abonoSaldoInfo"></div>
                     </div>
                     <div class="mb-2">

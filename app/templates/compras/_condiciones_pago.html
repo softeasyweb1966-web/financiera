@@ -1,0 +1,58 @@
+<div class="card mt-4" style="background:#f8fafc;">
+    <div class="card-body">
+        <h6 class="fw-bold mb-3">Forma de pago de la compra</h6>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label for="condicion_pago" class="form-label">Contado o crédito *</label>
+                <select name="condicion_pago" id="condicion_pago" class="form-select" required>
+                    <option value="contado" {{ 'selected' if request.form.get('condicion_pago', 'contado') == 'contado' }}>Contado</option>
+                    <option value="credito" {{ 'selected' if request.form.get('condicion_pago') == 'credito' }}>Crédito</option>
+                </select>
+            </div>
+            <div class="col-md-6" id="pregunta-inicial">
+                <label for="paga_inicial" class="form-label">¿Realiza un pago inicial? *</label>
+                <select name="paga_inicial" id="paga_inicial" class="form-select">
+                    <option value="no" {{ 'selected' if request.form.get('paga_inicial', 'no') == 'no' }}>No, todo queda pendiente</option>
+                    <option value="si" {{ 'selected' if request.form.get('paga_inicial') == 'si' }}>Sí, registrar un abono</option>
+                </select>
+            </div>
+        </div>
+        <div class="row g-3 mt-1" id="pago-inicial">
+            <div class="col-md-4" id="valor-inicial-grupo">
+                <label for="valor_abono_inicial" class="form-label">Valor del abono inicial *</label>
+                <input id="valor_abono_inicial" name="valor_abono_inicial" class="form-control js-money" data-money-scale="2" value="{{ request.form.get('valor_abono_inicial', '') }}">
+            </div>
+            <div class="col-md-4">
+                <label for="fecha_pago_inicial" class="form-label">Fecha del pago realizado *</label>
+                <input id="fecha_pago_inicial" name="fecha_pago" type="date" class="form-control" value="{{ request.form.get('fecha_pago', '') }}">
+            </div>
+            <div class="col-md-4">
+                <label for="medio-pago-inicial" class="form-label">Medio de pago</label>
+                <select id="medio-pago-inicial" name="medio_pago_id" class="form-select">
+                    <option value="">-- Seleccione --</option>
+                    {% for medio in medios %}<option value="{{ medio.id }}" {{ 'selected' if request.form.get('medio_pago_id') == medio.id|string }}>{{ medio.nombre }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-12"><label for="descripcion-pago" class="form-label">Referencia del pago</label><input id="descripcion-pago" name="descripcion_pago" class="form-control" value="{{ request.form.get('descripcion_pago', '') }}"></div>
+        </div>
+        <div id="plan-credito" class="mt-4">
+            <h6>Próximos pagos</h6>
+            <p class="small text-muted">Indique el valor y la fecha acordada de cada cuota. Se registrarán como pendientes; al pagarlas guardará la fecha real del pago.</p>
+            <div class="row small fw-semibold mb-2"><div class="col-5">Fecha acordada *</div><div class="col-5">Valor de la cuota *</div></div>
+            <div id="cuotas-credito">
+                {% set fechas = request.form.getlist('cuota_fecha') or [''] %}
+                {% set valores = request.form.getlist('cuota_valor') or [''] %}
+                {% for fecha in fechas %}
+                <div class="row g-2 mb-2 cuota-credito">
+                    <div class="col-5"><input aria-label="Fecha de cuota" name="cuota_fecha" type="date" class="form-control" value="{{ fecha }}"></div>
+                    <div class="col-5"><input aria-label="Valor de cuota" name="cuota_valor" class="form-control js-money" data-money-scale="2" value="{{ valores[loop.index0] if loop.index0 < valores|length else '' }}"></div>
+                    <div class="col-2"><button type="button" class="btn btn-outline-danger quitar-cuota" aria-label="Quitar cuota">×</button></div>
+                </div>
+                {% endfor %}
+            </div>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="agregar-cuota-credito">Agregar próximo pago</button>
+            <div class="alert alert-info mt-3 mb-0" id="resumen-credito" aria-live="polite"></div>
+        </div>
+        <p class="form-text mt-3 mb-0" id="texto-contado">Al contado se registra el valor completo como pagado en la fecha indicada.</p>
+    </div>
+</div>
