@@ -33,7 +33,7 @@
     .tipo-tarde { color: #dc2626; }
     .concepto-bar { height: 6px; border-radius: 3px; background: #e2e8f0; overflow: hidden; }
     .concepto-bar-fill { height: 100%; border-radius: 3px; background: #10b981; }
-    .metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
     .metric-item { background: rgba(255,255,255,0.72); border: 1px solid #dbeafe; border-radius: 10px; padding: 7px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .metric-label { font-size: 0.68rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; line-height: 1.1; }
     .metric-value { font-size: 0.95rem; font-weight: 700; line-height: 1.1; white-space: nowrap; }
@@ -157,56 +157,40 @@
     <div class="col-lg-9 col-md-8">
         <div class="card p-3" style="background:#eff6ff; border:1px solid #bfdbfe; cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#detalle-mes-actual">
             <small class="text-muted d-block">{{ meses[mes-1] }}: resumen detallado <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i></small>
-            <small class="text-muted d-block mt-1">El estimado usa el ultimo pago anterior al mes; si un servicio ya esta causado, el total del mes toma ese valor real.</small>
             <div class="metric-grid text-start mt-2">
                 <div class="metric-item">
-                    <span class="metric-label">Estimado segun ultimo pago</span>
-                    <span class="metric-value text-dark">
-                        ${{ "{:,.0f}".format(total_estimado_mes) }}
-                        <small class="text-muted">({{ total_estimado_items }})</small>
-                    </span>
-                </div>
-                <div class="metric-item">
-                    <span class="metric-label">Ya causado</span>
-                    <span class="metric-value text-warning">
-                        ${{ "{:,.0f}".format(causado_mes_actual) }}
-                        <small class="text-muted">({{ total_causado_items }})</small>
-                    </span>
-                </div>
-                <div class="metric-item">
-                    <span class="metric-label">Aun por causar</span>
-                    <span class="metric-value text-secondary">
-                        ${{ "{:,.0f}".format(sin_causar_mes) }}
-                        <small class="text-muted">({{ sin_causar_items }})</small>
-                    </span>
-                </div>
-                <div class="metric-item">
-                    <span class="metric-label">Total del mes a cubrir</span>
+                    <span class="metric-label">Total del mes</span>
                     <span class="metric-value text-primary">
                         ${{ "{:,.0f}".format(total_esperado_mes) }}
                         <small class="text-muted">({{ total_esperado_items }})</small>
                     </span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Diferencia vs estimado</span>
-                    <span class="metric-value {{ 'text-danger' if diferencia_estimado_mes > 0 else 'text-success' if diferencia_estimado_mes < 0 else 'text-muted' }}">
-                        {{ '+' if diferencia_estimado_mes > 0 else '' }}${{ "{:,.0f}".format(diferencia_estimado_mes|abs if diferencia_estimado_mes < 0 else diferencia_estimado_mes) }}
-                    </span>
-                </div>
-                <div class="metric-item">
-                    <span class="metric-label">Ya pagado</span>
+                    <span class="metric-label">Total pagado</span>
                     <span class="metric-value text-success">
                         ${{ "{:,.0f}".format(pagado_mes_actual) }}
                         <small class="text-muted">({{ total_pagado_items }})</small>
                     </span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">{{ 'Saldo a favor del mes' if saldo_favor_mes > 0 else 'Por pagar del mes' }}</span>
+                    <span class="metric-label">{{ 'Saldo a favor' if saldo_favor_mes > 0 else 'Saldo mes' }}</span>
                     <span class="metric-value {{ 'text-success' if saldo_favor_mes > 0 else 'text-danger' }}">
                         ${{ "{:,.0f}".format(saldo_favor_mes if saldo_favor_mes > 0 else por_pagar_mes) }}
                         {% if saldo_favor_mes == 0 %}
                         <small class="text-muted">({{ items_por_cubrir_mes }})</small>
                         {% endif %}
+                    </span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Saldo vencido</span>
+                    <span class="metric-value {{ 'text-danger' if saldo_vencido_total > 0 else 'text-muted' }}">
+                        ${{ "{:,.0f}".format(saldo_vencido_total) }}
+                    </span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Saldo por vencer</span>
+                    <span class="metric-value {{ 'text-warning' if saldo_por_vencer_mes > 0 else 'text-muted' }}">
+                        ${{ "{:,.0f}".format(saldo_por_vencer_mes) }}
                     </span>
                 </div>
             </div>
@@ -254,48 +238,6 @@
 </div>
 {% endif %}
 
-{% if resumen_grupos %}
-<div class="card p-3 mb-3">
-    <h6 class="fw-bold mb-2"><i class="bi bi-pie-chart text-primary"></i> Resumen {{ meses[mes-1] }}</h6>
-    <p class="small text-muted mb-2">Pagado ($verde) vs total a cubrir ($total) por grupo. Haga clic en un grupo para ver el detalle.</p>
-    <div class="row g-2">
-        {% for g in resumen_grupos %}
-        <div class="col-6 col-md-4 col-lg-3">
-            <div class="small" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#grupo-detail-{{ loop.index }}">
-                <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:{{ g.color }}; vertical-align:middle;"></span>
-                <span class="fw-semibold">{{ g.nombre }}</span> <small class="text-muted">({{ g.cantidad }})</small>
-                <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i>
-                <div class="d-flex justify-content-between" style="font-size:0.7rem">
-                    <span class="text-success fw-bold">${{ "{:,.0f}".format(g.pagado) }}</span>
-                    <span class="text-muted">de ${{ "{:,.0f}".format(g.causado) }}</span>
-                </div>
-                <div class="concepto-bar mt-1">
-                    {% set pct = (g.pagado / g.causado * 100) if g.causado > 0 else 0 %}
-                    <div class="concepto-bar-fill" style="width:{{ pct|int }}%; background:{{ g.color }};"></div>
-                </div>
-            </div>
-            <div class="collapse mt-1" id="grupo-detail-{{ loop.index }}">
-                <div class="bg-light rounded p-2" style="font-size:0.7rem;">
-                    {% for item in g.detalle %}
-                    <div class="d-flex justify-content-between align-items-center border-bottom py-1">
-                        <a href="{{ url_for('servicios.detalle', id=item.id, anio=anio) }}" class="text-decoration-none">
-                            <span class="indicador ind-{{ item.estado }}"></span>
-                            {{ item.nombre }}
-                        </a>
-                        <span>
-                            <span class="text-success">${{ "{:,.0f}".format(item.pagado) }}</span>
-                            <span class="text-muted">/ ${{ "{:,.0f}".format(item.causado) }}</span>
-                        </span>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
-
 <div class="d-flex flex-wrap gap-3 mb-3" style="font-size:0.72rem;">
     <span><span class="indicador ind-sin_causar"></span> Sin causar</span>
     <span><span class="indicador ind-causado"></span> Causado</span>
@@ -310,6 +252,9 @@
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="servicios-resumen-tab" data-bs-toggle="tab" data-bs-target="#servicios-resumen" type="button" role="tab">Resumen</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="servicios-grupos-tab" data-bs-toggle="tab" data-bs-target="#servicios-grupos" type="button" role="tab">Por grupo</button>
     </li>
 </ul>
 <div class="tab-content mb-3">
@@ -477,6 +422,50 @@
     {% endfor %}
     {% if not servicios_mes %}
     <div class="text-center text-muted py-4">No hay servicios programados para este mes.</div>
+    {% endif %}
+</div>
+
+<div class="tab-pane fade tab-pane-box" id="servicios-grupos" role="tabpanel" aria-labelledby="servicios-grupos-tab">
+    {% if resumen_grupos %}
+    <h6 class="fw-bold mb-2"><i class="bi bi-pie-chart text-primary"></i> Resumen {{ meses[mes-1] }}</h6>
+    <p class="small text-muted mb-2">Pagado ($verde) vs total a cubrir ($total) por grupo. Haga clic en un grupo para ver el detalle.</p>
+    <div class="row g-2">
+        {% for g in resumen_grupos %}
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="small" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#grupo-detail-{{ loop.index }}">
+                <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:{{ g.color }}; vertical-align:middle;"></span>
+                <span class="fw-semibold">{{ g.nombre }}</span> <small class="text-muted">({{ g.cantidad }})</small>
+                <i class="bi bi-chevron-down" style="font-size:0.6rem;"></i>
+                <div class="d-flex justify-content-between" style="font-size:0.7rem">
+                    <span class="text-success fw-bold">${{ "{:,.0f}".format(g.pagado) }}</span>
+                    <span class="text-muted">de ${{ "{:,.0f}".format(g.causado) }}</span>
+                </div>
+                <div class="concepto-bar mt-1">
+                    {% set pct = (g.pagado / g.causado * 100) if g.causado > 0 else 0 %}
+                    <div class="concepto-bar-fill" style="width:{{ pct|int }}%; background:{{ g.color }};"></div>
+                </div>
+            </div>
+            <div class="collapse mt-1" id="grupo-detail-{{ loop.index }}">
+                <div class="bg-light rounded p-2" style="font-size:0.7rem;">
+                    {% for item in g.detalle %}
+                    <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                        <a href="{{ url_for('servicios.detalle', id=item.id, anio=anio) }}" class="text-decoration-none">
+                            <span class="indicador ind-{{ item.estado }}"></span>
+                            {{ item.nombre }}
+                        </a>
+                        <span>
+                            <span class="text-success">${{ "{:,.0f}".format(item.pagado) }}</span>
+                            <span class="text-muted">/ ${{ "{:,.0f}".format(item.causado) }}</span>
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">No hay grupos para mostrar.</div>
     {% endif %}
 </div>
 </div>

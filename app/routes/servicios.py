@@ -637,6 +637,17 @@ def pagos(anio=None, mes=None):
         item['servicio'].dia_limite_pago or 99,
         item['servicio'].tercero.nombre.lower(),
     ))
+    saldo_vencido_mes = 0
+    for item in servicios_mes:
+        if not item.get('esta_vencido'):
+            continue
+        pago = item.get('pago')
+        valor_causado = float(pago.valor_causado or item.get('valor_mostrar') or 0) if pago else float(item.get('valor_mostrar') or 0)
+        valor_pagado = float(pago.valor_pagado or 0) if pago else 0
+        saldo_vencido_mes += max(valor_causado - valor_pagado, 0)
+    saldo_vencido_mes = min(saldo_vencido_mes, por_pagar_mes)
+    saldo_vencido_total = total_deuda_anterior + saldo_vencido_mes
+    saldo_por_vencer_mes = max(por_pagar_mes - saldo_vencido_mes, 0)
 
     return render_template('servicios/pagos.html',
                            servicios_mes=servicios_mes,
@@ -660,6 +671,9 @@ def pagos(anio=None, mes=None):
                             pendiente_mes=pendiente_mes,
                             por_pagar_mes=por_pagar_mes,
                             saldo_favor_mes=saldo_favor_mes,
+                            saldo_vencido_mes=saldo_vencido_mes,
+                            saldo_vencido_total=saldo_vencido_total,
+                            saldo_por_vencer_mes=saldo_por_vencer_mes,
                             total_por_cubrir_hoy=total_por_cubrir_hoy,
                             items_por_cubrir_mes=items_por_cubrir_mes,
                             total_pagado_items=total_pagado_items,

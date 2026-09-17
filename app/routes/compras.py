@@ -161,6 +161,65 @@ def _compra_descripcion_corta(compra):
     return compra.descripcion or 'Registro sin descripcion'
 
 
+def _preparar_credito_edicion(form, compra, total, abonado_previo, fecha_compra):
+    condicion = (form.get('condicion_pago') or '').strip()
+    if condicion not in ('contado', 'credito'):
+        raise ValueError('Seleccione si la compra queda al contado o a credito.')
+    if condicion == 'contado':
+        return {'condicion': 'contado', 'inicial': ZERO, 'fecha_pago': None, 'cuotas': []}
+
+    disponible = total - abonado_previo
+    if disponible <= ZERO:
+        raise ValueError('La compra ya no tiene saldo para pactar cuotas de credito.')
+
+    inicial = ZERO
+    fecha_pago = None
+    if form.get('paga_inicial') == 'si':
+        inicial = compras_credito.importe(form.get('valor_abono_inicial'))
+        if inicial <= ZERO:
+            raise ValueError('Indique un abono inicial mayor que cero.')
+        if inicial > disponible:
+            raise ValueError('El abono inicial no puede superar el saldo pendiente.')
+        fecha_pago = _date_or_none(form.get('fecha_pago'))
+        if not fecha_pago:
+            raise ValueError('Indique la fecha real del abono inicial.')
+        if fecha_pago < fecha_compra or fecha_pago > date.today():
+            raise ValueError('La fecha del abono inicial debe estar entre la fecha de compra y hoy.')
+
+    saldo_programar = disponible - inicial
+    fechas = form.getlist('cuota_fecha')
+    valores = form.getlist('cuota_valor')
+    if not fechas or len(fechas) != len(valores) or len(fechas) > 600:
+        raise ValueError('Registre las fechas y valores de las proximas cuotas.')
+
+    cuotas = []
+    for fecha_raw, valor_raw in zip(fechas, valores):
+        vencimiento = _date_or_none(fecha_raw)
+        if not vencimiento:
+            raise ValueError('Cada cuota debe tener una fecha valida.')
+        if vencimiento < fecha_compra:
+            raise ValueError('Las fechas de las cuotas no pueden ser anteriores a la fecha de compra.')
+        if fecha_pago and vencimiento < fecha_pago:
+            raise ValueError('Las cuotas futuras no pueden quedar antes del abono inicial registrado.')
+        valor = compras_credito.importe(valor_raw)
+        if valor <= ZERO:
+            raise ValueError('Cada cuota debe tener un valor mayor que cero.')
+        cuotas.append({'fecha': vencimiento, 'valor': valor, 'es_inicial': False})
+
+    if sum(c['valor'] for c in cuotas) != saldo_programar:
+        raise ValueError('La suma de las proximas cuotas debe ser igual al saldo pendiente.')
+
+    cuotas.sort(key=lambda c: c['fecha'])
+    inicial_programado = abonado_previo + inicial
+    if inicial_programado > ZERO:
+        cuotas.insert(0, {
+            'fecha': fecha_pago or compra.fecha_pago or fecha_compra,
+            'valor': inicial_programado,
+            'es_inicial': True,
+        })
+    return {'condicion': 'credito', 'inicial': inicial, 'fecha_pago': fecha_pago, 'cuotas': cuotas}
+
+
 @compras_bp.route('/')
 @compras_bp.route('/<int:anio>')
 @compras_bp.route('/<int:anio>/<int:mes>')
@@ -442,8 +501,8 @@ def editar(id):
 
     if request.method == 'POST':
         nuevo_valor = _decimal_or_zero(request.form.get('valor'))
+        nueva_fecha = _date_or_none(request.form.get('fecha')) or compra.fecha
         if compra.cuotas.count():
-            nueva_fecha = _date_or_none(request.form.get('fecha'))
             primera_fecha = compra.cuotas.first().fecha_vencimiento
             if nuevo_valor != compra.valor or not nueva_fecha or nueva_fecha > primera_fecha:
                 flash('La compra tiene cuotas pactadas: conserve el valor total y una fecha de compra anterior o igual al primer vencimiento.', 'danger')
@@ -470,7 +529,26 @@ def editar(id):
                 **catalogos,
             )
 
-        compra.fecha = _date_or_none(request.form.get('fecha')) or compra.fecha
+        plan_credito = None
+        if 'condicion_pago' in request.form and not compra.cuotas.count():
+            try:
+                plan_credito = _preparar_credito_edicion(
+                    request.form,
+                    compra,
+                    nuevo_valor,
+                    totales_actuales['abonado'],
+                    nueva_fecha,
+                )
+            except ValueError as exc:
+                flash(str(exc), 'danger')
+                return render_template(
+                    'compras/form_v2.html',
+                    compra=compra,
+                    totales_actuales=totales_actuales,
+                    **catalogos,
+                ), 400
+
+        compra.fecha = nueva_fecha
         compra.tercero_id = request.form.get('tercero_id') or None
         compra.concepto_compra_id = request.form['concepto_compra_id']
         compra.producto_compra_id = request.form.get('producto_compra_id') or None
@@ -478,8 +556,27 @@ def editar(id):
         compra.valor = nuevo_valor
         compra.observaciones = (request.form.get('observaciones') or '').strip() or None
 
-        nuevos_totales = _totales_compra(compra, resumen_abonos)
-        _sincronizar_snapshot_compra(compra, nuevos_totales, medio_pago_id=compra.medio_pago_id)
+        medio_pago_id = compra.medio_pago_id
+        if plan_credito:
+            compra.condicion_pago = plan_credito['condicion']
+            for cuota in plan_credito['cuotas']:
+                db.session.add(CuotaCompra(
+                    compra_id=compra.id,
+                    fecha_vencimiento=cuota['fecha'],
+                    valor=cuota['valor'],
+                    es_inicial=cuota['es_inicial'],
+                ))
+            if plan_credito['inicial'] > ZERO:
+                medio_pago_id = request.form.get('medio_pago_id') or None
+                _registrar_abono_compra(
+                    compra,
+                    plan_credito['inicial'],
+                    plan_credito['fecha_pago'],
+                    medio_pago_id=medio_pago_id,
+                    descripcion=request.form.get('descripcion_pago') or 'Pago inicial de la compra',
+                )
+        nuevos_totales = _totales_compra(compra, _abonos_por_compra([compra.id]))
+        _sincronizar_snapshot_compra(compra, nuevos_totales, medio_pago_id=medio_pago_id)
 
         db.session.commit()
         flash('Registro actualizado en Compras y Gastos.', 'success')

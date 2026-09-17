@@ -6,7 +6,7 @@
     <div class="col-lg-9">
         <div class="card p-4">
             <h5 class="fw-bold mb-3"><i class="bi bi-cart text-danger"></i> {{ 'Editar' if compra else 'Nuevo' }} registro de Compras y Gastos</h5>
-            <form method="POST" id="form-compra">
+            <form method="POST" id="form-compra" data-credito-abonado-previo="{{ totales_actuales.abonado if compra and totales_actuales else 0 }}">
                 <div class="row g-3">
                     <div class="col-12 col-md-4">
                         <label class="form-label">Fecha *</label>
@@ -80,8 +80,14 @@
                         <div class="form-text mt-2">Los abonos ya no se editan aqui. Se registran desde el detalle para conservar trazabilidad completa.</div>
                     </div>
                 </div>
-                {% else %}
+                {% endif %}
+
+                {% if not compra or not compra.cuotas.count() %}
                 {% include 'compras/_condiciones_pago.html' %}
+                {% elif compra and compra.condicion_pago == 'credito' %}
+                <div class="alert alert-info mt-4 mb-0">
+                    Esta compra ya tiene calendario de credito. Las fechas pactadas se consultan en el detalle y los pagos reales se registran desde alli.
+                </div>
                 {% endif %}
 
                 <div class="d-flex gap-2 flex-wrap mt-4">

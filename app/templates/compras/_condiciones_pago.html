@@ -1,19 +1,26 @@
 <div class="card mt-4" style="background:#f8fafc;">
     <div class="card-body">
+        {% set condicion_actual = request.form.get('condicion_pago') or (compra.condicion_pago if compra and compra.condicion_pago else 'contado') %}
+        {% set abonado_previo = totales_actuales.abonado if compra and totales_actuales else 0 %}
         <h6 class="fw-bold mb-3">Forma de pago de la compra</h6>
+        {% if compra and abonado_previo > 0 %}
+        <div class="alert alert-info py-2 small">
+            Esta compra ya tiene pagos registrados por <strong>${{ "{:,.0f}".format(abonado_previo) }}</strong>. Si la pasa a credito, ese valor se toma como pago inicial ya realizado y las cuotas deben sumar el saldo restante.
+        </div>
+        {% endif %}
         <div class="row g-3">
             <div class="col-md-6">
-                <label for="condicion_pago" class="form-label">Contado o crédito *</label>
+                <label for="condicion_pago" class="form-label">Contado o credito *</label>
                 <select name="condicion_pago" id="condicion_pago" class="form-select" required>
-                    <option value="contado" {{ 'selected' if request.form.get('condicion_pago', 'contado') == 'contado' }}>Contado</option>
-                    <option value="credito" {{ 'selected' if request.form.get('condicion_pago') == 'credito' }}>Crédito</option>
+                    <option value="contado" {{ 'selected' if condicion_actual == 'contado' }}>Contado</option>
+                    <option value="credito" {{ 'selected' if condicion_actual == 'credito' }}>Credito</option>
                 </select>
             </div>
             <div class="col-md-6" id="pregunta-inicial">
-                <label for="paga_inicial" class="form-label">¿Realiza un pago inicial? *</label>
+                <label for="paga_inicial" class="form-label">Realiza un pago inicial? *</label>
                 <select name="paga_inicial" id="paga_inicial" class="form-select">
                     <option value="no" {{ 'selected' if request.form.get('paga_inicial', 'no') == 'no' }}>No, todo queda pendiente</option>
-                    <option value="si" {{ 'selected' if request.form.get('paga_inicial') == 'si' }}>Sí, registrar un abono</option>
+                    <option value="si" {{ 'selected' if request.form.get('paga_inicial') == 'si' }}>Si, registrar un abono</option>
                 </select>
             </div>
         </div>
@@ -36,8 +43,8 @@
             <div class="col-12"><label for="descripcion-pago" class="form-label">Referencia del pago</label><input id="descripcion-pago" name="descripcion_pago" class="form-control" value="{{ request.form.get('descripcion_pago', '') }}"></div>
         </div>
         <div id="plan-credito" class="mt-4">
-            <h6>Próximos pagos</h6>
-            <p class="small text-muted">Indique el valor y la fecha acordada de cada cuota. Se registrarán como pendientes; al pagarlas guardará la fecha real del pago.</p>
+            <h6>Proximos pagos</h6>
+            <p class="small text-muted">Indique el valor y la fecha acordada de cada cuota. Se registran como pendientes; al pagarlas guardara la fecha real del pago.</p>
             <div class="row small fw-semibold mb-2"><div class="col-5">Fecha acordada *</div><div class="col-5">Valor de la cuota *</div></div>
             <div id="cuotas-credito">
                 {% set fechas = request.form.getlist('cuota_fecha') or [''] %}
@@ -46,13 +53,19 @@
                 <div class="row g-2 mb-2 cuota-credito">
                     <div class="col-5"><input aria-label="Fecha de cuota" name="cuota_fecha" type="date" class="form-control" value="{{ fecha }}"></div>
                     <div class="col-5"><input aria-label="Valor de cuota" name="cuota_valor" class="form-control js-money" data-money-scale="2" value="{{ valores[loop.index0] if loop.index0 < valores|length else '' }}"></div>
-                    <div class="col-2"><button type="button" class="btn btn-outline-danger quitar-cuota" aria-label="Quitar cuota">×</button></div>
+                    <div class="col-2"><button type="button" class="btn btn-outline-danger quitar-cuota" aria-label="Quitar cuota">x</button></div>
                 </div>
                 {% endfor %}
             </div>
-            <button type="button" class="btn btn-outline-primary btn-sm" id="agregar-cuota-credito">Agregar próximo pago</button>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="agregar-cuota-credito">Agregar proximo pago</button>
             <div class="alert alert-info mt-3 mb-0" id="resumen-credito" aria-live="polite"></div>
         </div>
-        <p class="form-text mt-3 mb-0" id="texto-contado">Al contado se registra el valor completo como pagado en la fecha indicada.</p>
+        <p class="form-text mt-3 mb-0" id="texto-contado">
+            {% if compra %}
+            Al contado conserva la compra sin calendario de credito. Los pagos se registran desde el detalle.
+            {% else %}
+            Al contado se registra el valor completo como pagado en la fecha indicada.
+            {% endif %}
+        </p>
     </div>
 </div>

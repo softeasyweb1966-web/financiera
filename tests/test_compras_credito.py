@@ -113,6 +113,40 @@ class ComprasCreditoTest(unittest.TestCase):
         self.assertEqual(c.valor, 1000000)
         self.assertEqual(sum(q.valor for q in c.cuotas), 1000000)
 
+    def test_editar_compra_existente_permite_pactar_credito(self):
+        c = Compra(fecha=date(2026,9,1), concepto_compra_id=self.concepto.id,
+                   descripcion='Impresora', valor=1000000, estado='pendiente')
+        db.session.add(c); db.session.commit()
+        response = self.client.get(f'/compras/{c.id}/editar')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Forma de pago de la compra', response.text)
+        response = self.client.post(f'/compras/{c.id}/editar', data=self.form(
+            descripcion='Impresora', paga_inicial='no',
+            cuota_fecha=['2026-10-05', '2026-11-05'],
+            cuota_valor=['500000', '500000']))
+        self.assertEqual(response.status_code, 302, response.text)
+        db.session.refresh(c)
+        self.assertEqual(c.condicion_pago, 'credito')
+        self.assertEqual(c.cuotas.count(), 2)
+        self.assertEqual([fila['cuota'].fecha_vencimiento for fila in calendario(c)],
+                         [date(2026,10,5), date(2026,11,5)])
+
+    def test_editar_compra_con_abono_previsto_programa_solo_saldo(self):
+        c = Compra(fecha=date(2026,9,1), concepto_compra_id=self.concepto.id,
+                   descripcion='Silla', valor=1000000, estado='pendiente')
+        db.session.add(c); db.session.commit()
+        self.client.post(f'/compras/{c.id}/abonar', data={'valor_abono': '200000', 'fecha_pago': '2026-09-03'})
+        response = self.client.post(f'/compras/{c.id}/editar', data=self.form(
+            descripcion='Silla', paga_inicial='no',
+            cuota_fecha=['2026-10-05', '2026-11-05'],
+            cuota_valor=['400000', '400000']))
+        self.assertEqual(response.status_code, 302, response.text)
+        db.session.refresh(c)
+        self.assertEqual(c.cuotas.count(), 3)
+        plan = calendario(c)
+        self.assertEqual(plan[0]['estado'], 'Pagada')
+        self.assertEqual(sum(fila['saldo'] for fila in plan), Decimal('800000.00'))
+
     def test_legacy_pagado_conserva_historial(self):
         c = Compra(fecha=date(2026,9,1), concepto_compra_id=self.concepto.id,
                    descripcion='Anterior', valor=500000, estado='pagado', fecha_pago=date(2026,9,1))
