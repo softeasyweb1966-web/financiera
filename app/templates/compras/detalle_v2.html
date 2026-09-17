@@ -10,9 +10,20 @@
     </div>
     <div class="d-flex gap-1">
         <a href="{{ url_for('compras.lista', anio=compra.fecha.year, mes=compra.fecha.month) }}" class="btn btn-outline-secondary btn-sm">Volver</a>
+        {% if compra.estado != 'anulado' %}
         <a href="{{ url_for('compras.editar', id=compra.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> Editar</a>
+        <button type="button" class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#modalAnularCompra">
+            <i class="bi bi-slash-circle"></i> Anular
+        </button>
+        {% endif %}
     </div>
 </div>
+
+{% if compra.estado == 'anulado' %}
+<div class="alert alert-secondary">
+    <strong>Compra anulada.</strong> Se conserva para trazabilidad, pero no suma en saldos ni reportes de compras.
+</div>
+{% endif %}
 
 <div class="row g-3">
     <div class="col-lg-7">
@@ -23,7 +34,7 @@
                         <h4 class="fw-bold mb-1">{{ compra.producto_compra.nombre if compra.producto_compra else compra.descripcion }}</h4>
                         <small class="text-muted">{{ compra.concepto_compra.nombre if compra.concepto_compra else 'Sin concepto' }}</small>
                     </div>
-                    <span class="badge {{ 'bg-success' if totales.estado == 'pagado' else ('bg-info text-dark' if totales.estado == 'parcial' else 'bg-warning text-dark') }}">
+                    <span class="badge {{ 'bg-secondary' if totales.estado == 'anulado' else 'bg-success' if totales.estado == 'pagado' else ('bg-info text-dark' if totales.estado == 'parcial' else 'bg-warning text-dark') }}">
                         {{ totales.estado|upper }}
                     </span>
                 </div>
@@ -82,7 +93,11 @@
         <div class="card h-100">
             <div class="card-body">
                 <h6 class="fw-bold mb-3"><i class="bi bi-cash-coin text-success"></i> Registrar abono</h6>
-                {% if totales.saldo > 0 %}
+                {% if compra.estado == 'anulado' %}
+                <div class="alert alert-secondary mb-0">
+                    <small>Esta compra esta anulada y no admite nuevos abonos.</small>
+                </div>
+                {% elif totales.saldo > 0 %}
                 <form method="POST" action="{{ url_for('compras.registrar_abono', id=compra.id) }}">
                     <input type="hidden" name="next" value="{{ request.path }}">
                     <div class="mb-2">
@@ -179,4 +194,68 @@
         {% endif %}
     </div>
 </div>
+
+<div class="card mt-3">
+    <div class="card-body">
+        <h6 class="fw-bold mb-3"><i class="bi bi-journal-text text-secondary"></i> Historial de anulaciones y ajustes</h6>
+        {% if historial %}
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Accion</th>
+                        <th>Estado anterior</th>
+                        <th>Valor</th>
+                        <th>Abonado</th>
+                        <th>Saldo</th>
+                        <th>Motivo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in historial %}
+                    <tr>
+                        <td>{{ h.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                        <td>{{ h.accion|title }}</td>
+                        <td>{{ h.estado_anterior or '-' }}</td>
+                        <td>${{ "{:,.0f}".format(h.valor_total or 0) }}</td>
+                        <td>${{ "{:,.0f}".format(h.valor_abonado or 0) }}</td>
+                        <td>${{ "{:,.0f}".format(h.saldo or 0) }}</td>
+                        <td>{{ h.motivo }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <small class="text-muted">No hay anulaciones ni ajustes registrados.</small>
+        {% endif %}
+    </div>
+</div>
+
+{% if compra.estado != 'anulado' %}
+<div class="modal fade" id="modalAnularCompra" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('compras.anular', id=compra.id) }}">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold">Anular compra</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning py-2 small">
+                        La compra dejara de sumar en los saldos y reportes, pero se conservaran el registro, los abonos y el calendario para trazabilidad.
+                    </div>
+                    <label class="form-label">Motivo de anulacion *</label>
+                    <textarea name="motivo" class="form-control" rows="3" required></textarea>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger btn-sm">Confirmar anulacion</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

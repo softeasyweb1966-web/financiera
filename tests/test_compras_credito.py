@@ -12,7 +12,7 @@ from alembic.operations import Operations
 
 from app import db
 from app.compras_credito import calendario
-from app.models import Compra, CuotaCompra, AbonoCompra, ConceptoCompra
+from app.models import Compra, CuotaCompra, AbonoCompra, ConceptoCompra, HistorialCompra
 from app.routes import all_blueprints
 
 
@@ -156,6 +156,34 @@ class ComprasCreditoTest(unittest.TestCase):
         self.assertEqual(calendario(c), [])
         self.assertIn('dato legado', response.text)
 
+    def test_anular_compra_exige_motivo_conserva_trazabilidad_y_excluye_totales(self):
+        c = self.crear()
+        response = self.client.post(f'/compras/{c.id}/anular', data={'motivo': ''}, follow_redirects=True)
+        self.assertIn('Debe indicar el motivo', response.text)
+        db.session.refresh(c)
+        self.assertNotEqual(c.estado, 'anulado')
+
+        response = self.client.post(f'/compras/{c.id}/anular', data={'motivo': 'Registro duplicado'})
+        self.assertEqual(response.status_code, 302)
+        db.session.refresh(c)
+        self.assertEqual(c.estado, 'anulado')
+        historial = HistorialCompra.query.one()
+        self.assertEqual(historial.motivo, 'Registro duplicado')
+        self.assertEqual(historial.valor_total, Decimal('1000000.00'))
+        self.assertEqual(historial.valor_abonado, Decimal('200000.00'))
+        self.assertEqual(historial.saldo, Decimal('800000.00'))
+
+        detalle = self.client.get(f'/compras/detalle/{c.id}').text
+        self.assertIn('Compra anulada', detalle)
+        self.assertIn('Registro duplicado', detalle)
+        lista = self.client.get('/compras/2026/9').text
+        self.assertNotIn('Computador', lista)
+
+        self.client.post(f'/compras/{c.id}/abonar', data={'valor_abono': '100000', 'fecha_pago': '2026-09-04'})
+        self.assertEqual(AbonoCompra.query.count(), 1)
+        response = self.client.get(f'/compras/{c.id}/editar')
+        self.assertEqual(response.status_code, 302)
+
     def test_valores_con_centavos_cuadran(self):
         c = self.crear(valor='1000.75', valor_abono_inicial='100.25', cuota_valor=['400.25','500.25'])
         self.assertEqual(sum(f['saldo'] for f in calendario(c)), Decimal('900.50'))
@@ -174,6 +202,22 @@ class MigracionComprasTest(unittest.TestCase):
             modulo.upgrade(); modulo.upgrade()
             self.assertTrue(inspect(conn).has_table('cuotas_compras'))
             self.assertEqual(conn.execute(text('SELECT valor, condicion_pago FROM compras')).one(), (500000,None))
+        engine.dispose()
+
+    def test_migracion_historial_compras_es_idempotente(self):
+        ruta = Path(__file__).resolve().parents[1] / 'migrations/versions/20260917_03_historial_compras.py'
+        spec = importlib.util.spec_from_file_location('migracion_historial_compras', ruta)
+        modulo = importlib.util.module_from_spec(spec); spec.loader.exec_module(modulo)
+        engine = create_engine('sqlite://')
+        with engine.begin() as conn:
+            conn.execute(text('CREATE TABLE compras (id INTEGER PRIMARY KEY)'))
+            modulo.op = Operations(MigrationContext.configure(conn))
+            modulo.upgrade(); modulo.upgrade()
+            inspector = inspect(conn)
+            self.assertTrue(inspector.has_table('historial_compras'))
+            columnas = {c['name'] for c in inspector.get_columns('historial_compras')}
+            self.assertIn('motivo', columnas)
+            self.assertIn('saldo', columnas)
         engine.dispose()
 
 

@@ -6,7 +6,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from sqlalchemy import and_, extract, func, or_
 
 from app import db
-from app.models import AbonoCompra, Compra, ConceptoCompra, CuotaCompra, MedioPago, ProductoCompra, Tercero
+from app.models import AbonoCompra, Compra, ConceptoCompra, CuotaCompra, HistorialCompra, MedioPago, ProductoCompra, Tercero
 from app import compras_credito
 
 
@@ -91,6 +91,17 @@ def _abonos_por_compra(compra_ids):
 def _totales_compra(compra, resumen_abonos=None):
     resumen_abonos = resumen_abonos or {}
     valor_total = _decimal_or_zero(compra.valor)
+    if compra.estado == 'anulado':
+        resumen = resumen_abonos.get(compra.id) or {}
+        abonado_movimientos = _decimal_or_zero(resumen.get('abonado'))
+        return {
+            'valor_total': valor_total,
+            'abonado': abonado_movimientos,
+            'saldo': ZERO,
+            'estado': 'anulado',
+            'ultima_fecha': resumen.get('ultima_fecha') or compra.fecha_pago,
+            'fuente': 'anulado',
+        }
     resumen = resumen_abonos.get(compra.id) or {}
     abonado_movimientos = _decimal_or_zero(resumen.get('abonado'))
     tiene_movimientos = abonado_movimientos > ZERO
@@ -233,7 +244,8 @@ def lista(anio=None, mes=None):
 
     compras_mes = Compra.query.filter(
         extract('year', Compra.fecha) == anio,
-        extract('month', Compra.fecha) == mes
+        extract('month', Compra.fecha) == mes,
+        Compra.estado != 'anulado'
     ).order_by(
         Compra.fecha.desc(),
         Compra.id.desc()
@@ -246,7 +258,8 @@ def lista(anio=None, mes=None):
                 extract('year', Compra.fecha) == anio,
                 extract('month', Compra.fecha) < mes
             )
-        )
+        ),
+        Compra.estado != 'anulado'
     ).order_by(
         Compra.fecha.desc(),
         Compra.id.desc()
@@ -495,6 +508,9 @@ def nueva():
 @compras_bp.route('/<int:id>/editar', methods=['GET', 'POST'])
 def editar(id):
     compra = Compra.query.filter_by(id=id).with_for_update().first_or_404()
+    if compra.estado == 'anulado':
+        flash('Esta compra esta anulada y no se puede editar.', 'warning')
+        return redirect(url_for('compras.detalle', id=compra.id))
     catalogos = _catalogos_compra()
     resumen_abonos = _abonos_por_compra([compra.id])
     totales_actuales = _totales_compra(compra, resumen_abonos)
@@ -596,6 +612,7 @@ def detalle(id):
     resumen_abonos = _abonos_por_compra([compra.id])
     totales = _totales_compra(compra, resumen_abonos)
     abonos = compra.abonos.order_by(AbonoCompra.fecha_pago.desc(), AbonoCompra.id.desc()).all()
+    historial = compra.historial.all()
     legacy_pago = not abonos and compra.estado == 'pagado'
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
 
@@ -608,13 +625,49 @@ def detalle(id):
         medios=medios,
         fecha_hoy=date.today(),
         calendario=compras_credito.calendario(compra),
+        historial=historial,
     )
+
+
+@compras_bp.route('/<int:id>/anular', methods=['POST'])
+def anular(id):
+    compra = Compra.query.filter_by(id=id).with_for_update().first_or_404()
+    motivo = (request.form.get('motivo') or '').strip()
+    if not motivo:
+        flash('Debe indicar el motivo de la anulacion.', 'danger')
+        return redirect(url_for('compras.detalle', id=compra.id))
+    if compra.estado == 'anulado':
+        flash('Esta compra ya estaba anulada.', 'warning')
+        return redirect(url_for('compras.detalle', id=compra.id))
+
+    resumen_abonos = _abonos_por_compra([compra.id])
+    totales = _totales_compra(compra, resumen_abonos)
+    db.session.add(HistorialCompra(
+        compra_id=compra.id,
+        accion='anulacion',
+        motivo=motivo,
+        estado_anterior=compra.estado,
+        valor_total=totales['valor_total'],
+        valor_abonado=totales['abonado'],
+        saldo=totales['saldo'],
+        observaciones=compra.observaciones,
+    ))
+    marca = f'ANULADA {date.today().strftime("%d/%m/%Y")}: {motivo}'
+    compra.estado = 'anulado'
+    compra.observaciones = f'{compra.observaciones}\n{marca}' if compra.observaciones else marca
+    compra.updated_at = datetime.utcnow()
+    db.session.commit()
+    flash('Compra anulada. El registro y su trazabilidad se conservaron.', 'success')
+    return redirect(url_for('compras.detalle', id=compra.id))
 
 
 @compras_bp.route('/<int:id>/abonar', methods=['POST'])
 @compras_bp.route('/<int:id>/pagar', methods=['POST'])
 def registrar_abono(id):
     compra = Compra.query.filter_by(id=id).with_for_update().first_or_404()
+    if compra.estado == 'anulado':
+        flash('Esta compra esta anulada y no admite nuevos abonos.', 'warning')
+        return redirect(url_for('compras.detalle', id=compra.id))
     resumen_abonos = _abonos_por_compra([compra.id])
     totales_antes = _totales_compra(compra, resumen_abonos)
     fecha_pago = _date_or_none(request.form.get('fecha_pago'))

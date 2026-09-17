@@ -712,6 +712,29 @@ class CuotaCompra(db.Model):
         'cuotas', lazy='dynamic', order_by='CuotaCompra.fecha_vencimiento, CuotaCompra.id'))
 
 
+class HistorialCompra(db.Model):
+    """Bitacora de anulaciones y ajustes de compras."""
+    __tablename__ = 'historial_compras'
+
+    id = db.Column(db.Integer, primary_key=True)
+    compra_id = db.Column(db.Integer, db.ForeignKey('compras.id'), nullable=False, index=True)
+    accion = db.Column(db.String(20), nullable=False)
+    motivo = db.Column(db.Text, nullable=False)
+    estado_anterior = db.Column(db.String(20))
+    valor_total = db.Column(db.Numeric(14, 2))
+    valor_abonado = db.Column(db.Numeric(14, 2))
+    saldo = db.Column(db.Numeric(14, 2))
+    observaciones = db.Column(db.Text)
+    registrado_por = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    compra = db.relationship('Compra', backref=db.backref(
+        'historial', lazy='dynamic', order_by='desc(HistorialCompra.created_at), desc(HistorialCompra.id)'))
+
+    def __repr__(self):
+        return f'<HistorialCompra {self.compra_id}: {self.accion}>'
+
+
 class PagoTC(db.Model):
     """Registro de pagos realizados con tarjeta de crédito"""
     __tablename__ = 'pagos_tc'
