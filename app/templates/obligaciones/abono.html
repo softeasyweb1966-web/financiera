@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block title %}Registrar abono{% endblock %}
+{% block content %}
+<div class="mx-auto" style="max-width:980px">
+    <a href="{{ url_for('obligaciones.refinanciaciones', id=obligacion.id) }}" class="btn btn-outline-secondary mb-3">Volver a la obligación</a>
+    <h3>Registrar abono</h3>
+    <p>{{ obligacion.tercero.nombre }} · {{ obligacion.referencia or obligacion.modalidad.replace('_', ' ').title() }}</p>
+    <div class="alert alert-info">Saldo actual: <strong>${{ '{:,.2f}'.format(obligacion.saldo_actual or 0) }}</strong> · Cuotas pendientes: {{ obligacion.cuotas_pendientes or 0 }}</div>
+    {% if datos %}
+    <div id="confirmar-abono" class="card mb-4"><div class="card-body">
+        <h4>Revisar antes de confirmar</h4>
+        <p>{{ opciones[datos.opcion] }} · Fecha del pago: {{ datos.fecha }}</p>
+        <table class="table">
+            <tr><th>Saldo anterior</th><td>${{ '{:,.2f}'.format(datos.saldo_anterior|float) }}</td></tr>
+            <tr><th>Dinero pagado</th><td>− ${{ '{:,.2f}'.format(datos.pago|float) }}</td></tr>
+            <tr><th>Intereses descontados (no son dinero pagado)</th><td>− ${{ '{:,.2f}'.format(datos.descuento|float) }}</td></tr>
+            <tr class="table-success"><th>Nuevo saldo</th><td><strong>${{ '{:,.2f}'.format(datos.saldo_nuevo|float) }}</strong></td></tr>
+        </table>
+        <h5>{{ datos.plan|length }} cuota(s) pendiente(s)</h5>
+        <div class="table-responsive" style="max-height:360px"><table class="table table-sm">
+            <thead><tr><th>Vencimiento</th><th>Valor</th>{% if datos.opcion != 'acuerdo' %}<th>Capital</th><th>Intereses</th>{% endif %}</tr></thead>
+            <tbody>{% for fila in datos.plan %}<tr><td>{{ fila.fecha }}</td><td>${{ '{:,.2f}'.format(fila.total|float) }}</td>{% if datos.opcion != 'acuerdo' %}<td>${{ '{:,.2f}'.format(fila.capital|float) }}</td><td>${{ '{:,.2f}'.format(fila.interes|float) }}</td>{% endif %}</tr>{% endfor %}</tbody>
+        </table></div>
+        {% if datos.opcion == 'acuerdo' %}
+        <p class="alert alert-warning">El acuerdo reemplaza todas las cuotas pendientes anteriores por este calendario. Incluye los atrasos hasta {{ datos.fecha }}. Los pagos ya realizados se conservan.</p>
+        {% if datos.cubiertos %}<p>Registros pendientes que se ajustarán: {% for fila in datos.cubiertos %}{{ fila.periodo }}{{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+        {% else %}<p>Saldo de capital después del abono. Las cuotas incluyen los intereses futuros calculados a la tasa registrada.</p>{% endif %}
+        <p>Observación: {{ datos.observaciones or 'Sin observación' }}</p>
+        <form method="post" action="{{ url_for('obligaciones.abonar_capital', id=obligacion.id) }}">
+            <input type="hidden" name="confirmacion" value="{{ token }}">
+            <button class="btn btn-success" type="submit" onclick="this.form.addEventListener('submit', () => {this.disabled = true;});">Confirmar y registrar abono</button>
+            <button class="btn btn-outline-secondary" type="button" id="corregir">Corregir datos</button>
+        </form>
+        <small class="text-muted">Todavía no se ha guardado ningún movimiento. La confirmación vence en 30 minutos.</small>
+    </div></div>
+    {% endif %}
+    <form method="post" id="form-abono" class="card" {% if datos %}hidden{% endif %}>
+        <div class="card-body">
+            <label for="opcion" class="form-label">¿Cómo aplicar el abono?</label>
+            <select id="opcion" name="opcion_recalculo" class="form-select mb-2" required>
+                {% for valor, etiqueta in opciones.items() %}<option value="{{ valor }}" {% if form.get('opcion_recalculo', 'acuerdo' if obligacion.modalidad not in ['bancario_cuota_fija', 'credito_con_amortizacion', 'bancario_tabla_amortizacion'] else 'reducir_cuota') == valor %}selected{% endif %}>{{ etiqueta }}</option>{% endfor %}
+            </select>
+            <p id="explicacion" class="text-muted"></p>
+            <div class="row g-3">
+                <div class="col-md-6"><label class="form-label" for="fecha-abono">Fecha del pago</label><input id="fecha-abono" type="date" name="fecha_abono" class="form-control" required max="{{ hoy }}" value="{{ form.get('fecha_abono', hoy.isoformat()) }}"></div>
+                <div class="col-md-6"><label class="form-label" for="valor-abono">Dinero pagado</label><input id="valor-abono" type="number" min="0.01" step="0.01" name="valor_abono" class="form-control" required value="{{ form.get('valor_abono', '') }}"></div>
+            </div>
+            <div id="automatico" class="mt-3">
+                <label class="form-label" for="primera-cuota">Fecha de la próxima cuota</label><input id="primera-cuota" type="date" name="primera_cuota" class="form-control" value="{{ form.get('primera_cuota', '') }}">
+                <label class="mt-3"><input type="checkbox" name="saldo_es_capital" value="1" {% if form.get('saldo_es_capital') %}checked{% endif %}> Confirmo que el saldo registrado es capital y no incluye intereses futuros.</label>
+                <p class="form-text">El cálculo automático usa la tasa mensual y el plazo registrados. Si el banco fija el saldo total, los cargos o una tabla propia, utilice un acuerdo.</p>
+            </div>
+            <div id="acuerdo" class="mt-3">
+                <label for="descuento" class="form-label">Intereses que se descontarán del saldo</label>
+                <input id="descuento" name="descuento_intereses" type="number" min="0" step="0.01" value="{{ form.get('descuento_intereses', '0') }}" class="form-control">
+                <p class="form-text">Registre únicamente el descuento confirmado. No se contará como dinero recibido.</p>
+                <h5>Cuotas que quedarán pendientes</h5>
+                <p class="text-muted small">Indique cada fecha y su valor total, incluidos los intereses pactados. Una cuota por mes, a partir del mes siguiente. Para saldar toda la obligación, elimine las filas.</p>
+                <div id="cuotas">
+                    {% set fechas = form.getlist('cuota_fecha') or [''] %}
+                    {% set valores = form.getlist('cuota_valor') or [''] %}
+                    {% for fecha in fechas %}
+                    <div class="row g-2 mb-2 cuota"><div class="col-5"><input aria-label="Fecha de cuota" type="date" name="cuota_fecha" value="{{ fecha }}" class="form-control"></div><div class="col-5"><input aria-label="Valor de cuota" type="number" min="0.01" step="0.01" name="cuota_valor" value="{{ valores[loop.index0] if loop.index0 < valores|length else '' }}" class="form-control"></div><div class="col-2"><button type="button" class="btn btn-outline-danger quitar" aria-label="Quitar cuota">×</button></div></div>
+                    {% endfor %}
+                </div>
+                <button type="button" id="agregar-cuota" class="btn btn-outline-primary btn-sm">Agregar cuota</button>
+                <p class="mt-3" id="suma-cuotas" aria-live="polite"></p>
+            </div>
+            <label for="observaciones-abono" class="form-label mt-3">Observación / referencia del acuerdo</label>
+            <textarea id="observaciones-abono" name="observaciones" rows="3" class="form-control" placeholder="Detalle las condiciones confirmadas por el acreedor y el motivo del descuento.">{{ form.get('observaciones', '') }}</textarea>
+            <button type="submit" class="btn btn-primary mt-3">Ver resultado antes de guardar</button>
+        </div>
+    </form>
+</div>
+<script>
+(() => {
+    const form = document.getElementById('form-abono');
+    const opcion = document.getElementById('opcion');
+    const cuotas = document.getElementById('cuotas');
+    const moneda = n => new Intl.NumberFormat('es-CO', {style:'currency',currency:'COP'}).format(n);
+    function actualizar() {
+        const acuerdo = opcion.value === 'acuerdo';
+        document.getElementById('acuerdo').hidden = !acuerdo;
+        document.getElementById('automatico').hidden = acuerdo;
+        document.querySelectorAll('#acuerdo input').forEach(i => i.disabled = !acuerdo);
+        document.querySelectorAll('#automatico input').forEach(i => i.disabled = acuerdo);
+        document.getElementById('observaciones-abono').required = acuerdo;
+        document.getElementById('explicacion').textContent = acuerdo ? 'Registre el pago, el descuento confirmado y el calendario que reemplaza todas las cuotas pendientes.' : opcion.value === 'reducir_cuota' ? 'Reduce capital y baja la cuota, conservando la cantidad de cuotas pendientes.' : 'Reduce capital y conserva la cuota; termina de pagar antes.';
+        const saldo = {{ (obligacion.saldo_actual or 0)|float|tojson }} - Number(document.getElementById('valor-abono').value) - Number(document.getElementById('descuento').value);
+        const total = [...cuotas.querySelectorAll('[name="cuota_valor"]')].reduce((n, i) => n + Number(i.value), 0);
+        document.getElementById('suma-cuotas').textContent = 'Saldo resultante: ' + moneda(saldo) + ' · Suma de cuotas: ' + moneda(total) + ' · Diferencia: ' + moneda(saldo-total);
+    }
+    document.getElementById('agregar-cuota').addEventListener('click', () => {
+        const fila = document.createElement('div'); fila.className = 'row g-2 mb-2 cuota';
+        fila.innerHTML = '<div class="col-5"><input aria-label="Fecha de cuota" type="date" name="cuota_fecha" class="form-control"></div><div class="col-5"><input aria-label="Valor de cuota" type="number" min="0.01" step="0.01" name="cuota_valor" class="form-control"></div><div class="col-2"><button type="button" class="btn btn-outline-danger quitar" aria-label="Quitar cuota">×</button></div>';
+        cuotas.appendChild(fila); actualizar();
+    });
+    cuotas.addEventListener('click', e => { if (e.target.classList.contains('quitar')) { e.target.closest('.cuota').remove(); actualizar(); } });
+    form.addEventListener('input', actualizar);
+    document.getElementById('corregir')?.addEventListener('click', () => { document.getElementById('confirmar-abono').hidden = true; form.hidden = false; });
+    actualizar();
+})();
+</script>
+{% endblock %}

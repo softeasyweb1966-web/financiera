@@ -2,6 +2,7 @@
 {% block title %}Cambios de Obligacion{% endblock %}
 
 {% block content %}
+{% set formato_pago = '{:,.2f}' if tiene_plan_abono else '{:,.0f}' %}
 <style>
     .metric-card {
         border: 1px solid #dbeafe;
@@ -98,13 +99,13 @@
     </div>
     <div class="col-6 col-xl-3">
         <div class="metric-card">
-            <div class="metric-label">Abonos a capital</div>
+            <div class="metric-label">Dinero pagado en abonos</div>
             <div class="metric-value text-info">${{ "{:,.0f}".format(resumen_costos.total_abonos_capital) }}</div>
         </div>
     </div>
     <div class="col-6 col-xl-3">
         <div class="metric-card">
-            <div class="metric-label">Capital amortizado</div>
+            <div class="metric-label">Capital en cuotas + pagos extraordinarios</div>
             <div class="metric-value">${{ "{:,.0f}".format(resumen_costos.total_amortizado) }}</div>
         </div>
     </div>
@@ -113,35 +114,9 @@
 <div class="row g-3">
     <div class="col-12 col-xl-5">
         <div class="soft-panel p-3 mb-3">
-            <h6 class="fw-bold mb-2"><i class="bi bi-cash-coin text-success"></i> Abono a capital</h6>
-            <p class="text-muted small mb-3">
-                Registre un abono extraordinario al saldo y decida si desea conservar el plazo para bajar la cuota,
-                o conservar la cuota para acortar el tiempo restante.
-            </p>
-            <form method="POST" action="{{ url_for('obligaciones.abonar_capital', id=obligacion.id) }}" id="abono-capital">
-                <div class="row g-2">
-                    <div class="col-12 col-md-6">
-                        <label class="form-label">Fecha del abono *</label>
-                        <input type="date" name="fecha_abono" class="form-control form-control-sm" value="{{ hoy.strftime('%Y-%m-%d') }}" required>
-                    </div>
-                    <div class="col-12 col-md-6">
-                        <label class="form-label">Valor del abono *</label>
-                        <input type="text" name="valor_abono" class="form-control form-control-sm js-money" required value="">
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Efecto del abono *</label>
-                        <select name="opcion_recalculo" class="form-select form-select-sm" required>
-                            <option value="reducir_cuota">Bajar cuota y mantener tiempo</option>
-                            <option value="reducir_plazo">Mantener cuota y bajar tiempo</option>
-                        </select>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Observaciones</label>
-                        <textarea name="observaciones" class="form-control form-control-sm" rows="3" placeholder="Ej. abono extraordinario por excedente de caja"></textarea>
-                    </div>
-                </div>
-                <button type="submit" class="btn btn-success btn-sm mt-3"><i class="bi bi-check2"></i> Registrar abono</button>
-            </form>
+            <h6 class="fw-bold mb-2"><i class="bi bi-cash-coin text-success"></i> Abonos</h6>
+            <p class="text-muted small">Reduzca la cuota, reduzca el plazo o registre un acuerdo de saldo y cuotas con descuento de intereses. Revise el resultado antes de confirmar.</p>
+            <a class="btn btn-success" id="abono-capital" href="{{ url_for('obligaciones.abonar_capital', id=obligacion.id) }}">Registrar abono</a>
         </div>
 
         <div class="soft-panel p-3">
@@ -221,15 +196,15 @@
                             <td>{{ meses[p.mes - 1] }} {{ p.anio }}</td>
                             <td>{{ p.estado.replace('_', ' ')|title }}</td>
                             <td>{{ p.fecha_pago.strftime('%d/%m/%Y') if p.fecha_pago else '-' }}</td>
-                            <td class="fw-bold text-success">${{ "{:,.0f}".format(p.valor_pagado or 0) }}</td>
+                            <td class="fw-bold text-success">${{ formato_pago.format(p.valor_pagado or 0) }}</td>
                             <td>
                                 {% if p.componente_capital or p.componente_interes %}
-                                <small class="text-muted d-block">Cap: ${{ "{:,.0f}".format(p.componente_capital or 0) }}</small>
-                                <small class="text-muted d-block">Int: ${{ "{:,.0f}".format(p.componente_interes or 0) }}</small>
+                                <small class="text-muted d-block">Cap: ${{ formato_pago.format(p.componente_capital or 0) }}</small>
+                                <small class="text-muted d-block">Int: ${{ formato_pago.format(p.componente_interes or 0) }}</small>
                                 {% if p.componente_seguro_vida or p.componente_otros or p.componente_anticipo %}
-                                <small class="text-muted d-block">Seg: ${{ "{:,.0f}".format(p.componente_seguro_vida or 0) }}</small>
-                                <small class="text-muted d-block">Otr: ${{ "{:,.0f}".format(p.componente_otros or 0) }}</small>
-                                <small class="text-muted d-block">Ant: ${{ "{:,.0f}".format(p.componente_anticipo or 0) }}</small>
+                                <small class="text-muted d-block">Seg: ${{ formato_pago.format(p.componente_seguro_vida or 0) }}</small>
+                                <small class="text-muted d-block">Otr: ${{ formato_pago.format(p.componente_otros or 0) }}</small>
+                                <small class="text-muted d-block">Ant: ${{ formato_pago.format(p.componente_anticipo or 0) }}</small>
                                 {% endif %}
                                 {% else %}
                                 -
@@ -245,14 +220,14 @@
                                         onclick='prepararAjustePago(
                                             {{ p.id }},
                                             {{ (meses[p.mes - 1] ~ " " ~ p.anio)|tojson }},
-                                            {{ ("{:,.0f}".format(p.valor_pagado or 0))|tojson }},
+                                            {{ (formato_pago.format(p.valor_pagado or 0))|tojson }},
                                             {{ p.fecha_pago.strftime("%Y-%m-%d")|tojson if p.fecha_pago else "null" }},
-                                            {{ ("{:,.0f}".format(p.valor_causado or 0))|tojson if p.valor_causado else '""' }},
-                                            {{ ("{:,.0f}".format(p.componente_capital or 0))|tojson if p.componente_capital is not none else '""' }},
-                                            {{ ("{:,.0f}".format(p.componente_interes or 0))|tojson if p.componente_interes is not none else '""' }},
-                                            {{ ("{:,.0f}".format(p.componente_seguro_vida or 0))|tojson if p.componente_seguro_vida is not none else '""' }},
-                                            {{ ("{:,.0f}".format(p.componente_otros or 0))|tojson if p.componente_otros is not none else '""' }},
-                                            {{ ("{:,.0f}".format(p.componente_anticipo or 0))|tojson if p.componente_anticipo is not none else '""' }},
+                                            {{ (formato_pago.format(p.valor_causado or 0))|tojson if p.valor_causado else '""' }},
+                                            {{ (formato_pago.format(p.componente_capital or 0))|tojson if p.componente_capital is not none else '""' }},
+                                            {{ (formato_pago.format(p.componente_interes or 0))|tojson if p.componente_interes is not none else '""' }},
+                                            {{ (formato_pago.format(p.componente_seguro_vida or 0))|tojson if p.componente_seguro_vida is not none else '""' }},
+                                            {{ (formato_pago.format(p.componente_otros or 0))|tojson if p.componente_otros is not none else '""' }},
+                                            {{ (formato_pago.format(p.componente_anticipo or 0))|tojson if p.componente_anticipo is not none else '""' }},
                                             {{ p.medio_pago_id if p.medio_pago_id else "null" }},
                                             {{ (p.observaciones or "")|tojson }},
                                             {{ "true" if obligacion.requiere_desglose_pago or p.componente_capital is not none or p.componente_interes is not none else "false" }},
@@ -273,7 +248,7 @@
 
         <div class="soft-panel p-3 mb-3">
             <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
-                <h6 class="fw-bold mb-0">Historial de abonos a capital</h6>
+                <h6 class="fw-bold mb-0">Historial de abonos y descuentos</h6>
                 <span class="history-chip">{{ abonos|length }} registros</span>
             </div>
             {% if abonos %}
@@ -293,8 +268,9 @@
                         {% for a in abonos %}
                         <tr>
                             <td>{{ a.fecha_abono.strftime('%d/%m/%Y') }}</td>
-                            <td class="fw-bold text-success">${{ "{:,.0f}".format(a.valor_abono) }}</td>
-                            <td>{{ 'Baja cuota' if a.opcion_recalculo == 'reducir_cuota' else 'Baja tiempo' }}</td>
+                            <td class="fw-bold text-success">Pago: ${{ "{:,.0f}".format(a.valor_abono) }}
+                            {% if a.descuento_intereses %}<small class="d-block text-muted">Descuento de intereses: ${{ "{:,.0f}".format(a.descuento_intereses) }}</small>{% endif %}</td>
+                            <td>{{ 'Acuerdo de saldo y cuotas' if a.opcion_recalculo == 'acuerdo' else ('Baja cuota' if a.opcion_recalculo == 'reducir_cuota' else 'Baja tiempo') }}{% if a.revertido %}<span class="badge bg-secondary d-block">Revertido</span>{% endif %}</td>
                             <td>
                                 <small class="text-muted d-block">Antes: ${{ "{:,.0f}".format(a.saldo_anterior) if a.saldo_anterior else '0' }}</small>
                                 <small class="fw-semibold">Despues: ${{ "{:,.0f}".format(a.saldo_nuevo) if a.saldo_nuevo else '0' }}</small>
@@ -303,7 +279,18 @@
                                 <small class="text-muted d-block">Cuota: ${{ "{:,.0f}".format(a.cuota_anterior) if a.cuota_anterior else '0' }} -> ${{ "{:,.0f}".format(a.cuota_nueva) if a.cuota_nueva else '0' }}</small>
                                 <small class="text-muted d-block">Pend.: {{ a.cuotas_pendientes_antes or 0 }} -> {{ a.cuotas_pendientes_despues or 0 }}</small>
                             </td>
-                            <td><small>{{ a.observaciones or '' }}</small></td>
+                            <td><small>{{ a.observaciones or '' }}</small>
+                            {% if a.datos %}
+                                <details><summary>Calendario e historial</summary>
+                                    {% for fila in a.datos.plan %}<small class="d-block">{{ fila.fecha }}: ${{ '{:,.2f}'.format(fila.total|float) }}</small>{% endfor %}
+                                    {% if a.revertido %}<p>Revertido: {{ a.datos.revertido }} · {{ a.datos.motivo_reversion }}</p>
+                                    {% else %}<form method="post" action="{{ url_for('obligaciones.revertir_abono', id=obligacion.id, abono_id=a.id) }}" onsubmit="return confirm('¿Revertir este abono y restaurar el saldo y calendario anteriores?');">
+                                        <label class="form-label small">Motivo de reversión<input name="motivo" required class="form-control form-control-sm"></label>
+                                        <button class="btn btn-sm btn-outline-danger" type="submit">Revertir abono</button>
+                                        <small class="d-block">Sólo se permite si no existen pagos ni cambios posteriores.</small>
+                                    </form>{% endif %}
+                                </details>
+                            {% endif %}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -509,6 +496,9 @@
 const ajustePagoBaseUrl = {{ url_for('obligaciones.ajustar_pago_cancelado', pago_id=0)|tojson }};
 
 function prepararAjustePago(pagoId, periodo, valorPagado, fechaPago, valorCausado, capital, interes, seguroVida, otros, anticipo, medioPagoId, observaciones, requiereDesglose, usaSeguros) {
+    document.querySelectorAll('#formAjustePago input.js-money').forEach(input => {
+        input.dataset.moneyScale = {{ '2' if tiene_plan_abono else '0' }};
+    });
     document.getElementById('formAjustePago').action = ajustePagoBaseUrl.replace('/0/ajustar', '/' + pagoId + '/ajustar');
     document.getElementById('ajustePagoTitulo').textContent = 'Ajustar cuota cancelada - ' + periodo;
     document.getElementById('ajuste_fecha_pago').value = fechaPago || '';
@@ -530,11 +520,11 @@ function prepararAjustePago(pagoId, periodo, valorPagado, fechaPago, valorCausad
 }
 
 function recalcularExcedenteAjuste() {
-    const valorCausado = window.FinancieraMoney.parse(document.getElementById('ajuste_valor_causado').value);
-    const valorPagado = window.FinancieraMoney.parse(document.getElementById('ajuste_valor_pagado').value);
+    const valorCausado = window.FinancieraMoney.parse(document.getElementById('ajuste_valor_causado').value, 2);
+    const valorPagado = window.FinancieraMoney.parse(document.getElementById('ajuste_valor_pagado').value, 2);
     const excedente = Math.max(valorPagado - valorCausado, 0);
     const destino = document.getElementById('ajuste_destino_excedente').value || 'anticipo';
-    const moraManual = window.FinancieraMoney.parse(document.getElementById('ajuste_otros').value);
+    const moraManual = window.FinancieraMoney.parse(document.getElementById('ajuste_otros').value, 2);
     const bloque = document.getElementById('bloque_excedente_ajuste');
     const texto = document.getElementById('texto_excedente_ajuste');
     const resumen = document.getElementById('resumen_excedente_ajuste');

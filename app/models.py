@@ -5,6 +5,7 @@ BD: financiera_gastos (independiente)
 """
 from app import db
 from datetime import datetime, date
+import json
 
 
 # ============================================================
@@ -315,7 +316,7 @@ class Obligacion(db.Model):
 
     @property
     def cuotas_pendientes(self):
-        if self.cuotas_totales and self.cuotas_pagadas is not None:
+        if self.cuotas_totales is not None and self.cuotas_pagadas is not None:
             return self.cuotas_totales - self.cuotas_pagadas
         return None
 
@@ -407,6 +408,20 @@ class AbonoCapitalObligacion(db.Model):
     cuota_nueva = db.Column(db.Numeric(14, 2))
     observaciones = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    datos_movimiento = db.Column(db.Text)
+
+    @property
+    def datos(self):
+        return json.loads(self.datos_movimiento) if self.datos_movimiento else {}
+
+    @property
+    def revertido(self):
+        return bool(self.datos.get('revertido'))
+
+    @property
+    def descuento_intereses(self):
+        return float(self.datos.get('descuento', 0))
 
     obligacion = db.relationship('Obligacion', backref=db.backref(
         'abonos_capital', lazy='dynamic', order_by='AbonoCapitalObligacion.fecha_abono.desc()'

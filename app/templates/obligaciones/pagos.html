@@ -209,7 +209,7 @@
                     </span>
                 </div>
                 <div class="metric-item">
-                    <span class="metric-label">Ya pagado</span>
+                    <span class="metric-label">Ya pagado en cuotas</span>
                     <span class="metric-value text-success">
                         ${{ "{:,.0f}".format(pagado_mes_actual) }}
                         <small class="text-muted">({{ total_pagado_items }})</small>
@@ -226,6 +226,12 @@
                 </div>
             </div>
         </div>
+        {% if total_abonos_mes %}
+        <div class="alert alert-success mt-2 mb-1 small">
+            Dinero pagado en abonos extraordinarios del mes: <strong>${{ '{:,.2f}'.format(total_abonos_mes) }}</strong>.
+            {% if total_descuentos_mes %}Intereses descontados: <strong>${{ '{:,.2f}'.format(total_descuentos_mes) }}</strong> (no son dinero pagado).{% endif %}
+        </div>
+        {% endif %}
         <div class="collapse mt-1" id="detalle-mes-actual">
             <div class="card p-2" style="font-size:0.72rem; max-height:300px; overflow-y:auto;">
                 <table class="table table-sm table-borderless mb-0">
@@ -379,6 +385,8 @@
                             <span class="tipo-tarde"> - pago tarde</span>
                         {% endif %}
                     </small>
+                {% elif item.estado == 'acordado' %}
+                    <small class="text-success d-block">Cuotas anteriores cubiertas por el acuerdo. Consulte el próximo vencimiento.</small>
                 {% elif item.estado == 'parcial' %}
                     <small style="color:#8b5cf6" class="d-block">abono parcial</small>
                     {% if item.valor_abonado_cuota > 0 %}
@@ -433,6 +441,14 @@
                 {% endif %}
                 <small class="text-muted d-block">Capital pagado: <strong>${{ "{:,.0f}".format(item.capital_pagado_total) }}</strong></small>
                 <small class="text-muted d-block">Intereses pagados: <strong>${{ "{:,.0f}".format(item.interes_pagado_total) }}</strong></small>
+                {% if o._abono_plan_cache %}
+                {% set abono = o._abono_plan_cache %}
+                <div class="alert alert-success py-2 small mt-2 mb-2">
+                    Abono registrado: <strong>${{ '{:,.0f}'.format(abono.valor_abono) }}</strong> · {{ abono.fecha_abono.strftime('%d/%m/%Y') }}
+                    {% if abono.descuento_intereses %}<br>Intereses descontados: <strong>${{ '{:,.0f}'.format(abono.descuento_intereses) }}</strong>{% endif %}
+                    <br>{{ 'Acuerdo de saldo y cuotas' if abono.opcion_recalculo == 'acuerdo' else ('Reducción de cuota' if abono.opcion_recalculo == 'reducir_cuota' else 'Reducción de plazo') }}.
+                </div>
+                {% endif %}
                 {% if item.anticipo_pagado_total > 0 %}
                 <small class="text-muted d-block">Anticipos pagados: <strong>${{ "{:,.0f}".format(item.anticipo_pagado_total) }}</strong></small>
                 {% endif %}
@@ -471,7 +487,7 @@
             </div>
 
             <div class="mt-2 d-flex gap-1 flex-wrap">
-                {% if item.estado != 'pagado' and not item.es_informativo %}
+                {% if item.estado not in ['pagado', 'acordado'] and not item.es_informativo and (not o._abono_plan_cache or item.cuota_esperada > 0) %}
                 <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
                         onclick='prepararPago({{ o.id }}, {{ nombre_modal|tojson }}, {{ mes }}, {{ item.valor_pago_sugerido or item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ item.programado_capital or 0 }}, {{ item.programado_interes or 0 }}, {{ item.programado_seguro_vida or 0 }}, {{ item.programado_otros or 0 }}, {{ "true" if item.usa_tabla_amortizacion else "false" }})'>
                     <i class="bi bi-check-lg"></i> Pagar cuota / mora
@@ -516,7 +532,7 @@
                 <a href="{{ url_for('obligaciones.detalle', id=o.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary" title="Historial mes a mes">
                     <i class="bi bi-clock-history"></i>
                 </a>
-                <a href="{{ url_for('obligaciones.refinanciaciones', id=o.id) }}#abono-capital" class="btn btn-sm btn-outline-warning" title="Registrar abono a capital">
+                <a href="{{ url_for('obligaciones.abonar_capital', id=o.id) }}" class="btn btn-sm btn-outline-warning" title="Registrar abono a capital, a tiempo o con acuerdo">
                     <i class="bi bi-cash-coin"></i> Abonar
                 </a>
                 <a href="{{ url_for('obligaciones.refinanciaciones', id=o.id) }}" class="btn btn-sm btn-outline-info" title="Abonos, refinanciaciones y cambios">
@@ -864,7 +880,14 @@
 {% block scripts %}
 <script>
 const mesesObligaciones = {{ meses|tojson }};
+const obligacionesConPlan = new Set([{% for item in obligaciones_mes if item.obligacion._abono_plan_cache %}{{ item.obligacion.id }},{% endfor %}]);
 let saldosAnterioresActuales = [];
+
+function configurarDecimalesAbono(id) {
+    document.querySelectorAll('#modalPago input.js-money').forEach(input => {
+        input.dataset.moneyScale = obligacionesConPlan.has(Number(id)) ? '2' : '0';
+    });
+}
 
 function syncObligacionFechaPagoRequerida() {
     const accion = document.getElementById('pago_accion');
@@ -903,6 +926,7 @@ function toggleDesglose(requiereDesglose, usaTablaAmortizacion = false) {
 }
 
 function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres, valorSeguroVida, valorOtros, usaTablaAmortizacion) {
+    configurarDecimalesAbono(id);
     const periodo = mesesObligaciones[mes - 1] + ' {{ anio }}';
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
@@ -935,6 +959,7 @@ function prepararPago(id, nombre, mes, valorEsperado, requiereDesglose, valorCap
 }
 
 function prepararCausar(id, nombre, mes, valorEsperado, requiereDesglose, valorCapital, valorInteres, valorSeguroVida, valorOtros, usaTablaAmortizacion, diaBase) {
+    configurarDecimalesAbono(id);
     const periodo = mesesObligaciones[mes - 1] + ' {{ anio }}';
     document.getElementById('pago_oblig_id').value = id;
     document.getElementById('pago_mes').value = mes;
@@ -975,11 +1000,11 @@ function prepararAnulacion(actionUrl, nextUrl, nombre, periodo) {
 }
 
 function recalcularExcedentePago() {
-    const valorCausado = window.FinancieraMoney.parse(document.getElementById('pago_valor_causado2').value);
-    const valorPagado = window.FinancieraMoney.parse(document.getElementById('pago_valor').value);
+    const valorCausado = window.FinancieraMoney.parse(document.getElementById('pago_valor_causado2').value, 2);
+    const valorPagado = window.FinancieraMoney.parse(document.getElementById('pago_valor').value, 2);
     const excedente = Math.max(valorPagado - valorCausado, 0);
     const destino = document.getElementById('pago_destino_excedente').value || 'anticipo';
-    const moraManual = window.FinancieraMoney.parse(document.getElementById('pago_otros').value);
+    const moraManual = window.FinancieraMoney.parse(document.getElementById('pago_otros').value, 2);
     const bloque = document.getElementById('bloque_excedente_pago');
     const grupoMora = document.getElementById('grupo_mora_excedente_pago');
     const grupoAnticipo = document.getElementById('grupo_anticipo_excedente_pago');
@@ -1062,7 +1087,7 @@ function renderSaldosAnteriores() {
 }
 
 function recalcularSaldosAnteriores() {
-    const valorTotal = window.FinancieraMoney.parse(document.getElementById('saldos_valor_total').value);
+    const valorTotal = window.FinancieraMoney.parse(document.getElementById('saldos_valor_total').value, 2);
     let restante = valorTotal;
     let totalSeleccionado = 0;
     let totalAplicado = 0;
@@ -1099,7 +1124,7 @@ function recalcularSaldosAnteriores() {
 }
 
 function autoSeleccionarSaldosAnterioresPorValor() {
-    const valorTotal = window.FinancieraMoney.parse(document.getElementById('saldos_valor_total').value);
+    const valorTotal = window.FinancieraMoney.parse(document.getElementById('saldos_valor_total').value, 2);
     let restante = valorTotal;
     document.querySelectorAll('.saldo-check').forEach(function(check) {
         const index = Number(check.dataset.index);
@@ -1157,11 +1182,11 @@ function actualizarExcedentePago() {
 function actualizarBaseOtrosManualPago() {
     const inputOtros = document.getElementById('pago_otros');
     const baseOtros = document.getElementById('pago_otros_manual_base');
-    const valorCausado = window.FinancieraMoney.parse(document.getElementById('pago_valor_causado2').value);
-    const valorPagado = window.FinancieraMoney.parse(document.getElementById('pago_valor').value);
+    const valorCausado = window.FinancieraMoney.parse(document.getElementById('pago_valor_causado2').value, 2);
+    const valorPagado = window.FinancieraMoney.parse(document.getElementById('pago_valor').value, 2);
     const excedente = Math.max(valorPagado - valorCausado, 0);
     const destino = document.getElementById('pago_destino_excedente').value || 'anticipo';
-    const valorActual = window.FinancieraMoney.parse(inputOtros.value);
+    const valorActual = window.FinancieraMoney.parse(inputOtros.value, 2);
     const valorManual = excedente > 0 && destino !== 'anticipo'
         ? Math.max(valorActual - excedente, 0)
         : valorActual;
@@ -1169,11 +1194,11 @@ function actualizarBaseOtrosManualPago() {
 }
 
 function recalcularExcedentePagoUI() {
-    const valorCausado = window.FinancieraMoney.parse(document.getElementById('pago_valor_causado2').value);
-    const valorPagado = window.FinancieraMoney.parse(document.getElementById('pago_valor').value);
+    const valorCausado = window.FinancieraMoney.parse(document.getElementById('pago_valor_causado2').value, 2);
+    const valorPagado = window.FinancieraMoney.parse(document.getElementById('pago_valor').value, 2);
     const excedente = Math.max(valorPagado - valorCausado, 0);
     const destino = document.getElementById('pago_destino_excedente').value || 'anticipo';
-    const moraManual = window.FinancieraMoney.parse(document.getElementById('pago_otros_manual_base').value);
+    const moraManual = window.FinancieraMoney.parse(document.getElementById('pago_otros_manual_base').value, 2);
     const bloque = document.getElementById('bloque_excedente_pago');
     const grupoMora = document.getElementById('grupo_mora_excedente_pago');
     const grupoAnticipo = document.getElementById('grupo_anticipo_excedente_pago');

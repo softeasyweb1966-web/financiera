@@ -80,6 +80,12 @@ def _ensure_schema():
         AbonoGasto.__table__.create(bind=db.engine, checkfirst=True)
         inspector = inspect(db.engine)
 
+    if inspector.has_table('abonos_capital_obligaciones'):
+        columnas = {col['name'] for col in inspector.get_columns('abonos_capital_obligaciones')}
+        if 'datos_movimiento' not in columnas:
+            db.session.execute(text('ALTER TABLE abonos_capital_obligaciones ADD COLUMN datos_movimiento TEXT'))
+            db.session.commit()
+
     if inspector.has_table('historial_estados'):
         columnas = {col['name'] for col in inspector.get_columns('historial_estados')}
         if 'vigencia_desde' not in columnas:

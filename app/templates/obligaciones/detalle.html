@@ -2,6 +2,18 @@
 {% block title %}{{ obligacion.tercero.nombre }} - Historial{% endblock %}
 
 {% block content %}
+{% if obligacion._abono_plan_cache %}
+{% set ultimo_abono = obligacion._abono_plan_cache %}
+<div class="card p-3 mb-3">
+    <h5>Calendario vigente tras el abono</h5>
+    <p class="small mb-2">Pago registrado: ${{ '{:,.2f}'.format(ultimo_abono.valor_abono) }} · Intereses descontados: ${{ '{:,.2f}'.format(ultimo_abono.descuento_intereses) }} · Saldo actual: ${{ '{:,.2f}'.format(obligacion.saldo_actual or 0) }}.</p>
+    <div class="table-responsive" style="max-height:280px"><table class="table table-sm mb-0">
+        <thead><tr><th>Vencimiento</th><th>Valor programado</th></tr></thead>
+        <tbody>{% for fila in ultimo_abono.datos.plan %}<tr><td>{{ fila.fecha }}</td><td>${{ '{:,.2f}'.format(fila.total|float) }}</td></tr>{% else %}<tr><td colspan="2">Sin cuotas pendientes.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <small class="text-muted mt-2">El historial de pagos y la tabla original se conservan debajo. Este calendario reemplaza la programación anterior.</small>
+</div>
+{% endif %}
 <style>
     .ind-pendiente  { background: #fb923c; }
     .ind-causado    { background: #facc15; }

@@ -1,4 +1,6 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, current_app
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from app import abonos_obligaciones as abonos_service
 from app import db
 from app.models import (
     Obligacion, AmortizacionObligacion, PagoObligacion, HistorialPagoObligacion, Refinanciacion, AbonoCapitalObligacion,
@@ -30,6 +32,66 @@ MODALIDADES = [
 ]
 
 MODALIDAD_LABELS = dict(MODALIDADES)
+
+
+@obligaciones_bp.before_request
+def proteger_plan_abonos():
+    if request.method != 'POST':
+        return
+    endpoint = request.endpoint.rsplit('.', 1)[-1]
+    if endpoint in ('abonar_capital', 'revertir_abono', 'nueva'):
+        return
+    args = request.view_args or {}
+    pago = db.session.get(PagoObligacion, args['pago_id']) if args.get('pago_id') else None
+    oid = pago.obligacion_id if pago else args.get('id') or request.form.get('obligacion_id', type=int)
+    if not oid:
+        return
+    o = Obligacion.query.filter_by(id=oid).with_for_update().first()
+    if not o:
+        return
+    if hasattr(o, '_abono_plan_cache'):
+        del o._abono_plan_cache
+    abono = abonos_service.activo(o)
+    if not abono:
+        return
+    error = None
+    if endpoint in ('editar', 'refinanciar'):
+        error = 'La obligación tiene un calendario de abonos vigente. Registre un nuevo acuerdo para cambiar sus condiciones.'
+    elif pago and not abonos_service.plan_periodo(o, pago.anio, pago.mes):
+        error = 'Este pago es anterior al último abono o está cubierto por él. Revise o revierta el abono antes de modificarlo.'
+    elif endpoint == 'registrar_pago':
+        anio, mes = request.form.get('anio', type=int), request.form.get('mes', type=int)
+        if not anio or not mes or not abonos_service.plan_periodo(o, anio, mes):
+            error = 'Este período no tiene una cuota pendiente en el calendario vigente del abono.'
+    if error:
+        flash(error, 'warning')
+        return redirect(url_for('obligaciones.refinanciaciones', id=o.id))
+
+
+def _impacto_pago_acuerdo(obligacion, pago, revertir=False):
+    if not obligacion:
+        return False
+    a = abonos_service.activo(obligacion)
+    if not a or a.opcion_recalculo != 'acuerdo':
+        return False
+    if pago.estado not in ('pagado', 'parcial'):
+        return True
+    # En acuerdos el saldo es el total pactado, incluidos los intereses restantes.
+    importe = (float(pago.valor_pagado or 0) - float(pago.componente_otros or 0)
+               - float(pago.componente_anticipo or 0))
+    importe = max(importe, 0)
+    signo = 1 if revertir else -1
+    obligacion.saldo_actual = float(obligacion.saldo_actual or 0) + signo * importe
+    if pago.estado == 'pagado':
+        obligacion.cuotas_pagadas = max((obligacion.cuotas_pagadas or 0) - signo, 0)
+    return True
+
+
+def _monto_pago_plan(obligacion, valor):
+    if abonos_service.activo(obligacion):
+        raw = _money_raw_or_none(valor, scale=2)
+        return Decimal(raw) if raw is not None else None
+    return _money_raw_or_none(valor)
 
 
 def _es_modalidad_amortizacion(modalidad):
@@ -65,6 +127,8 @@ def _valor_total_amortizacion(fila):
 
 
 def _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes):
+    if obligacion and abonos_service.plan_periodo(obligacion, anio, mes) is not None:
+        return False
     if not obligacion or not _es_modalidad_amortizacion(obligacion.modalidad):
         return False
 
@@ -77,6 +141,13 @@ def _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes):
 
 
 def _componentes_programados_periodo(obligacion, anio, mes):
+    plan = abonos_service.plan_periodo(obligacion, anio, mes)
+    if plan is not None:
+        fila = plan[0] if plan else {}
+        return {'capital': float(fila.get('capital', 0)), 'interes': float(fila.get('interes', 0)),
+                'seguro_vida': 0, 'otros': 0, 'total': float(fila.get('total', 0)),
+                'tasa_namv': None, 'saldo_capital': None,
+                'fecha_pago': date.fromisoformat(fila['fecha']) if fila else None}
     fila = _fila_amortizacion_periodo(obligacion, anio, mes)
     if fila and _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes):
         return {
@@ -244,6 +315,10 @@ def _conceptos_activos_categoria(nombre_categoria, anio, mes):
 
 
 def _valor_estimado_obligacion(obligacion, ultimo_pago=None):
+    abono = abonos_service.activo(obligacion)
+    if abono:
+        pendientes = [f for f in abono.datos['plan'] if f['fecha'] >= date.today().isoformat()]
+        return float(pendientes[0]['total']) if pendientes else 0
     if _es_modalidad_amortizacion(obligacion.modalidad):
         fecha_inicio_tabla = _coerce_date(obligacion.fecha_inicio_amortizacion)
         periodo_hoy = date.today().replace(day=1)
@@ -322,6 +397,8 @@ def _registrar_historial_pago_obligacion(pago, accion, motivo=None):
 
 
 def _revertir_impacto_pago(obligacion, pago):
+    if _impacto_pago_acuerdo(obligacion, pago, revertir=True):
+        return
     if not obligacion or pago.estado not in ('pagado', 'parcial') or not pago.componente_capital:
         return
 
@@ -332,6 +409,8 @@ def _revertir_impacto_pago(obligacion, pago):
 
 
 def _aplicar_impacto_pago(obligacion, pago):
+    if _impacto_pago_acuerdo(obligacion, pago):
+        return
     if not obligacion or pago.estado not in ('pagado', 'parcial') or not pago.componente_capital:
         return
 
@@ -346,6 +425,8 @@ def _estado_visible_pago(pago, cuota_referencia=None):
         return 'sin_causar'
     if pago.estado == 'anulado':
         return 'sin_causar'
+    if pago.estado == 'acordado':
+        return 'acordado'
 
     valor_pagado = _float_or_none(pago.valor_pagado) or 0
     valor_causado = _float_or_none(pago.valor_causado)
@@ -489,6 +570,11 @@ def _obligacion_operativa_en_periodo(obligacion, anio, mes):
 
 
 def _fechas_programadas_obligacion(obligacion, anio, mes):
+    plan = abonos_service.plan_periodo(obligacion, anio, mes)
+    if plan is not None:
+        return [date.fromisoformat(f['fecha']) for f in plan]
+    if abonos_service.cubierto_por_acuerdo(obligacion, anio, mes):
+        return []
     inicio_mes, fin_mes = _rango_mes(anio, mes)
     if _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes):
         fila = _fila_amortizacion_periodo(obligacion, anio, mes)
@@ -542,6 +628,10 @@ def _fechas_programadas_obligacion(obligacion, anio, mes):
 
 
 def _siguiente_fecha_programada(obligacion, desde_fecha):
+    abono = abonos_service.activo(obligacion)
+    if abono:
+        return next((date.fromisoformat(f['fecha']) for f in abono.datos['plan']
+                     if f['fecha'] > desde_fecha.isoformat()), None)
     fecha_inicio_tabla = _coerce_date(obligacion.fecha_inicio_amortizacion)
     if (
         _es_modalidad_amortizacion(obligacion.modalidad)
@@ -627,6 +717,9 @@ def _obligacion_aplica_mes(obligacion, anio, mes):
 
 
 def _obligacion_visible_mes(obligacion, anio, mes):
+    abono = abonos_service.activo(obligacion)
+    if abono and (anio, mes) == (abono.fecha_abono.year, abono.fecha_abono.month):
+        return True
     if not _obligacion_operativa_en_periodo(obligacion, anio, mes):
         return False
 
@@ -653,6 +746,11 @@ def _es_pactado_informativo_mes(obligacion, anio, mes):
 
 
 def _valor_programado_mes_obligacion(obligacion, anio, mes, ultimo_pago=None):
+    plan = abonos_service.plan_periodo(obligacion, anio, mes)
+    if plan is not None:
+        return sum(float(f['total']) for f in plan)
+    if abonos_service.cubierto_por_acuerdo(obligacion, anio, mes):
+        return 0
     if _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes):
         fila = _fila_amortizacion_periodo(obligacion, anio, mes)
         return _valor_total_amortizacion(fila)
@@ -687,6 +785,8 @@ def _periodos_hasta_obligacion(obligacion, anio_hasta, mes_hasta):
 
 
 def _valor_deuda_periodo_obligacion(obligacion, pago, anio, mes, ultimo_pago=None):
+    if abonos_service.cubierto_por_acuerdo(obligacion, anio, mes):
+        return 0
     cuota_base = _valor_programado_mes_obligacion(obligacion, anio, mes, ultimo_pago)
     estado_visible = _estado_visible_pago(pago, cuota_base)
 
@@ -926,7 +1026,7 @@ def _money_raw_or_none(valor, scale=0):
     if separator_index >= 0:
         tail = re.sub(r'\D', '', unsigned[separator_index + 1:])
         head = re.sub(r'\D', '', unsigned[:separator_index])
-        if tail:
+        if tail and len(tail) <= scale:
             integer_digits = head or '0'
             decimal_digits = tail[:scale]
 
@@ -1519,6 +1619,8 @@ def pagos(anio=None, mes=None):
             total_estimado_items += 1
         pago = pagos_dict.get(o.id)
         estado_item = _estado_visible_pago(pago, cuota_estimado or _valor_estimado_obligacion(o, ultimos_pagos_dict.get(o.id)))
+        if not pago and cuota_estimado == 0 and abonos_service.cubierto_por_acuerdo(o, anio, mes):
+            estado_item = 'acordado'
         pago_anulado = bool(pago and pago.estado == 'anulado')
         valor_causado = 0 if pago_anulado else (float(pago.valor_causado or 0) if pago else 0)
         valor_pagado = 0 if pago_anulado else (float(pago.valor_pagado or 0) if pago else 0)
@@ -1599,6 +1701,8 @@ def pagos(anio=None, mes=None):
         valor_referencia_card = _valor_estimado_obligacion(o, ultimos_pagos_dict.get(o.id)) if es_informativo else cuota_esperada
         pago = pagos_dict.get(o.id)
         estado = _estado_visible_pago(pago, cuota_esperada or valor_referencia_card)
+        if not pago and cuota_esperada == 0 and abonos_service.cubierto_por_acuerdo(o, anio, mes):
+            estado = 'acordado'
         pago_anulado = bool(pago and pago.estado == 'anulado')
         resumen_vencido = _resumen_vencido_obligacion(
             o,
@@ -1689,7 +1793,7 @@ def pagos(anio=None, mes=None):
         fecha_ultimo_pago = _fecha_ultimo_pago_estimada(o, fecha_referencia)
         dias_ultimo_pago = (fecha_ultimo_pago - hoy).days if fecha_ultimo_pago else None
 
-        resumen_estado = 'Por causar'
+        resumen_estado = 'Cubierto por acuerdo' if estado == 'acordado' else 'Por causar'
         resumen_fecha_label = 'Fecha estimada'
         resumen_fecha = fecha_limite_actual or fecha_referencia
         resumen_valor_label = 'Valor estimado'
@@ -1846,9 +1950,16 @@ def pagos(anio=None, mes=None):
     total_items_mes = len(obligaciones_mes)
     total_saldo_actual = sum(float(o.saldo_actual or 0) for o in obligaciones)
     obligaciones_activas_total = len(obligaciones)
+    inicio_abonos, fin_abonos = _rango_mes(anio, mes)
+    abonos_mes = [a for a in AbonoCapitalObligacion.query.filter(
+        AbonoCapitalObligacion.obligacion_id.in_(obligacion_ids),
+        AbonoCapitalObligacion.fecha_abono.between(inicio_abonos, fin_abonos)
+    ).all() if not a.revertido] if obligacion_ids else []
 
     return render_template('obligaciones/pagos.html',
                            obligaciones_mes=obligaciones_mes,
+                           total_abonos_mes=sum(float(a.valor_abono) for a in abonos_mes),
+                           total_descuentos_mes=sum(a.descuento_intereses for a in abonos_mes),
                            obligaciones=obligaciones,
                            pendientes_anteriores=pendientes_anteriores,
                            anio=anio, mes=mes, meses=MESES,
@@ -1903,13 +2014,13 @@ def registrar_pago():
     usa_tabla_amortizacion = _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes)
     fila_amortizacion = _fila_amortizacion_periodo(obligacion, anio, mes)
     accion = request.form.get('accion', 'pagar')  # causar o pagar
-    valor_causado = _money_raw_or_none(request.form.get('valor_causado'))
-    valor_pagado = _money_raw_or_none(request.form.get('valor_pagado'))
-    componente_capital = _money_raw_or_none(request.form.get('componente_capital'))
-    componente_interes = _money_raw_or_none(request.form.get('componente_interes'))
-    componente_seguro_vida = _money_raw_or_none(request.form.get('componente_seguro_vida'))
-    componente_otros = _money_raw_or_none(request.form.get('componente_otros'))
-    componente_anticipo = _money_raw_or_none(request.form.get('componente_anticipo'))
+    valor_causado = _monto_pago_plan(obligacion, request.form.get('valor_causado'))
+    valor_pagado = _monto_pago_plan(obligacion, request.form.get('valor_pagado'))
+    componente_capital = _monto_pago_plan(obligacion, request.form.get('componente_capital'))
+    componente_interes = _monto_pago_plan(obligacion, request.form.get('componente_interes'))
+    componente_seguro_vida = _monto_pago_plan(obligacion, request.form.get('componente_seguro_vida'))
+    componente_otros = _monto_pago_plan(obligacion, request.form.get('componente_otros'))
+    componente_anticipo = _monto_pago_plan(obligacion, request.form.get('componente_anticipo'))
     destino_excedente = (request.form.get('destino_excedente') or 'mora').strip().lower()
     otros_incluye_excedente = request.form.get('componente_otros_incluye_excedente') == '1'
     estado = request.form.get('estado', 'pagado')
@@ -1922,6 +2033,10 @@ def registrar_pago():
     if usa_tabla_amortizacion and fila_amortizacion:
         valor_causado = _money_raw_or_none(_valor_total_amortizacion(fila_amortizacion))
         dia_pago_reportado = fila_amortizacion.fecha_pago.day
+    plan_abono = abonos_service.plan_periodo(obligacion, anio, mes)
+    if plan_abono:
+        valor_causado = Decimal(plan_abono[0]['total'])
+        dia_pago_reportado = date.fromisoformat(plan_abono[0]['fecha']).day
     if accion == 'causar' and error_dia:
         flash(error_dia, 'danger')
         return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
@@ -1948,6 +2063,13 @@ def registrar_pago():
     componente_seguro_vida_num = _float_or_none(componente_seguro_vida)
     componente_otros_num = _float_or_none(componente_otros)
     componente_anticipo_num = _float_or_none(componente_anticipo)
+
+    if plan_abono and accion == 'pagar':
+        importes = (valor_pagado_num, componente_capital_num, componente_interes_num,
+                    componente_seguro_vida_num, componente_otros_num, componente_anticipo_num)
+        if valor_pagado_num is None or valor_pagado_num <= 0 or any(v is not None and v < 0 for v in importes):
+            flash('El pago debe ser positivo y sus componentes no pueden ser negativos.', 'danger')
+            return redirect(url_for('obligaciones.pagos', anio=anio, mes=mes))
 
     if accion == 'pagar' and (estado in ('pagado', 'parcial') or (valor_pagado_num is not None and valor_pagado_num > 0)) and not fecha_pago:
         flash('Debe indicar una fecha de pago valida.', 'danger')
@@ -2096,7 +2218,7 @@ def registrar_pago():
             )
         db.session.add(pago)
 
-    if accion == 'causar' and dia_pago_reportado and not usa_tabla_amortizacion:
+    if accion == 'causar' and dia_pago_reportado and not usa_tabla_amortizacion and not abonos_service.activo(obligacion):
         _aplicar_dia_pago_obligacion(obligacion, dia_pago_reportado)
 
     # Actualizar saldo y cuotas de la obligación si se pagó
@@ -2360,13 +2482,13 @@ def ajustar_pago_cancelado(pago_id):
         flash('Debe indicar el motivo del ajuste para conservar el historial.', 'danger')
         return redirect(request.form.get('next') or url_for('obligaciones.refinanciaciones', id=pago.obligacion_id))
 
-    valor_pagado = _money_raw_or_none(request.form.get('valor_pagado'))
-    valor_causado = _money_raw_or_none(request.form.get('valor_causado'))
-    componente_capital = _money_raw_or_none(request.form.get('componente_capital'))
-    componente_interes = _money_raw_or_none(request.form.get('componente_interes'))
-    componente_seguro_vida = _money_raw_or_none(request.form.get('componente_seguro_vida'))
-    componente_otros = _money_raw_or_none(request.form.get('componente_otros'))
-    componente_anticipo = _money_raw_or_none(request.form.get('componente_anticipo'))
+    valor_pagado = _monto_pago_plan(obligacion, request.form.get('valor_pagado'))
+    valor_causado = _monto_pago_plan(obligacion, request.form.get('valor_causado'))
+    componente_capital = _monto_pago_plan(obligacion, request.form.get('componente_capital'))
+    componente_interes = _monto_pago_plan(obligacion, request.form.get('componente_interes'))
+    componente_seguro_vida = _monto_pago_plan(obligacion, request.form.get('componente_seguro_vida'))
+    componente_otros = _monto_pago_plan(obligacion, request.form.get('componente_otros'))
+    componente_anticipo = _monto_pago_plan(obligacion, request.form.get('componente_anticipo'))
     destino_excedente = (request.form.get('destino_excedente') or 'mora').strip().lower()
     otros_incluye_excedente = request.form.get('componente_otros_incluye_excedente') == '1'
     medio_pago_id = request.form.get('medio_pago_id') or None
@@ -2534,12 +2656,13 @@ def refinanciaciones(id):
     total_pagado = sum(float(p.valor_pagado or 0) for p in pagos)
     total_capital_pagado = sum(float(p.componente_capital or 0) for p in pagos)
     total_interes_pagado = sum(float(p.componente_interes or 0) for p in pagos)
-    total_abonos_capital = sum(float(a.valor_abono or 0) for a in abonos)
+    total_abonos_capital = sum(float(a.valor_abono or 0) for a in abonos if not a.revertido)
     total_amortizado = total_capital_pagado + total_abonos_capital
     salida_total = total_pagado + total_abonos_capital
 
     return render_template('obligaciones/refinanciaciones.html',
                            obligacion=obligacion,
+                           tiene_plan_abono=bool(abonos_service.activo(obligacion)),
                            refinanciaciones=refis,
                            abonos=abonos,
                            pagos_cancelados=pagos_cancelados,
@@ -2560,96 +2683,46 @@ def refinanciaciones(id):
 
 
 @obligaciones_bp.route('/<int:id>/abonar-capital', methods=['POST'])
+@obligaciones_bp.route('/<int:id>/abonos', methods=['GET', 'POST'])
 def abonar_capital(id):
-    obligacion = Obligacion.query.get_or_404(id)
+    obligacion = Obligacion.query.filter_by(id=id).with_for_update().first_or_404()
+    serializer = URLSafeTimedSerializer(current_app.secret_key, salt='abono-obligacion-v1')
+    datos = None
+    token = None
+    if request.method == 'POST':
+        try:
+            if request.form.get('confirmacion'):
+                payload = serializer.loads(request.form['confirmacion'], max_age=1800)
+                if payload['obligacion_id'] != id:
+                    raise ValueError('La confirmación pertenece a otra obligación.')
+                abonos_service.aplicar(obligacion, payload['datos'])
+                db.session.commit()
+                flash('Abono registrado. Saldo y calendario actualizados; el descuento no se contabiliza como dinero pagado.', 'success')
+                return redirect(url_for('obligaciones.refinanciaciones', id=id))
+            datos = abonos_service.preparar(obligacion, request.form)
+            token = serializer.dumps({'obligacion_id': id, 'datos': datos})
+        except (BadSignature, SignatureExpired):
+            db.session.rollback()
+            flash('La vista previa venció o no es válida. Revise el abono nuevamente.', 'warning')
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), 'danger')
+    return render_template('obligaciones/abono.html', obligacion=obligacion,
+                           datos=datos, token=token, opciones=abonos_service.ETIQUETAS,
+                           hoy=date.today(), form=request.form)
 
+
+@obligaciones_bp.route('/<int:id>/abonos/<int:abono_id>/revertir', methods=['POST'])
+def revertir_abono(id, abono_id):
+    obligacion = Obligacion.query.filter_by(id=id).with_for_update().first_or_404()
+    abono = AbonoCapitalObligacion.query.filter_by(id=abono_id, obligacion_id=id).first_or_404()
     try:
-        fecha_abono = datetime.strptime(request.form['fecha_abono'], '%Y-%m-%d').date()
-    except (KeyError, ValueError):
-        flash('La fecha del abono no es válida.', 'danger')
-        return redirect(url_for('obligaciones.refinanciaciones', id=id))
-
-    try:
-        valor_abono = float(_money_raw_or_none(request.form.get('valor_abono')) or 0)
-    except ValueError:
-        valor_abono = 0
-
-    opcion_recalculo = request.form.get('opcion_recalculo')
-    observaciones = request.form.get('observaciones', '').strip()
-
-    saldo_anterior = float(obligacion.saldo_actual or 0)
-    cuotas_pendientes_antes = obligacion.cuotas_pendientes or 0
-    cuota_anterior = float(
-        obligacion.valor_cuota_fija
-        or obligacion.cuota_francesa_calculada
-        or _valor_estimado_obligacion(obligacion)
-        or 0
-    )
-
-    if valor_abono <= 0:
-        flash('El valor del abono debe ser mayor que cero.', 'danger')
-        return redirect(url_for('obligaciones.refinanciaciones', id=id))
-    if saldo_anterior <= 0:
-        flash('La obligación no tiene saldo pendiente para abonar.', 'warning')
-        return redirect(url_for('obligaciones.refinanciaciones', id=id))
-    if valor_abono > saldo_anterior:
-        flash('El abono no puede ser mayor al saldo actual.', 'danger')
-        return redirect(url_for('obligaciones.refinanciaciones', id=id))
-    if opcion_recalculo not in ('reducir_cuota', 'reducir_plazo'):
-        flash('Debe indicar si el abono reduce la cuota o reduce el plazo.', 'danger')
-        return redirect(url_for('obligaciones.refinanciaciones', id=id))
-
-    saldo_nuevo = max(saldo_anterior - valor_abono, 0)
-    tasa_mensual = float(obligacion.tasa_interes_mensual or 0) / 100
-    cuotas_pendientes_despues = cuotas_pendientes_antes
-    cuota_nueva = cuota_anterior
-
-    if saldo_nuevo <= 0:
-        cuotas_pendientes_despues = 0
-        cuota_nueva = 0
-    elif opcion_recalculo == 'reducir_cuota':
-        if cuotas_pendientes_antes <= 0:
-            flash('No hay cuotas pendientes para recalcular la cuota.', 'warning')
-            return redirect(url_for('obligaciones.refinanciaciones', id=id))
-        if tasa_mensual > 0:
-            cuota_nueva = _cuota_con_tasa(saldo_nuevo, tasa_mensual, cuotas_pendientes_antes)
-        else:
-            cuota_nueva = saldo_nuevo / cuotas_pendientes_antes
-    else:
-        cuota_objetivo = cuota_anterior
-        if cuota_objetivo <= 0:
-            flash('No fue posible determinar la cuota vigente para reducir el plazo.', 'warning')
-            return redirect(url_for('obligaciones.refinanciaciones', id=id))
-        cuotas_pendientes_despues = _plazo_con_tasa(saldo_nuevo, tasa_mensual, cuota_objetivo)
-        if cuotas_pendientes_despues is None:
-            flash('La cuota actual no alcanza a amortizar el interés mensual. Revise tasa o cuota.', 'warning')
-            return redirect(url_for('obligaciones.refinanciaciones', id=id))
-
-    abono = AbonoCapitalObligacion(
-        obligacion_id=id,
-        fecha_abono=fecha_abono,
-        valor_abono=valor_abono,
-        saldo_anterior=saldo_anterior,
-        saldo_nuevo=saldo_nuevo,
-        opcion_recalculo=opcion_recalculo,
-        cuotas_pendientes_antes=cuotas_pendientes_antes,
-        cuotas_pendientes_despues=cuotas_pendientes_despues,
-        cuota_anterior=cuota_anterior,
-        cuota_nueva=cuota_nueva,
-        observaciones=observaciones
-    )
-    db.session.add(abono)
-
-    obligacion.saldo_actual = saldo_nuevo
-    if opcion_recalculo == 'reducir_cuota':
-        obligacion.valor_cuota_fija = cuota_nueva
-    if obligacion.cuotas_totales is not None:
-        obligacion.cuotas_totales = (obligacion.cuotas_pagadas or 0) + cuotas_pendientes_despues
-    if saldo_nuevo <= 0:
-        obligacion.valor_cuota_fija = 0
-
-    db.session.commit()
-    flash('Abono a capital registrado y obligación actualizada.', 'success')
+        abonos_service.revertir(obligacion, abono, request.form.get('motivo', ''))
+        db.session.commit()
+        flash('Abono revertido. Se restauraron el saldo y las cuotas anteriores; el historial se conserva.', 'success')
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), 'danger')
     return redirect(url_for('obligaciones.refinanciaciones', id=id))
 
 
