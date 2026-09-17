@@ -116,7 +116,18 @@
                             {% endif %}
                         </td>
                         <td class="fw-bold quincena-cell {{ clase_q1 }}">{{ "${:,.0f}".format(total_causado_q1) if total_causado_q1 > 0 else '-' }}</td>
-                        <td class="fw-bold quincena-cell {{ clase_q1 }}">{{ "${:,.0f}".format(total_pagado_q1) if total_pagado_q1 > 0 else '-' }}</td>
+                        <td class="fw-bold quincena-cell {{ clase_q1 }}">
+                            {{ "${:,.0f}".format(total_pagado_q1) if total_pagado_q1 > 0 else '-' }}
+                            {% if abonos_q1 %}
+                            <div class="fw-normal small text-muted mt-1">
+                                {% for abono in abonos_q1 %}
+                                <div>Pagado: {{ abono.fecha_pago.strftime('%d/%m/%Y') }} · ${{ "{:,.0f}".format(abono.valor_abono or 0) }}</div>
+                                {% endfor %}
+                            </div>
+                            {% elif pago_directo_q1 %}
+                            <div class="fw-normal small text-muted mt-1">Pagado: {{ pago_directo_q1.fecha_pago.strftime('%d/%m/%Y') }}</div>
+                            {% endif %}
+                        </td>
                         {% if mostrar_q2 %}
                         <td class="quincena-cell {{ clase_q2 }}">
                             {% if estado_q2 == 'no_aplica' %}
@@ -130,7 +141,18 @@
                             {% endif %}
                         </td>
                         <td class="fw-bold quincena-cell {{ clase_q2 }}">{{ "${:,.0f}".format(total_causado_q2) if total_causado_q2 > 0 else '-' }}</td>
-                        <td class="fw-bold quincena-cell {{ clase_q2 }}">{{ "${:,.0f}".format(total_pagado_q2) if total_pagado_q2 > 0 else '-' }}</td>
+                        <td class="fw-bold quincena-cell {{ clase_q2 }}">
+                            {{ "${:,.0f}".format(total_pagado_q2) if total_pagado_q2 > 0 else '-' }}
+                            {% if abonos_q2 %}
+                            <div class="fw-normal small text-muted mt-1">
+                                {% for abono in abonos_q2 %}
+                                <div>Pagado: {{ abono.fecha_pago.strftime('%d/%m/%Y') }} · ${{ "{:,.0f}".format(abono.valor_abono or 0) }}</div>
+                                {% endfor %}
+                            </div>
+                            {% elif pago_directo_q2 %}
+                            <div class="fw-normal small text-muted mt-1">Pagado: {{ pago_directo_q2.fecha_pago.strftime('%d/%m/%Y') }}</div>
+                            {% endif %}
+                        </td>
                     {% else %}
                         <td class="quincena-cell"></td>
                         <td class="quincena-cell"></td>
@@ -170,6 +192,7 @@
                     <th>Estado</th>
                     <th>Valor inicial</th>
                     <th>Saldo pendiente</th>
+                    <th>Fechas de pago</th>
                     <th>Observaciones</th>
                 </tr>
             </thead>
@@ -180,6 +203,13 @@
                     <td>{{ (saldo.estado or 'pendiente').replace('_', ' ')|title }}</td>
                     <td>{{ "${:,.0f}".format(saldo.valor_inicial or 0) }}</td>
                     <td class="fw-bold">{{ "${:,.0f}".format(saldo.saldo_pendiente or 0) }}</td>
+                    <td>
+                        {% for abono in saldo.abonos.all() %}
+                        <small class="d-block">{{ abono.fecha_pago.strftime('%d/%m/%Y') }} · ${{ "{:,.0f}".format(abono.valor_abono or 0) }}</small>
+                        {% else %}
+                        <small class="text-muted">-</small>
+                        {% endfor %}
+                    </td>
                     <td><small>{{ saldo.observaciones or '' }}</small></td>
                 </tr>
                 {% endfor %}
