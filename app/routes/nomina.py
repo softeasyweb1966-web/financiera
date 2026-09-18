@@ -1549,6 +1549,7 @@ def detalle(id):
     # Group by (mes, quincena)
     pagos_dict = {}
     pagos_raw_dict = {}
+    conceptos_causacion_dict = {}
     causaciones_dict = {}
     abonos_dict = {}
     abonos_totales = {}
@@ -1560,9 +1561,18 @@ def detalle(id):
         if key not in causaciones_dict and r.created_at:
             causaciones_dict[key] = r.created_at.date()
     for key, items in pagos_raw_dict.items():
-        pagos_dict[key] = _desglose_registros_periodo_nomina(
+        desglose_key = _desglose_registros_periodo_nomina(
             empleado, anio, key[0], key[1], registros=items
-        )['registros']
+        )
+        pagos_dict[key] = desglose_key['registros']
+        conceptos_causacion_dict[key] = [
+            {
+                'id': registro.id,
+                'nombre': registro.concepto_nomina.nombre if registro.concepto_nomina else 'Concepto',
+                'valor': float(registro.valor or 0),
+            }
+            for registro in desglose_key['registros']
+        ]
     for abono in abonos:
         key = (abono.mes, abono.quincena)
         abonos_dict.setdefault(key, []).append(abono)
@@ -1621,6 +1631,7 @@ def detalle(id):
     hoy = date.today()
     return render_template('nomina/detalle_v2.html', empleado=empleado, anio=anio,
                            meses=MESES, pagos=pagos_dict, causaciones=causaciones_dict,
+                           conceptos_causacion=conceptos_causacion_dict,
                            abonos=abonos_dict, abonos_totales=abonos_totales, abonos_lista=abonos,
                            meses_habilitados=meses_habilitados,
                            aplica_quincena=aplica_quincena,
@@ -1644,6 +1655,7 @@ def modificar_causacion_periodo(id):
     anio = request.form.get('anio', type=int)
     mes = request.form.get('mes', type=int)
     quincena = request.form.get('quincena', type=int)
+    registro_id = request.form.get('registro_id', type=int)
     nuevo_valor = float(request.form.get('valor_causado') or 0)
     motivo = (request.form.get('motivo') or '').strip()
     next_url = request.form.get('next') or url_for('nomina.detalle', id=empleado.id, anio=anio or date.today().year)
@@ -1653,7 +1665,7 @@ def modificar_causacion_periodo(id):
         return redirect(next_url)
     anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
     if nuevo_valor <= 0:
-        flash('El nuevo valor causado debe ser mayor a cero.', 'danger')
+        flash('El nuevo valor de la causacion debe ser mayor a cero.', 'danger')
         return redirect(next_url)
     if not motivo:
         flash('Debe indicar el motivo de la modificacion de la causacion.', 'danger')
@@ -1674,18 +1686,30 @@ def modificar_causacion_periodo(id):
         flash('Esta causacion tiene pagos registrados. Primero anule el pago y luego modifique la causacion.', 'warning')
         return redirect(next_url)
 
-    desglose = _desglose_registros_periodo_nomina(empleado, anio, mes, quincena, registros=registros)
-    valor_anterior = float(desglose['total_causado'] or 0)
-    if abs(nuevo_valor - valor_anterior) < 0.01:
-        flash('El nuevo valor causado es igual al valor actual.', 'info')
+    if registro_id:
+        registro_objetivo = next((registro for registro in registros if registro.id == registro_id), None)
+        if not registro_objetivo:
+            flash('El concepto seleccionado no pertenece a esa causacion.', 'danger')
+            return redirect(next_url)
+    elif len(registros) == 1:
+        registro_objetivo = registros[0]
+    else:
+        flash('Seleccione el concepto exacto que desea modificar dentro de la causacion.', 'warning')
         return redirect(next_url)
 
-    registro_principal = desglose.get('registro_base_principal') or (desglose['registros'][0] if desglose['registros'] else registros[0])
     registros_antes = _snapshot_registros_nomina(registros)
-    diferencia = nuevo_valor - valor_anterior
-    registro_principal.valor = float(registro_principal.valor or 0) + diferencia
-    nota = f'MODIFICACION CAUSACION {datetime.utcnow().strftime("%d/%m/%Y")}: ${valor_anterior:,.0f} -> ${nuevo_valor:,.0f}. Motivo: {motivo}'
-    registro_principal.observaciones = _append_observacion(registro_principal.observaciones, nota)
+    valor_anterior = float(registro_objetivo.valor or 0)
+    if abs(nuevo_valor - valor_anterior) < 0.01:
+        flash('El nuevo valor es igual al valor actual del concepto seleccionado.', 'info')
+        return redirect(next_url)
+
+    registro_objetivo.valor = nuevo_valor
+    concepto_nombre = registro_objetivo.concepto_nomina.nombre if registro_objetivo.concepto_nomina else 'Concepto'
+    nota = (
+        f'MODIFICACION CAUSACION {datetime.utcnow().strftime("%d/%m/%Y")}: '
+        f'{concepto_nombre} ${valor_anterior:,.0f} -> ${nuevo_valor:,.0f}. Motivo: {motivo}'
+    )
+    registro_objetivo.observaciones = _append_observacion(registro_objetivo.observaciones, nota)
 
     db.session.flush()
     registros_despues = _snapshot_registros_nomina(registros)
@@ -1697,12 +1721,12 @@ def modificar_causacion_periodo(id):
         motivo=motivo,
         valor_anterior=valor_anterior,
         valor_nuevo=nuevo_valor,
-        concepto_principal_id=registro_principal.concepto_nomina_id,
+        concepto_principal_id=registro_objetivo.concepto_nomina_id,
         registros_antes=registros_antes,
         registros_despues=registros_despues,
     )
     db.session.commit()
-    flash(f'Causacion modificada de ${valor_anterior:,.0f} a ${nuevo_valor:,.0f}.', 'success')
+    flash(f'Causacion modificada en {concepto_nombre}: ${valor_anterior:,.0f} a ${nuevo_valor:,.0f}.', 'success')
     return redirect(next_url)
 
 

@@ -78,6 +78,8 @@
                     {% set estado_q2 = estados_quincena.get(key_q2) if aplica_q2 else 'no_aplica' %}
                     {% set causacion_q1 = causaciones.get(key_q1) %}
                     {% set causacion_q2 = causaciones.get(key_q2) %}
+                    {% set conceptos_q1 = conceptos_causacion.get(key_q1, []) %}
+                    {% set conceptos_q2 = conceptos_causacion.get(key_q2, []) %}
                     {% set abonos_q1 = abonos.get(key_q1, []) %}
                     {% set abonos_q2 = abonos.get(key_q2, []) %}
                     {% set total_causado_q1 = registros_q1|sum(attribute='valor')|float %}
@@ -124,7 +126,7 @@
                                     title="Modificar causacion"
                                     data-bs-toggle="modal"
                                     data-bs-target="#modalModificarCausacionNomina"
-                                    onclick='prepararModificacionCausacionNomina({{ url_for("nomina.modificar_causacion_periodo", id=empleado.id)|tojson }}, {{ anio }}, {{ i }}, 1, {{ total_causado_q1|float }}, {{ ("Modificar " ~ meses[i - 1] ~ " Q1")|tojson }})'>
+                                    onclick='prepararModificacionCausacionNomina({{ url_for("nomina.modificar_causacion_periodo", id=empleado.id)|tojson }}, {{ anio }}, {{ i }}, 1, {{ conceptos_q1|tojson }}, {{ ("Modificar " ~ meses[i - 1] ~ " Q1")|tojson }})'>
                                 <i class="bi bi-pencil-square"></i>
                             </button>
                             {% endif %}
@@ -178,7 +180,7 @@
                                     title="Modificar causacion"
                                     data-bs-toggle="modal"
                                     data-bs-target="#modalModificarCausacionNomina"
-                                    onclick='prepararModificacionCausacionNomina({{ url_for("nomina.modificar_causacion_periodo", id=empleado.id)|tojson }}, {{ anio }}, {{ i }}, 2, {{ total_causado_q2|float }}, {{ ("Modificar " ~ meses[i - 1] ~ " Q2")|tojson }})'>
+                                    onclick='prepararModificacionCausacionNomina({{ url_for("nomina.modificar_causacion_periodo", id=empleado.id)|tojson }}, {{ anio }}, {{ i }}, 2, {{ conceptos_q2|tojson }}, {{ ("Modificar " ~ meses[i - 1] ~ " Q2")|tojson }})'>
                                 <i class="bi bi-pencil-square"></i>
                             </button>
                             {% endif %}
@@ -289,7 +291,9 @@
 {% endif %}
 
 <div class="card mt-3">
-    <div class="card-header bg-light fw-semibold">Historial de anulaciones de pagos</div>
+    <div class="card-header bg-white fw-bold">
+        <i class="bi bi-slash-circle text-danger"></i> Historial de anulaciones de pagos
+    </div>
     <div class="table-responsive">
         <table class="table table-sm table-hover mb-0">
             <thead>
@@ -370,9 +374,11 @@
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-info py-2 small">
-                        Si esta quincena tiene pagos, primero anule el pago. La modificacion guarda trazabilidad con valor anterior, valor nuevo y motivo.
+                        Seleccione el concepto exacto de la causacion. El valor ingresado reemplaza ese concepto; no se suma ni se resta al total.
                     </div>
-                    <label class="form-label">Nuevo valor causado *</label>
+                    <label class="form-label">Concepto a modificar *</label>
+                    <select name="registro_id" id="modificar_causacion_registro" class="form-select" required onchange="actualizarValorCausacionSeleccionada()"></select>
+                    <label class="form-label mt-2">Nuevo valor del concepto *</label>
                     <input type="number" name="valor_causado" id="modificar_causacion_valor" class="form-control" min="1" step="0.01" required>
                     <label class="form-label mt-2">Motivo de modificacion *</label>
                     <textarea name="motivo" id="modificar_causacion_motivo" class="form-control" rows="3" required></textarea>
@@ -417,15 +423,36 @@
 
 {% block scripts %}
 <script>
-function prepararModificacionCausacionNomina(actionUrl, anio, mes, quincena, valorActual, titulo) {
+let conceptosCausacionNomina = [];
+
+function formatoPesosNomina(valor) {
+    return '$' + Number(valor || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+}
+
+function actualizarValorCausacionSeleccionada() {
+    const select = document.getElementById('modificar_causacion_registro');
+    const seleccionado = conceptosCausacionNomina.find((item) => String(item.id) === String(select.value));
+    document.getElementById('modificar_causacion_valor').value = seleccionado ? Math.round(Number(seleccionado.valor || 0)) : '';
+}
+
+function prepararModificacionCausacionNomina(actionUrl, anio, mes, quincena, conceptos, titulo) {
     const form = document.getElementById('formModificarCausacionNomina');
+    const select = document.getElementById('modificar_causacion_registro');
+    conceptosCausacionNomina = Array.isArray(conceptos) ? conceptos : [];
     form.action = actionUrl;
     document.getElementById('modificarCausacionTitulo').textContent = titulo;
     document.getElementById('modificar_causacion_anio').value = anio;
     document.getElementById('modificar_causacion_mes').value = mes;
     document.getElementById('modificar_causacion_quincena').value = quincena;
-    document.getElementById('modificar_causacion_valor').value = Math.round(Number(valorActual || 0));
     document.getElementById('modificar_causacion_motivo').value = '';
+    select.innerHTML = '';
+    conceptosCausacionNomina.forEach((item) => {
+        const option = document.createElement('option');
+        option.value = item.id;
+        option.textContent = item.nombre + ' - ' + formatoPesosNomina(item.valor);
+        select.appendChild(option);
+    });
+    actualizarValorCausacionSeleccionada();
 }
 
 function limpiarPeriodoAnulacionNomina() {

@@ -152,6 +152,7 @@ class NominaAnulacionesTest(unittest.TestCase):
                 'anio': '2026',
                 'mes': '9',
                 'quincena': '1',
+                'registro_id': str(r.id),
                 'valor_causado': '1200000',
                 'motivo': 'Valor causado errado',
                 'next': f'/nomina/detalle/{self.empleado.id}?anio=2026',
@@ -165,6 +166,44 @@ class NominaAnulacionesTest(unittest.TestCase):
         self.assertEqual(float(historial.valor_nuevo), 1200000)
         self.assertEqual(historial.motivo, 'Valor causado errado')
         self.assertIn('Valor causado errado', r.observaciones)
+
+    def test_modifica_novedad_especifica_sin_sumar_al_concepto_base(self):
+        concepto_novedad = ConceptoNomina(nombre='Novedad Enero', tipo='devengado')
+        db.session.add(concepto_novedad)
+        db.session.flush()
+        base = self.registro()
+        novedad = RegistroNomina(
+            empleado_id=self.empleado.id,
+            concepto_nomina_id=concepto_novedad.id,
+            anio=2026,
+            mes=9,
+            quincena=1,
+            valor=1750000,
+        )
+        db.session.add(novedad)
+        db.session.commit()
+
+        response = self.client.post(
+            f'/nomina/{self.empleado.id}/periodo/modificar-causacion',
+            data={
+                'anio': '2026',
+                'mes': '9',
+                'quincena': '1',
+                'registro_id': str(novedad.id),
+                'valor_causado': '1800000',
+                'motivo': 'Correccion novedad enero',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        db.session.refresh(base)
+        db.session.refresh(novedad)
+        self.assertEqual(float(base.valor), 1000000)
+        self.assertEqual(float(novedad.valor), 1800000)
+        historial = HistorialCausacionNomina.query.one()
+        self.assertEqual(float(historial.valor_anterior), 1750000)
+        self.assertEqual(float(historial.valor_nuevo), 1800000)
+        self.assertEqual(historial.concepto_principal_id, concepto_novedad.id)
 
     def test_no_modifica_causacion_con_pago_activo(self):
         r = self.registro(fecha_pago=date(2026, 9, 15))
@@ -185,6 +224,7 @@ class NominaAnulacionesTest(unittest.TestCase):
                 'anio': '2026',
                 'mes': '9',
                 'quincena': '1',
+                'registro_id': str(r.id),
                 'valor_causado': '1200000',
                 'motivo': 'Valor causado errado',
             },
