@@ -184,6 +184,21 @@ class ComprasCreditoTest(unittest.TestCase):
         response = self.client.get(f'/compras/{c.id}/editar')
         self.assertEqual(response.status_code, 302)
 
+    def test_lista_permite_anular_compra_con_motivo(self):
+        c = self.crear(paga_inicial='no', cuota_valor=['500000', '500000'])
+        lista = self.client.get('/compras/2026/9').text
+        self.assertIn('modalAnularCompra', lista)
+        self.assertIn(f'prepararAnulacionCompra({c.id}', lista)
+        self.assertIn("'/anular'", lista)
+        response = self.client.post(
+            f'/compras/{c.id}/anular',
+            data={'motivo': 'Compra mal registrada', 'next': '/compras/2026/9'}
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers['Location'], '/compras/2026/9')
+        db.session.refresh(c)
+        self.assertEqual(c.estado, 'anulado')
+
     def test_valores_con_centavos_cuadran(self):
         c = self.crear(valor='1000.75', valor_abono_inicial='100.25', cuota_valor=['400.25','500.25'])
         self.assertEqual(sum(f['saldo'] for f in calendario(c)), Decimal('900.50'))

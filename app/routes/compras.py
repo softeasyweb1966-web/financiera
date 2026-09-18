@@ -632,13 +632,14 @@ def detalle(id):
 @compras_bp.route('/<int:id>/anular', methods=['POST'])
 def anular(id):
     compra = Compra.query.filter_by(id=id).with_for_update().first_or_404()
+    destino = _safe_next_url(request.form.get('next'))
     motivo = (request.form.get('motivo') or '').strip()
     if not motivo:
         flash('Debe indicar el motivo de la anulacion.', 'danger')
-        return redirect(url_for('compras.detalle', id=compra.id))
+        return redirect(destino or url_for('compras.detalle', id=compra.id))
     if compra.estado == 'anulado':
         flash('Esta compra ya estaba anulada.', 'warning')
-        return redirect(url_for('compras.detalle', id=compra.id))
+        return redirect(destino or url_for('compras.detalle', id=compra.id))
 
     resumen_abonos = _abonos_por_compra([compra.id])
     totales = _totales_compra(compra, resumen_abonos)
@@ -658,7 +659,7 @@ def anular(id):
     compra.updated_at = datetime.utcnow()
     db.session.commit()
     flash('Compra anulada. El registro y su trazabilidad se conservaron.', 'success')
-    return redirect(url_for('compras.detalle', id=compra.id))
+    return redirect(destino or url_for('compras.detalle', id=compra.id))
 
 
 @compras_bp.route('/<int:id>/abonar', methods=['POST'])

@@ -215,6 +215,14 @@
                 <a href="{{ url_for('compras.editar', id=compra.id) }}" class="btn btn-sm btn-outline-secondary">
                     <i class="bi bi-pencil"></i>
                 </a>
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        title="Anular compra"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalAnularCompra"
+                        onclick='prepararAnulacionCompra({{ compra.id }}, {{ (compra.producto_compra.nombre if compra.producto_compra else compra.descripcion)|tojson }}, "{{ request.full_path if request.query_string else request.path }}")'>
+                    <i class="bi bi-slash-circle"></i>
+                </button>
             </div>
         </div>
     </div>
@@ -268,6 +276,31 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="modalAnularCompra" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="formAnularCompra">
+                <div class="modal-header">
+                    <h6 class="modal-title fw-bold" id="anularCompraTitulo">Anular compra</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="next" id="anularCompraNext">
+                    <div class="alert alert-warning py-2 small">
+                        La compra dejara de sumar en saldos y reportes, pero se conservaran el registro, sus abonos y el historial.
+                    </div>
+                    <label class="form-label">Motivo de anulacion *</label>
+                    <textarea name="motivo" id="anularCompraMotivo" class="form-control" rows="3" required></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger btn-sm">Confirmar anulacion</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -282,6 +315,13 @@ function prepararAbono(id, descripcion, saldoTexto, saldoRaw, nextUrl) {
     } else {
         document.getElementById('abonoValor').value = saldoTexto;
     }
+}
+
+function prepararAnulacionCompra(id, descripcion, nextUrl) {
+    document.getElementById('formAnularCompra').action = '/compras/' + id + '/anular';
+    document.getElementById('anularCompraTitulo').textContent = 'Anular compra - ' + descripcion;
+    document.getElementById('anularCompraNext').value = nextUrl || '';
+    document.getElementById('anularCompraMotivo').value = '';
 }
 </script>
 {% endblock %}
