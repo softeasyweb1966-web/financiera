@@ -664,6 +664,41 @@ class AbonoNomina(db.Model):
         return f'<AbonoNomina {self.empleado_id} {self.anio}-{self.mes} Q{self.quincena}: ${self.valor_abono}>'
 
 
+class HistorialPagoNomina(db.Model):
+    """Bitacora de anulaciones de pagos de nomina."""
+    __tablename__ = 'historial_pagos_nomina'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False, index=True)
+    registro_nomina_id = db.Column(db.Integer, db.ForeignKey('registros_nomina.id'))
+    abono_nomina_id = db.Column(db.Integer)
+    saldo_anterior_nomina_id = db.Column(db.Integer, db.ForeignKey('saldos_anteriores_nomina.id'))
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    quincena = db.Column(db.Integer, nullable=False)
+    tipo_pago = db.Column(db.String(30), nullable=False)  # abono_periodo, saldo_anterior, periodo_directo
+    accion = db.Column(db.String(20), nullable=False, default='anulacion')
+    motivo = db.Column(db.Text, nullable=False)
+    valor_pagado = db.Column(db.Numeric(14, 2))
+    fecha_pago = db.Column(db.Date)
+    medio_pago_id = db.Column(db.Integer, db.ForeignKey('medios_pago.id'))
+    descripcion = db.Column(db.Text)
+    observaciones = db.Column(db.Text)
+    registrado_por = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    empleado = db.relationship('Empleado', backref=db.backref(
+        'historial_pagos_nomina', lazy='dynamic',
+        order_by='desc(HistorialPagoNomina.created_at), desc(HistorialPagoNomina.id)'
+    ))
+    registro_nomina = db.relationship('RegistroNomina')
+    saldo_anterior = db.relationship('SaldoAnteriorNomina')
+    medio_pago = db.relationship('MedioPago')
+
+    def __repr__(self):
+        return f'<HistorialPagoNomina {self.empleado_id} {self.tipo_pago} {self.anio}-{self.mes} Q{self.quincena}>'
+
+
 class Compra(db.Model):
     """Registro de compra puntual"""
     __tablename__ = 'compras'

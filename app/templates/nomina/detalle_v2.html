@@ -10,6 +10,7 @@
     .ind-no_aplica { background: #94a3b8; }
     .indicador { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .quincena-cell { vertical-align: top; min-width: 140px; }
+    .btn-anular-pago { padding: 0 0.25rem; line-height: 1.1; font-size: 0.72rem; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -121,11 +122,29 @@
                             {% if abonos_q1 %}
                             <div class="fw-normal small text-muted mt-1">
                                 {% for abono in abonos_q1 %}
-                                <div>Pagado: {{ abono.fecha_pago.strftime('%d/%m/%Y') }} · ${{ "{:,.0f}".format(abono.valor_abono or 0) }}</div>
+                                <div>
+                                    Pagado: {{ abono.fecha_pago.strftime('%d/%m/%Y') }} · ${{ "{:,.0f}".format(abono.valor_abono or 0) }}
+                                    <button type="button" class="btn btn-outline-danger btn-anular-pago ms-1"
+                                            title="Anular este abono"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#modalAnularPagoNomina"
+                                            onclick='prepararAnulacionPagoNomina({{ url_for("nomina.anular_abono", abono_id=abono.id)|tojson }}, {{ ("Abono " ~ meses[i - 1] ~ " Q1 - $" ~ "{:,.0f}".format(abono.valor_abono or 0))|tojson }})'>
+                                        <i class="bi bi-slash-circle"></i>
+                                    </button>
+                                </div>
                                 {% endfor %}
                             </div>
                             {% elif pago_directo_q1 %}
-                            <div class="fw-normal small text-muted mt-1">Pagado: {{ pago_directo_q1.fecha_pago.strftime('%d/%m/%Y') }}</div>
+                            <div class="fw-normal small text-muted mt-1">
+                                Pagado: {{ pago_directo_q1.fecha_pago.strftime('%d/%m/%Y') }}
+                                <button type="button" class="btn btn-outline-danger btn-anular-pago ms-1"
+                                        title="Anular pago del mes"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#modalAnularPagoNomina"
+                                        onclick='prepararAnulacionPagoPeriodo({{ url_for("nomina.anular_pago_periodo", id=empleado.id)|tojson }}, {{ anio }}, {{ i }}, 1, {{ ("Pago " ~ meses[i - 1] ~ " Q1")|tojson }})'>
+                                    <i class="bi bi-slash-circle"></i>
+                                </button>
+                            </div>
                             {% endif %}
                         </td>
                         {% if mostrar_q2 %}
@@ -146,11 +165,29 @@
                             {% if abonos_q2 %}
                             <div class="fw-normal small text-muted mt-1">
                                 {% for abono in abonos_q2 %}
-                                <div>Pagado: {{ abono.fecha_pago.strftime('%d/%m/%Y') }} · ${{ "{:,.0f}".format(abono.valor_abono or 0) }}</div>
+                                <div>
+                                    Pagado: {{ abono.fecha_pago.strftime('%d/%m/%Y') }} · ${{ "{:,.0f}".format(abono.valor_abono or 0) }}
+                                    <button type="button" class="btn btn-outline-danger btn-anular-pago ms-1"
+                                            title="Anular este abono"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#modalAnularPagoNomina"
+                                            onclick='prepararAnulacionPagoNomina({{ url_for("nomina.anular_abono", abono_id=abono.id)|tojson }}, {{ ("Abono " ~ meses[i - 1] ~ " Q2 - $" ~ "{:,.0f}".format(abono.valor_abono or 0))|tojson }})'>
+                                        <i class="bi bi-slash-circle"></i>
+                                    </button>
+                                </div>
                                 {% endfor %}
                             </div>
                             {% elif pago_directo_q2 %}
-                            <div class="fw-normal small text-muted mt-1">Pagado: {{ pago_directo_q2.fecha_pago.strftime('%d/%m/%Y') }}</div>
+                            <div class="fw-normal small text-muted mt-1">
+                                Pagado: {{ pago_directo_q2.fecha_pago.strftime('%d/%m/%Y') }}
+                                <button type="button" class="btn btn-outline-danger btn-anular-pago ms-1"
+                                        title="Anular pago del mes"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#modalAnularPagoNomina"
+                                        onclick='prepararAnulacionPagoPeriodo({{ url_for("nomina.anular_pago_periodo", id=empleado.id)|tojson }}, {{ anio }}, {{ i }}, 2, {{ ("Pago " ~ meses[i - 1] ~ " Q2")|tojson }})'>
+                                    <i class="bi bi-slash-circle"></i>
+                                </button>
+                            </div>
                             {% endif %}
                         </td>
                     {% else %}
@@ -185,7 +222,7 @@
         <table class="table table-hover mb-0">
             <thead class="table-light">
                 <tr>
-                    <th colspan="5">Saldos anteriores cargados</th>
+                    <th colspan="6">Saldos anteriores cargados</th>
                 </tr>
                 <tr>
                     <th>Periodo</th>
@@ -205,7 +242,16 @@
                     <td class="fw-bold">{{ "${:,.0f}".format(saldo.saldo_pendiente or 0) }}</td>
                     <td>
                         {% for abono in saldo.abonos.all() %}
-                        <small class="d-block">{{ abono.fecha_pago.strftime('%d/%m/%Y') }} · ${{ "{:,.0f}".format(abono.valor_abono or 0) }}</small>
+                        <small class="d-block">
+                            {{ abono.fecha_pago.strftime('%d/%m/%Y') }} · ${{ "{:,.0f}".format(abono.valor_abono or 0) }}
+                            <button type="button" class="btn btn-outline-danger btn-anular-pago ms-1"
+                                    title="Anular este pago de saldo anterior"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#modalAnularPagoNomina"
+                                    onclick='prepararAnulacionPagoNomina({{ url_for("nomina.anular_abono", abono_id=abono.id)|tojson }}, {{ ("Saldo anterior " ~ meses[saldo.mes - 1] ~ " " ~ saldo.anio ~ " Q" ~ saldo.quincena ~ " - $" ~ "{:,.0f}".format(abono.valor_abono or 0))|tojson }})'>
+                                <i class="bi bi-slash-circle"></i>
+                            </button>
+                        </small>
                         {% else %}
                         <small class="text-muted">-</small>
                         {% endfor %}
@@ -218,4 +264,94 @@
     </div>
 </div>
 {% endif %}
+
+<div class="card mt-3">
+    <div class="card-header bg-light fw-semibold">Historial de anulaciones de pagos</div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Fecha anulacion</th>
+                    <th>Periodo</th>
+                    <th>Tipo</th>
+                    <th>Pago anulado</th>
+                    <th>Fecha pago</th>
+                    <th>Medio</th>
+                    <th>Motivo</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in historial_pagos %}
+                <tr>
+                    <td>{{ h.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                    <td>{{ meses[h.mes - 1] }} {{ h.anio }} Q{{ h.quincena }}</td>
+                    <td>{{ h.tipo_pago.replace('_', ' ')|title }}</td>
+                    <td>${{ "{:,.0f}".format(h.valor_pagado or 0) }}</td>
+                    <td>{{ h.fecha_pago.strftime('%d/%m/%Y') if h.fecha_pago else '-' }}</td>
+                    <td>{{ h.medio_pago.nombre if h.medio_pago else '-' }}</td>
+                    <td><small>{{ h.motivo }}</small></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-center text-muted py-3">No hay anulaciones de pagos registradas.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="modalAnularPagoNomina" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="formAnularPagoNomina">
+                <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                <input type="hidden" name="anio" id="anular_nomina_anio">
+                <input type="hidden" name="mes" id="anular_nomina_mes">
+                <input type="hidden" name="quincena" id="anular_nomina_quincena">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold" id="anularNominaTitulo">Anular pago</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning py-2 small">
+                        La anulacion revierte el saldo y conserva la trazabilidad del pago original.
+                    </div>
+                    <label class="form-label">Motivo de anulacion *</label>
+                    <textarea name="motivo" id="anular_nomina_motivo" class="form-control" rows="3" required></textarea>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger btn-sm">Confirmar anulacion</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function limpiarPeriodoAnulacionNomina() {
+    document.getElementById('anular_nomina_anio').value = '';
+    document.getElementById('anular_nomina_mes').value = '';
+    document.getElementById('anular_nomina_quincena').value = '';
+}
+
+function prepararAnulacionPagoNomina(actionUrl, titulo) {
+    const form = document.getElementById('formAnularPagoNomina');
+    form.action = actionUrl;
+    document.getElementById('anularNominaTitulo').textContent = 'Anular - ' + titulo;
+    document.getElementById('anular_nomina_motivo').value = '';
+    limpiarPeriodoAnulacionNomina();
+}
+
+function prepararAnulacionPagoPeriodo(actionUrl, anio, mes, quincena, titulo) {
+    const form = document.getElementById('formAnularPagoNomina');
+    form.action = actionUrl;
+    document.getElementById('anularNominaTitulo').textContent = 'Anular - ' + titulo;
+    document.getElementById('anular_nomina_motivo').value = '';
+    document.getElementById('anular_nomina_anio').value = anio;
+    document.getElementById('anular_nomina_mes').value = mes;
+    document.getElementById('anular_nomina_quincena').value = quincena;
+}
+</script>
 {% endblock %}

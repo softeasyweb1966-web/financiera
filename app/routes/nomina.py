@@ -3,7 +3,7 @@ from app import db
 from app.models import (
     Empleado, Tercero, TipoTercero, RegistroNomina,
     ConceptoNomina, MedioPago, HistorialEstado, SaldoAnteriorNomina,
-    HistorialSalario, AbonoNomina
+    HistorialSalario, AbonoNomina, HistorialPagoNomina
 )
 from datetime import date, datetime
 import calendar
@@ -372,6 +372,79 @@ def _registrar_abono_nomina(empleado_id, anio, mes, quincena, valor_abono, fecha
     )
     db.session.add(abono)
     return abono
+
+
+def _registrar_historial_pago_nomina(empleado_id, anio, mes, quincena, tipo_pago, motivo,
+                                     valor_pagado=None, fecha_pago=None, medio_pago_id=None,
+                                     descripcion=None, observaciones=None, abono_nomina_id=None,
+                                     registro_nomina_id=None, saldo_anterior_nomina_id=None):
+    historial = HistorialPagoNomina(
+        empleado_id=empleado_id,
+        registro_nomina_id=registro_nomina_id,
+        abono_nomina_id=abono_nomina_id,
+        saldo_anterior_nomina_id=saldo_anterior_nomina_id,
+        anio=anio,
+        mes=mes,
+        quincena=quincena,
+        tipo_pago=tipo_pago,
+        accion='anulacion',
+        motivo=motivo,
+        valor_pagado=valor_pagado,
+        fecha_pago=fecha_pago,
+        medio_pago_id=medio_pago_id,
+        descripcion=descripcion,
+        observaciones=observaciones,
+    )
+    db.session.add(historial)
+    return historial
+
+
+def _restaurar_estado_saldo_anterior_nomina(saldo):
+    pendiente = max(float(saldo.saldo_pendiente or 0), 0)
+    inicial = float(saldo.valor_inicial or 0)
+    if pendiente <= 0:
+        saldo.estado = 'pagado'
+    elif pendiente >= inicial:
+        saldo.saldo_pendiente = inicial
+        saldo.estado = 'pendiente'
+    else:
+        saldo.estado = 'parcial'
+    saldo.updated_at = datetime.utcnow()
+
+
+def _recalcular_pago_periodo_nomina(empleado_id, anio, mes, quincena):
+    registros = RegistroNomina.query.filter_by(
+        empleado_id=empleado_id,
+        anio=anio,
+        mes=mes,
+        quincena=quincena,
+    ).all()
+    if not registros:
+        return
+
+    empleado = Empleado.query.get(empleado_id)
+    if not empleado:
+        return
+    desglose = _desglose_registros_periodo_nomina(empleado, anio, mes, quincena, registros=registros)
+    total_causado = float(desglose['total_causado'] or 0)
+    abonos = AbonoNomina.query.filter_by(
+        empleado_id=empleado_id,
+        saldo_anterior_nomina_id=None,
+        anio=anio,
+        mes=mes,
+        quincena=quincena,
+    ).order_by(AbonoNomina.fecha_pago, AbonoNomina.id).all()
+    total_abonado = sum(float(a.valor_abono or 0) for a in abonos)
+    if total_causado > 0 and total_abonado + 1 >= total_causado and abonos:
+        ultimo_abono = abonos[-1]
+        for registro in registros:
+            registro.fecha_pago = ultimo_abono.fecha_pago
+            if ultimo_abono.medio_pago_id:
+                registro.medio_pago_id = ultimo_abono.medio_pago_id
+    else:
+        for registro in registros:
+            registro.fecha_pago = None
+            registro.medio_pago_id = None
 
 
 def _items_pago_historico_empleado(empleado, periodo_limite_clave=None):
@@ -1500,6 +1573,10 @@ def detalle(id):
     saldos_anteriores = SaldoAnteriorNomina.query.filter_by(empleado_id=id).order_by(
         SaldoAnteriorNomina.anio, SaldoAnteriorNomina.mes, SaldoAnteriorNomina.quincena, SaldoAnteriorNomina.id
     ).all()
+    historial_pagos = HistorialPagoNomina.query.filter_by(empleado_id=id).order_by(
+        HistorialPagoNomina.created_at.desc(),
+        HistorialPagoNomina.id.desc(),
+    ).all()
     saldos_pago_pendientes = _items_pago_historico_empleado(empleado, _periodo_actual_nomina_clave())
     total_saldos_pago_pendientes = sum(float(item['valor_deuda'] or 0) for item in saldos_pago_pendientes)
     hoy = date.today()
@@ -1511,6 +1588,7 @@ def detalle(id):
                            estados_quincena=estados_quincena,
                            estados_mes=estados_mes,
                            saldos_anteriores=saldos_anteriores,
+                           historial_pagos=historial_pagos,
                            saldos_pago_pendientes=saldos_pago_pendientes,
                            total_saldos_pago_pendientes=total_saldos_pago_pendientes,
                            current_year=hoy.year,
@@ -1518,6 +1596,131 @@ def detalle(id):
                            current_quincena=1 if hoy.day <= 15 else 2,
                            nomina_inicio_anio=NOMINA_INICIO_ANIO,
                            nomina_inicio_mes=NOMINA_INICIO_MES)
+
+
+@nomina_bp.route('/abonos/<int:abono_id>/anular', methods=['POST'])
+def anular_abono(abono_id):
+    abono = AbonoNomina.query.get_or_404(abono_id)
+    motivo = (request.form.get('motivo') or '').strip()
+    next_url = request.form.get('next') or url_for('nomina.detalle', id=abono.empleado_id, anio=abono.anio)
+    if not motivo:
+        flash('Debe indicar el motivo de la anulacion.', 'danger')
+        return redirect(next_url)
+
+    valor = float(abono.valor_abono or 0)
+    tipo_pago = 'saldo_anterior' if abono.saldo_anterior_nomina_id else 'abono_periodo'
+    _registrar_historial_pago_nomina(
+        empleado_id=abono.empleado_id,
+        anio=abono.anio,
+        mes=abono.mes,
+        quincena=abono.quincena,
+        tipo_pago=tipo_pago,
+        motivo=motivo,
+        valor_pagado=abono.valor_abono,
+        fecha_pago=abono.fecha_pago,
+        medio_pago_id=abono.medio_pago_id,
+        descripcion=abono.descripcion,
+        abono_nomina_id=abono.id,
+        saldo_anterior_nomina_id=abono.saldo_anterior_nomina_id,
+    )
+
+    if abono.saldo_anterior_nomina_id and abono.saldo_anterior:
+        saldo = abono.saldo_anterior
+        saldo.saldo_pendiente = min(
+            float(saldo.valor_inicial or 0),
+            float(saldo.saldo_pendiente or 0) + valor
+        )
+        saldo.observaciones = _append_observacion(
+            saldo.observaciones,
+            f'ANULACION {date.today().strftime("%d/%m/%Y")}: ${valor:,.0f} - {motivo}'
+        )
+        _restaurar_estado_saldo_anterior_nomina(saldo)
+
+    empleado_id = abono.empleado_id
+    anio, mes, quincena = abono.anio, abono.mes, abono.quincena
+    db.session.delete(abono)
+    if tipo_pago == 'abono_periodo':
+        _recalcular_pago_periodo_nomina(empleado_id, anio, mes, quincena)
+    db.session.commit()
+    flash('Pago de nomina anulado. La trazabilidad quedo registrada.', 'success')
+    return redirect(next_url)
+
+
+@nomina_bp.route('/<int:id>/periodo/anular-pago', methods=['POST'])
+def anular_pago_periodo(id):
+    empleado = Empleado.query.get_or_404(id)
+    motivo = (request.form.get('motivo') or '').strip()
+    anio = request.form.get('anio', type=int) or date.today().year
+    mes = request.form.get('mes', type=int)
+    quincena = request.form.get('quincena', type=int)
+    next_url = request.form.get('next') or url_for('nomina.detalle', id=empleado.id, anio=anio)
+    if not motivo:
+        flash('Debe indicar el motivo de la anulacion.', 'danger')
+        return redirect(next_url)
+    if not mes or quincena not in (1, 2):
+        flash('Periodo de nomina invalido.', 'danger')
+        return redirect(next_url)
+
+    registros = RegistroNomina.query.filter_by(
+        empleado_id=empleado.id,
+        anio=anio,
+        mes=mes,
+        quincena=quincena,
+    ).all()
+    abonos = AbonoNomina.query.filter_by(
+        empleado_id=empleado.id,
+        saldo_anterior_nomina_id=None,
+        anio=anio,
+        mes=mes,
+        quincena=quincena,
+    ).all()
+    if not registros and not abonos:
+        flash('No hay pago de nomina para anular en ese periodo.', 'warning')
+        return redirect(next_url)
+
+    total_anulado = 0
+    for abono in abonos:
+        total_anulado += float(abono.valor_abono or 0)
+        _registrar_historial_pago_nomina(
+            empleado_id=empleado.id,
+            anio=anio,
+            mes=mes,
+            quincena=quincena,
+            tipo_pago='abono_periodo',
+            motivo=motivo,
+            valor_pagado=abono.valor_abono,
+            fecha_pago=abono.fecha_pago,
+            medio_pago_id=abono.medio_pago_id,
+            descripcion=abono.descripcion,
+            abono_nomina_id=abono.id,
+        )
+        db.session.delete(abono)
+
+    for registro in registros:
+        if registro.fecha_pago:
+            _registrar_historial_pago_nomina(
+                empleado_id=empleado.id,
+                registro_nomina_id=registro.id,
+                anio=anio,
+                mes=mes,
+                quincena=quincena,
+                tipo_pago='periodo_directo',
+                motivo=motivo,
+                valor_pagado=registro.valor,
+                fecha_pago=registro.fecha_pago,
+                medio_pago_id=registro.medio_pago_id,
+                observaciones=registro.observaciones,
+            )
+        registro.fecha_pago = None
+        registro.medio_pago_id = None
+        registro.observaciones = _append_observacion(
+            registro.observaciones,
+            f'ANULACION PAGO {date.today().strftime("%d/%m/%Y")}: {motivo}'
+        )
+
+    db.session.commit()
+    flash(f'Pago de nomina anulado. Valor revertido: ${total_anulado:,.0f}.', 'success')
+    return redirect(next_url)
 
 
 @nomina_bp.route('/<int:id>/pagar-saldos-historicos', methods=['GET', 'POST'])
