@@ -664,6 +664,35 @@ class AbonoNomina(db.Model):
         return f'<AbonoNomina {self.empleado_id} {self.anio}-{self.mes} Q{self.quincena}: ${self.valor_abono}>'
 
 
+class HistorialCausacionNomina(db.Model):
+    """Bitacora de modificaciones manuales sobre causaciones de nomina."""
+    __tablename__ = 'historial_causaciones_nomina'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False, index=True)
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    quincena = db.Column(db.Integer, nullable=False)
+    accion = db.Column(db.String(30), nullable=False, default='modificacion')
+    motivo = db.Column(db.Text, nullable=False)
+    valor_anterior = db.Column(db.Numeric(14, 2), nullable=False)
+    valor_nuevo = db.Column(db.Numeric(14, 2), nullable=False)
+    concepto_principal_id = db.Column(db.Integer, db.ForeignKey('conceptos_nomina.id'))
+    registros_antes = db.Column(db.Text)
+    registros_despues = db.Column(db.Text)
+    registrado_por = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    empleado = db.relationship('Empleado', backref=db.backref(
+        'historial_causaciones_nomina', lazy='dynamic',
+        order_by='desc(HistorialCausacionNomina.created_at), desc(HistorialCausacionNomina.id)'
+    ))
+    concepto_principal = db.relationship('ConceptoNomina')
+
+    def __repr__(self):
+        return f'<HistorialCausacionNomina {self.empleado_id} {self.anio}-{self.mes} Q{self.quincena}>'
+
+
 class HistorialPagoNomina(db.Model):
     """Bitacora de anulaciones de pagos de nomina."""
     __tablename__ = 'historial_pagos_nomina'

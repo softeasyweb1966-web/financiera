@@ -43,6 +43,7 @@ def _ensure_schema():
         AmortizacionObligacion,
         CuotaCompra,
         HistorialCompra,
+        HistorialCausacionNomina,
         HistorialPagoNomina,
         HistorialPagoObligacion,
         SaldoAnteriorNomina,
@@ -77,6 +78,10 @@ def _ensure_schema():
 
     if not inspector.has_table('historial_pagos_nomina'):
         HistorialPagoNomina.__table__.create(bind=db.engine, checkfirst=True)
+        inspector = inspect(db.engine)
+
+    if not inspector.has_table('historial_causaciones_nomina'):
+        HistorialCausacionNomina.__table__.create(bind=db.engine, checkfirst=True)
         inspector = inspect(db.engine)
 
     if not inspector.has_table('abonos_compras'):

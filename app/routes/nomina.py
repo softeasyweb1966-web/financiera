@@ -3,7 +3,7 @@ from app import db
 from app.models import (
     Empleado, Tercero, TipoTercero, RegistroNomina,
     ConceptoNomina, MedioPago, HistorialEstado, SaldoAnteriorNomina,
-    HistorialSalario, AbonoNomina, HistorialPagoNomina
+    HistorialSalario, AbonoNomina, HistorialPagoNomina, HistorialCausacionNomina
 )
 from datetime import date, datetime
 import calendar
@@ -398,6 +398,41 @@ def _registrar_historial_pago_nomina(empleado_id, anio, mes, quincena, tipo_pago
     db.session.add(historial)
     return historial
 
+
+def _snapshot_registros_nomina(registros):
+    data = []
+    for registro in registros or []:
+        data.append({
+            'id': registro.id,
+            'concepto_nomina_id': registro.concepto_nomina_id,
+            'concepto': registro.concepto_nomina.nombre if registro.concepto_nomina else None,
+            'tipo': registro.concepto_nomina.tipo if registro.concepto_nomina else None,
+            'valor': float(registro.valor or 0),
+            'fecha_pago': registro.fecha_pago.isoformat() if registro.fecha_pago else None,
+            'medio_pago_id': registro.medio_pago_id,
+            'observaciones': registro.observaciones,
+        })
+    return json.dumps(data, ensure_ascii=False)
+
+
+def _registrar_historial_causacion_nomina(empleado_id, anio, mes, quincena, motivo,
+                                           valor_anterior, valor_nuevo, concepto_principal_id=None,
+                                           registros_antes=None, registros_despues=None):
+    historial = HistorialCausacionNomina(
+        empleado_id=empleado_id,
+        anio=anio,
+        mes=mes,
+        quincena=quincena,
+        accion='modificacion',
+        motivo=motivo,
+        valor_anterior=valor_anterior,
+        valor_nuevo=valor_nuevo,
+        concepto_principal_id=concepto_principal_id,
+        registros_antes=registros_antes,
+        registros_despues=registros_despues,
+    )
+    db.session.add(historial)
+    return historial
 
 def _restaurar_estado_saldo_anterior_nomina(saldo):
     pendiente = max(float(saldo.saldo_pendiente or 0), 0)
@@ -1577,6 +1612,10 @@ def detalle(id):
         HistorialPagoNomina.created_at.desc(),
         HistorialPagoNomina.id.desc(),
     ).all()
+    historial_causaciones = HistorialCausacionNomina.query.filter_by(empleado_id=id).order_by(
+        HistorialCausacionNomina.created_at.desc(),
+        HistorialCausacionNomina.id.desc(),
+    ).all()
     saldos_pago_pendientes = _items_pago_historico_empleado(empleado, _periodo_actual_nomina_clave())
     total_saldos_pago_pendientes = sum(float(item['valor_deuda'] or 0) for item in saldos_pago_pendientes)
     hoy = date.today()
@@ -1589,6 +1628,7 @@ def detalle(id):
                            estados_mes=estados_mes,
                            saldos_anteriores=saldos_anteriores,
                            historial_pagos=historial_pagos,
+                           historial_causaciones=historial_causaciones,
                            saldos_pago_pendientes=saldos_pago_pendientes,
                            total_saldos_pago_pendientes=total_saldos_pago_pendientes,
                            current_year=hoy.year,
@@ -1596,6 +1636,74 @@ def detalle(id):
                            current_quincena=1 if hoy.day <= 15 else 2,
                            nomina_inicio_anio=NOMINA_INICIO_ANIO,
                            nomina_inicio_mes=NOMINA_INICIO_MES)
+
+
+@nomina_bp.route('/<int:id>/periodo/modificar-causacion', methods=['POST'])
+def modificar_causacion_periodo(id):
+    empleado = Empleado.query.get_or_404(id)
+    anio = request.form.get('anio', type=int)
+    mes = request.form.get('mes', type=int)
+    quincena = request.form.get('quincena', type=int)
+    nuevo_valor = float(request.form.get('valor_causado') or 0)
+    motivo = (request.form.get('motivo') or '').strip()
+    next_url = request.form.get('next') or url_for('nomina.detalle', id=empleado.id, anio=anio or date.today().year)
+
+    if not anio or not mes or not quincena:
+        flash('No se pudo identificar la causacion a modificar.', 'danger')
+        return redirect(next_url)
+    anio, mes, quincena = _normalizar_periodo_nomina(anio, mes, quincena)
+    if nuevo_valor <= 0:
+        flash('El nuevo valor causado debe ser mayor a cero.', 'danger')
+        return redirect(next_url)
+    if not motivo:
+        flash('Debe indicar el motivo de la modificacion de la causacion.', 'danger')
+        return redirect(next_url)
+
+    registros = RegistroNomina.query.filter_by(
+        empleado_id=empleado.id, anio=anio, mes=mes, quincena=quincena
+    ).order_by(RegistroNomina.id).all()
+    if not registros:
+        flash('No existe una causacion registrada para modificar en esa quincena.', 'warning')
+        return redirect(next_url)
+
+    abonos_activos = AbonoNomina.query.filter_by(
+        empleado_id=empleado.id, anio=anio, mes=mes, quincena=quincena, saldo_anterior_nomina_id=None
+    ).count()
+    pagos_directos = any(registro.fecha_pago for registro in registros)
+    if abonos_activos or pagos_directos:
+        flash('Esta causacion tiene pagos registrados. Primero anule el pago y luego modifique la causacion.', 'warning')
+        return redirect(next_url)
+
+    desglose = _desglose_registros_periodo_nomina(empleado, anio, mes, quincena, registros=registros)
+    valor_anterior = float(desglose['total_causado'] or 0)
+    if abs(nuevo_valor - valor_anterior) < 0.01:
+        flash('El nuevo valor causado es igual al valor actual.', 'info')
+        return redirect(next_url)
+
+    registro_principal = desglose.get('registro_base_principal') or (desglose['registros'][0] if desglose['registros'] else registros[0])
+    registros_antes = _snapshot_registros_nomina(registros)
+    diferencia = nuevo_valor - valor_anterior
+    registro_principal.valor = float(registro_principal.valor or 0) + diferencia
+    nota = f'MODIFICACION CAUSACION {datetime.utcnow().strftime("%d/%m/%Y")}: ${valor_anterior:,.0f} -> ${nuevo_valor:,.0f}. Motivo: {motivo}'
+    registro_principal.observaciones = _append_observacion(registro_principal.observaciones, nota)
+
+    db.session.flush()
+    registros_despues = _snapshot_registros_nomina(registros)
+    _registrar_historial_causacion_nomina(
+        empleado_id=empleado.id,
+        anio=anio,
+        mes=mes,
+        quincena=quincena,
+        motivo=motivo,
+        valor_anterior=valor_anterior,
+        valor_nuevo=nuevo_valor,
+        concepto_principal_id=registro_principal.concepto_nomina_id,
+        registros_antes=registros_antes,
+        registros_despues=registros_despues,
+    )
+    db.session.commit()
+    flash(f'Causacion modificada de ${valor_anterior:,.0f} a ${nuevo_valor:,.0f}.', 'success')
+    return redirect(next_url)
 
 
 @nomina_bp.route('/abonos/<int:abono_id>/anular', methods=['POST'])

@@ -13,6 +13,7 @@ from app.models import (
     AbonoNomina,
     ConceptoNomina,
     Empleado,
+    HistorialCausacionNomina,
     HistorialPagoNomina,
     MedioPago,
     RegistroNomina,
@@ -143,11 +144,64 @@ class NominaAnulacionesTest(unittest.TestCase):
         self.assertEqual(historial.tipo_pago, 'periodo_directo')
         self.assertEqual(historial.fecha_pago, date(2026, 9, 15))
 
+    def test_modifica_causacion_sin_pago_y_guarda_historial(self):
+        r = self.registro()
+        response = self.client.post(
+            f'/nomina/{self.empleado.id}/periodo/modificar-causacion',
+            data={
+                'anio': '2026',
+                'mes': '9',
+                'quincena': '1',
+                'valor_causado': '1200000',
+                'motivo': 'Valor causado errado',
+                'next': f'/nomina/detalle/{self.empleado.id}?anio=2026',
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        db.session.refresh(r)
+        self.assertEqual(float(r.valor), 1200000)
+        historial = HistorialCausacionNomina.query.one()
+        self.assertEqual(float(historial.valor_anterior), 1000000)
+        self.assertEqual(float(historial.valor_nuevo), 1200000)
+        self.assertEqual(historial.motivo, 'Valor causado errado')
+        self.assertIn('Valor causado errado', r.observaciones)
+
+    def test_no_modifica_causacion_con_pago_activo(self):
+        r = self.registro(fecha_pago=date(2026, 9, 15))
+        abono = AbonoNomina(
+            empleado_id=self.empleado.id,
+            anio=2026,
+            mes=9,
+            quincena=1,
+            valor_abono=1000000,
+            fecha_pago=date(2026, 9, 15),
+            medio_pago_id=self.medio.id,
+        )
+        db.session.add(abono)
+        db.session.commit()
+        response = self.client.post(
+            f'/nomina/{self.empleado.id}/periodo/modificar-causacion',
+            data={
+                'anio': '2026',
+                'mes': '9',
+                'quincena': '1',
+                'valor_causado': '1200000',
+                'motivo': 'Valor causado errado',
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        db.session.refresh(r)
+        self.assertEqual(float(r.valor), 1000000)
+        self.assertEqual(HistorialCausacionNomina.query.count(), 0)
+
     def test_detalle_muestra_opciones_e_historial(self):
         self.registro(fecha_pago=date(2026, 9, 15))
         html = self.client.get(f'/nomina/detalle/{self.empleado.id}?anio=2026').text
         self.assertIn('modalAnularPagoNomina', html)
+        self.assertIn('modalModificarCausacionNomina', html)
         self.assertIn('Historial de anulaciones de pagos', html)
+        self.assertIn('Historial de modificaciones de causacion', html)
+        self.assertIn('modificar-causacion', html)
         self.assertIn('anular-pago', html)
 
 
@@ -171,6 +225,28 @@ class MigracionHistorialPagoNominaTest(unittest.TestCase):
             columnas = {c['name'] for c in inspector.get_columns('historial_pagos_nomina')}
             self.assertIn('motivo', columnas)
             self.assertIn('tipo_pago', columnas)
+        engine.dispose()
+
+
+class MigracionHistorialCausacionNominaTest(unittest.TestCase):
+    def test_migracion_es_idempotente(self):
+        ruta = Path(__file__).resolve().parents[1] / 'migrations/versions/20260917_05_historial_causaciones_nomina.py'
+        spec = importlib.util.spec_from_file_location('migracion_historial_causacion_nomina', ruta)
+        modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modulo)
+        engine = create_engine('sqlite://')
+        with engine.begin() as conn:
+            conn.execute(text('CREATE TABLE empleados (id INTEGER PRIMARY KEY)'))
+            conn.execute(text('CREATE TABLE conceptos_nomina (id INTEGER PRIMARY KEY)'))
+            modulo.op = Operations(MigrationContext.configure(conn))
+            modulo.upgrade()
+            modulo.upgrade()
+            inspector = inspect(conn)
+            self.assertTrue(inspector.has_table('historial_causaciones_nomina'))
+            columnas = {c['name'] for c in inspector.get_columns('historial_causaciones_nomina')}
+            self.assertIn('motivo', columnas)
+            self.assertIn('valor_anterior', columnas)
+            self.assertIn('valor_nuevo', columnas)
         engine.dispose()
 
 

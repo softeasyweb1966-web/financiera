@@ -11,6 +11,7 @@
     .indicador { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .quincena-cell { vertical-align: top; min-width: 140px; }
     .btn-anular-pago { padding: 0 0.25rem; line-height: 1.1; font-size: 0.72rem; }
+    .btn-editar-causacion { padding: 0 0.25rem; line-height: 1.1; font-size: 0.72rem; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -116,7 +117,18 @@
                                 <span class="text-muted">Sin registro</span>
                             {% endif %}
                         </td>
-                        <td class="fw-bold quincena-cell {{ clase_q1 }}">{{ "${:,.0f}".format(total_causado_q1) if total_causado_q1 > 0 else '-' }}</td>
+                        <td class="fw-bold quincena-cell {{ clase_q1 }}">
+                            {{ "${:,.0f}".format(total_causado_q1) if total_causado_q1 > 0 else '-' }}
+                            {% if registros_q1 and total_causado_q1 > 0 %}
+                            <button type="button" class="btn btn-outline-primary btn-editar-causacion ms-1"
+                                    title="Modificar causacion"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#modalModificarCausacionNomina"
+                                    onclick='prepararModificacionCausacionNomina({{ url_for("nomina.modificar_causacion_periodo", id=empleado.id)|tojson }}, {{ anio }}, {{ i }}, 1, {{ total_causado_q1|float }}, {{ ("Modificar " ~ meses[i - 1] ~ " Q1")|tojson }})'>
+                                <i class="bi bi-pencil-square"></i>
+                            </button>
+                            {% endif %}
+                        </td>
                         <td class="fw-bold quincena-cell {{ clase_q1 }}">
                             {{ "${:,.0f}".format(total_pagado_q1) if total_pagado_q1 > 0 else '-' }}
                             {% if abonos_q1 %}
@@ -159,7 +171,18 @@
                                 <span class="text-muted">Sin registro</span>
                             {% endif %}
                         </td>
-                        <td class="fw-bold quincena-cell {{ clase_q2 }}">{{ "${:,.0f}".format(total_causado_q2) if total_causado_q2 > 0 else '-' }}</td>
+                        <td class="fw-bold quincena-cell {{ clase_q2 }}">
+                            {{ "${:,.0f}".format(total_causado_q2) if total_causado_q2 > 0 else '-' }}
+                            {% if registros_q2 and total_causado_q2 > 0 %}
+                            <button type="button" class="btn btn-outline-primary btn-editar-causacion ms-1"
+                                    title="Modificar causacion"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#modalModificarCausacionNomina"
+                                    onclick='prepararModificacionCausacionNomina({{ url_for("nomina.modificar_causacion_periodo", id=empleado.id)|tojson }}, {{ anio }}, {{ i }}, 2, {{ total_causado_q2|float }}, {{ ("Modificar " ~ meses[i - 1] ~ " Q2")|tojson }})'>
+                                <i class="bi bi-pencil-square"></i>
+                            </button>
+                            {% endif %}
+                        </td>
                         <td class="fw-bold quincena-cell {{ clase_q2 }}">
                             {{ "${:,.0f}".format(total_pagado_q2) if total_pagado_q2 > 0 else '-' }}
                             {% if abonos_q2 %}
@@ -299,6 +322,70 @@
     </div>
 </div>
 
+<div class="card mt-3">
+    <div class="card-header bg-white fw-bold">
+        <i class="bi bi-pencil-square text-primary"></i> Historial de modificaciones de causacion
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Periodo</th>
+                    <th>Valor anterior</th>
+                    <th>Valor nuevo</th>
+                    <th>Concepto ajustado</th>
+                    <th>Motivo</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in historial_causaciones %}
+                <tr>
+                    <td>{{ h.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                    <td>{{ meses[h.mes - 1] }} {{ h.anio }} Q{{ h.quincena }}</td>
+                    <td>${{ "{:,.0f}".format(h.valor_anterior or 0) }}</td>
+                    <td>${{ "{:,.0f}".format(h.valor_nuevo or 0) }}</td>
+                    <td>{{ h.concepto_principal.nombre if h.concepto_principal else '-' }}</td>
+                    <td><small>{{ h.motivo }}</small></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center text-muted py-3">No hay modificaciones de causacion registradas.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="modalModificarCausacionNomina" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="formModificarCausacionNomina">
+                <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                <input type="hidden" name="anio" id="modificar_causacion_anio">
+                <input type="hidden" name="mes" id="modificar_causacion_mes">
+                <input type="hidden" name="quincena" id="modificar_causacion_quincena">
+                <div class="modal-header py-2">
+                    <h6 class="modal-title fw-bold" id="modificarCausacionTitulo">Modificar causacion</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2 small">
+                        Si esta quincena tiene pagos, primero anule el pago. La modificacion guarda trazabilidad con valor anterior, valor nuevo y motivo.
+                    </div>
+                    <label class="form-label">Nuevo valor causado *</label>
+                    <input type="number" name="valor_causado" id="modificar_causacion_valor" class="form-control" min="1" step="0.01" required>
+                    <label class="form-label mt-2">Motivo de modificacion *</label>
+                    <textarea name="motivo" id="modificar_causacion_motivo" class="form-control" rows="3" required></textarea>
+                </div>
+                <div class="modal-footer py-1">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary btn-sm">Guardar modificacion</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="modalAnularPagoNomina" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -330,6 +417,17 @@
 
 {% block scripts %}
 <script>
+function prepararModificacionCausacionNomina(actionUrl, anio, mes, quincena, valorActual, titulo) {
+    const form = document.getElementById('formModificarCausacionNomina');
+    form.action = actionUrl;
+    document.getElementById('modificarCausacionTitulo').textContent = titulo;
+    document.getElementById('modificar_causacion_anio').value = anio;
+    document.getElementById('modificar_causacion_mes').value = mes;
+    document.getElementById('modificar_causacion_quincena').value = quincena;
+    document.getElementById('modificar_causacion_valor').value = Math.round(Number(valorActual || 0));
+    document.getElementById('modificar_causacion_motivo').value = '';
+}
+
 function limpiarPeriodoAnulacionNomina() {
     document.getElementById('anular_nomina_anio').value = '';
     document.getElementById('anular_nomina_mes').value = '';
