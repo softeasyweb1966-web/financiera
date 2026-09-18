@@ -1,3 +1,4 @@
+from calendar import monthrange
 from datetime import date
 
 from flask import Blueprint, current_app, render_template, request
@@ -15,6 +16,11 @@ from app.models import (
     RegistroNomina,
     Servicio,
 )
+from app import compras_credito
+from app.conceptos_estado import cargar_historial_servicios, servicio_activo_en_periodo
+from app.routes import nomina as nomina_service
+from app.routes import obligaciones as obligaciones_service
+from app.routes.compras import _abonos_por_compra, _totales_compra
 
 main_bp = Blueprint('main', __name__)
 
@@ -34,12 +40,252 @@ MESES = [
 ]
 
 
+def _nuevo_total():
+    return {'total': 0, 'cancelado': 0, 'vencido': 0, 'por_vencer': 0, 'items': 0}
+
+
+def _sumar_total(destino, item):
+    destino['total'] += item['total']
+    destino['cancelado'] += item['cancelado']
+    destino['vencido'] += item['vencido']
+    destino['por_vencer'] += item['por_vencer']
+    destino['items'] += 1
+
+
+def _agregar_item(items, resumen, item):
+    item['pendiente'] = item['vencido'] + item['por_vencer']
+    items.append(item)
+    _sumar_total(resumen.setdefault(item['modulo'], _nuevo_total()), item)
+
+
+def _fecha_limite_servicio(servicio, anio, mes):
+    if servicio.periodicidad == 'anual':
+        fecha_anual = servicio.fecha_pago_anual
+        if not fecha_anual or fecha_anual.month != mes:
+            return None
+        dia = servicio.dia_limite_pago or fecha_anual.day
+    elif servicio.periodicidad == 'bimestral':
+        inicio = servicio.mes_inicio_bimestral or 1
+        if (mes - inicio) % 2 != 0:
+            return None
+        dia = servicio.dia_limite_pago or 1
+    else:
+        dia = servicio.dia_limite_pago or 1
+    return date(anio, mes, min(int(dia), monthrange(anio, mes)[1]))
+
+
+def _valor_estimado_servicio(servicio, ultimo_pago=None):
+    if servicio.periodicidad == 'anual' and servicio.provision_mensual:
+        return float(servicio.provision_mensual or 0)
+    if servicio.valor_estimado:
+        return float(servicio.valor_estimado or 0)
+    return float(ultimo_pago or 0)
+
+
+def _items_servicios_mes(anio, mes, hoy):
+    items = []
+    resumen = {}
+    servicios = Servicio.query.filter_by(activo=True).order_by(Servicio.dia_limite_pago, Servicio.id).all()
+    historiales = cargar_historial_servicios([s.id for s in servicios])
+    pagos = PagoServicio.query.filter_by(anio=anio, mes=mes).all()
+    pagos_por_servicio = {p.servicio_id: p for p in pagos}
+    ultimos = {}
+    historicos = PagoServicio.query.filter(PagoServicio.valor_pagado.isnot(None)).order_by(
+        PagoServicio.anio.desc(), PagoServicio.mes.desc(), PagoServicio.id.desc()
+    ).all()
+    for pago in historicos:
+        ultimos.setdefault(pago.servicio_id, pago.valor_pagado)
+
+    for servicio in servicios:
+        if not servicio_activo_en_periodo(servicio, anio, mes, historiales.get(servicio.id, [])):
+            continue
+        fecha_limite = _fecha_limite_servicio(servicio, anio, mes)
+        pago = pagos_por_servicio.get(servicio.id)
+        if not fecha_limite and not pago:
+            continue
+        if pago and pago.estado == 'n/a':
+            continue
+        total = float((pago.valor_causado or pago.valor_pagado) or 0) if pago else 0
+        if total <= 0:
+            total = _valor_estimado_servicio(servicio, ultimos.get(servicio.id))
+        cancelado = float(pago.valor_pagado or 0) if pago else 0
+        saldo = max(total - cancelado, 0)
+        item = {
+            'modulo': 'Servicios',
+            'nombre': servicio.concepto.nombre if servicio.concepto else 'Servicio',
+            'tercero': servicio.tercero.nombre if servicio.tercero else '',
+            'fecha': fecha_limite,
+            'total': total,
+            'cancelado': cancelado,
+            'vencido': saldo if fecha_limite and fecha_limite < hoy else 0,
+            'por_vencer': 0 if fecha_limite and fecha_limite < hoy else saldo,
+            'estado': pago.estado if pago else 'sin_causar',
+            'url': None,
+        }
+        _agregar_item(items, resumen, item)
+    return items, resumen
+
+
+def _items_obligaciones_mes(anio, mes, hoy):
+    items = []
+    resumen = {}
+    obligaciones = Obligacion.query.filter_by(activo=True).order_by(Obligacion.id).all()
+    pagos = {(p.obligacion_id, p.anio, p.mes): p for p in PagoObligacion.query.filter_by(anio=anio, mes=mes).all()}
+    for obligacion in obligaciones:
+        if not obligaciones_service._obligacion_aplica_mes(obligacion, anio, mes):
+            continue
+        fechas = obligaciones_service._fechas_programadas_obligacion(obligacion, anio, mes)
+        if not fechas:
+            continue
+        pago = pagos.get((obligacion.id, anio, mes))
+        componentes = obligaciones_service._componentes_programados_periodo(obligacion, anio, mes)
+        total = float((pago.valor_causado if pago and pago.valor_causado else None) or componentes.get('total') or 0)
+        cancelado = float(pago.valor_pagado or 0) if pago else 0
+        saldo = max(total - cancelado, 0)
+        fecha_limite = min(fechas)
+        item = {
+            'modulo': 'Obligaciones',
+            'nombre': obligacion.concepto.nombre if obligacion.concepto else 'Obligacion',
+            'tercero': obligacion.tercero.nombre if obligacion.tercero else '',
+            'fecha': fecha_limite,
+            'total': total,
+            'cancelado': cancelado,
+            'vencido': saldo if fecha_limite < hoy else 0,
+            'por_vencer': 0 if fecha_limite < hoy else saldo,
+            'estado': obligaciones_service._estado_visible_pago(pago, total),
+            'url': None,
+        }
+        _agregar_item(items, resumen, item)
+    return items, resumen
+
+
+def _items_nomina_mes(anio, mes, hoy):
+    items = []
+    resumen = {}
+    for empleado in Empleado.query.filter_by(activo=True).order_by(Empleado.cargo, Empleado.id).all():
+        for quincena, dia in ((1, 15), (2, monthrange(anio, mes)[1])):
+            if not nomina_service._empleado_aplica_periodo(empleado, anio, mes, quincena):
+                continue
+            resumen_pago = nomina_service._resumen_pago_periodo_nomina(empleado.id, anio, mes, quincena)
+            total = float(resumen_pago['total_registrado'] or 0)
+            if total <= 0:
+                total = float(nomina_service._valor_esperado_periodo_nomina(empleado, anio, mes, quincena) or 0)
+            cancelado = float(resumen_pago['total_pagado'] or 0)
+            saldo = max(total - cancelado, 0)
+            fecha_limite = date(anio, mes, dia)
+            item = {
+                'modulo': 'Nomina',
+                'nombre': f'{empleado.tercero.nombre if empleado.tercero else empleado.id} - Q{quincena}',
+                'tercero': empleado.cargo or '',
+                'fecha': fecha_limite,
+                'total': total,
+                'cancelado': cancelado,
+                'vencido': saldo if fecha_limite < hoy else 0,
+                'por_vencer': 0 if fecha_limite < hoy else saldo,
+                'estado': 'pagado' if saldo <= 0 and total > 0 else 'pendiente',
+                'url': None,
+            }
+            _agregar_item(items, resumen, item)
+    return items, resumen
+
+
+def _items_compras_mes(anio, mes, hoy):
+    items = []
+    resumen = {}
+    compras = Compra.query.filter(Compra.estado != 'anulado').order_by(Compra.fecha.desc(), Compra.id.desc()).all()
+    resumen_abonos = _abonos_por_compra([c.id for c in compras])
+    for compra in compras:
+        if compra.condicion_pago == 'credito' and compra.cuotas.count():
+            for fila in compras_credito.calendario(compra, hoy=hoy):
+                cuota = fila['cuota']
+                if cuota.es_inicial or (cuota.fecha_vencimiento.year, cuota.fecha_vencimiento.month) != (anio, mes):
+                    continue
+                saldo = float(fila['saldo'] or 0)
+                total = float(cuota.valor or 0)
+                item = {
+                    'modulo': 'Compras',
+                    'nombre': compra.producto_compra.nombre if compra.producto_compra else compra.descripcion,
+                    'tercero': compra.tercero.nombre if compra.tercero else '',
+                    'fecha': cuota.fecha_vencimiento,
+                    'total': total,
+                    'cancelado': float(fila['abonado'] or 0),
+                    'vencido': saldo if cuota.fecha_vencimiento < hoy else 0,
+                    'por_vencer': 0 if cuota.fecha_vencimiento < hoy else saldo,
+                    'estado': fila['estado'].lower(),
+                    'url': None,
+                }
+                _agregar_item(items, resumen, item)
+        elif (compra.fecha.year, compra.fecha.month) == (anio, mes):
+            totales = _totales_compra(compra, resumen_abonos)
+            saldo = float(totales['saldo'] or 0)
+            item = {
+                'modulo': 'Compras',
+                'nombre': compra.producto_compra.nombre if compra.producto_compra else compra.descripcion,
+                'tercero': compra.tercero.nombre if compra.tercero else '',
+                'fecha': compra.fecha,
+                'total': float(totales['valor_total'] or 0),
+                'cancelado': float(totales['abonado'] or 0),
+                'vencido': saldo if compra.fecha < hoy else 0,
+                'por_vencer': 0 if compra.fecha < hoy else saldo,
+                'estado': totales['estado'],
+                'url': None,
+            }
+            _agregar_item(items, resumen, item)
+    return items, resumen
+
+
 @main_bp.route('/healthz')
 def healthz():
     return {
         'status': 'ok',
         'schema_ready': bool(current_app.extensions.get('schema_ready', False)),
     }, 200
+
+
+@main_bp.route('/pendientes')
+@main_bp.route('/pendientes/<int:anio>/<int:mes>')
+def pendientes(anio=None, mes=None):
+    anio = anio or request.args.get('anio', date.today().year, type=int)
+    mes = mes or request.args.get('mes', date.today().month, type=int)
+    hoy = date.today()
+    items = []
+    resumen = {}
+
+    for cargar in (
+        _items_servicios_mes,
+        _items_nomina_mes,
+        _items_obligaciones_mes,
+        _items_compras_mes,
+    ):
+        modulo_items, modulo_resumen = cargar(anio, mes, hoy)
+        items.extend(modulo_items)
+        for modulo, datos in modulo_resumen.items():
+            destino = resumen.setdefault(modulo, _nuevo_total())
+            destino['total'] += datos['total']
+            destino['cancelado'] += datos['cancelado']
+            destino['vencido'] += datos['vencido']
+            destino['por_vencer'] += datos['por_vencer']
+            destino['items'] += datos['items']
+
+    items.sort(key=lambda item: (item['fecha'] or date(anio, mes, 1), item['modulo'], item['nombre']))
+    total_mes = _nuevo_total()
+    for datos in resumen.values():
+        total_mes['total'] += datos['total']
+        total_mes['cancelado'] += datos['cancelado']
+        total_mes['vencido'] += datos['vencido']
+        total_mes['por_vencer'] += datos['por_vencer']
+        total_mes['items'] += datos['items']
+
+    return render_template(
+        'pendientes.html',
+        anio=anio,
+        mes=mes,
+        meses=MESES,
+        hoy=hoy,
+        items=items,
+        resumen=resumen,
+        total_mes=total_mes,
+    )
 
 
 @main_bp.route('/restaurar-pagos-2026')

@@ -7,10 +7,14 @@
     <h6 class="fw-bold">Cuotas de compras a crédito — {{ meses[mes-1] }} {{ anio }}</h6>
     <div class="table-responsive"><table class="table table-sm mb-0">
         <thead><tr><th>Compra</th><th>Fecha acordada</th><th>Valor</th><th>Saldo de la cuota</th><th>Estado</th><th></th></tr></thead>
-        <tbody>{% for fila in vencimientos_mes %}<tr>
+        <tbody>{% for fila in vencimientos_mes %}
+        {% set semaforo = 'table-success' if fila.saldo <= 0 else 'table-danger' if fila.estado == 'Vencida' else 'table-warning' %}
+        <tr class="{{ semaforo }}">
             <td>{{ fila.compra.descripcion }}</td><td>{{ fila.cuota.fecha_vencimiento.strftime('%d/%m/%Y') }}</td>
             <td>${{ '{:,.2f}'.format(fila.cuota.valor) }}</td><td>${{ '{:,.2f}'.format(fila.saldo) }}</td>
-            <td class="{{ 'text-danger' if fila.estado == 'Vencida' else '' }}">{{ fila.estado }}</td>
+            <td>
+                <span class="badge {{ 'text-bg-success' if fila.saldo <= 0 else 'text-bg-danger' if fila.estado == 'Vencida' else 'text-bg-warning' }}">{{ fila.estado }}</span>
+            </td>
             <td><a href="{{ url_for('compras.detalle', id=fila.compra.id) }}" class="btn btn-sm btn-outline-primary">Ver pagos{{ ' / Abonar' if fila.saldo > 0 else '' }}</a></td>
         </tr>{% endfor %}</tbody>
     </table></div>

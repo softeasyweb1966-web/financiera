@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Pendientes - {{ meses[mes-1] }} {{ anio }}{% endblock %}
+
+{% block content %}
+<style>
+    .metric { border: 1px solid #e2e8f0; }
+    .metric-label { color: #64748b; font-size: 0.78rem; }
+    .metric-value { font-size: 1.1rem; font-weight: 700; }
+    .estado-dot { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
+    .dot-ok { background:#10b981; }
+    .dot-warn { background:#f59e0b; }
+    .dot-danger { background:#ef4444; }
+    .row-vencido { border-left: 4px solid #ef4444; }
+    .row-vencer { border-left: 4px solid #f59e0b; }
+    .row-pagado { border-left: 4px solid #10b981; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h5 class="fw-bold mb-0"><i class="bi bi-calendar-check text-primary"></i> Pendientes - {{ meses[mes-1] }} {{ anio }}</h5>
+    <div class="d-flex gap-1 align-items-center flex-wrap">
+        <a href="{{ url_for('main.pendientes', anio=anio-1, mes=mes) }}" class="btn btn-outline-secondary btn-sm">{{ anio-1 }}</a>
+        <span class="fw-bold mx-1">{{ anio }}</span>
+        <a href="{{ url_for('main.pendientes', anio=anio+1, mes=mes) }}" class="btn btn-outline-secondary btn-sm">{{ anio+1 }}</a>
+    </div>
+</div>
+
+<div class="d-flex flex-wrap gap-1 mb-3">
+    {% for i in range(1, 13) %}
+    <a href="{{ url_for('main.pendientes', anio=anio, mes=i) }}"
+       class="btn btn-sm {{ 'btn-primary' if i == mes else 'btn-outline-secondary' }}">{{ meses[i-1][:3] }}</a>
+    {% endfor %}
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-6 col-lg-3"><div class="card metric p-3"><div class="metric-label">Total a pagar</div><div class="metric-value text-primary">${{ "{:,.0f}".format(total_mes.total) }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="card metric p-3"><div class="metric-label">Total cancelado</div><div class="metric-value text-success">${{ "{:,.0f}".format(total_mes.cancelado) }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="card metric p-3"><div class="metric-label">Pendiente vencido</div><div class="metric-value text-danger">${{ "{:,.0f}".format(total_mes.vencido) }}</div></div></div>
+    <div class="col-6 col-lg-3"><div class="card metric p-3"><div class="metric-label">Pendiente por vencer</div><div class="metric-value text-warning">${{ "{:,.0f}".format(total_mes.por_vencer) }}</div></div></div>
+</div>
+
+<div class="row g-2 mb-3">
+    {% for nombre, datos in resumen.items() %}
+    <div class="col-12 col-md-6 col-xl-3">
+        <div class="card p-3 h-100">
+            <div class="fw-bold mb-2">{{ nombre }}</div>
+            <div class="small d-flex justify-content-between"><span>Total a pagar</span><strong>${{ "{:,.0f}".format(datos.total) }}</strong></div>
+            <div class="small d-flex justify-content-between text-success"><span>Cancelado</span><strong>${{ "{:,.0f}".format(datos.cancelado) }}</strong></div>
+            <div class="small d-flex justify-content-between text-danger"><span>Vencido</span><strong>${{ "{:,.0f}".format(datos.vencido) }}</strong></div>
+            <div class="small d-flex justify-content-between text-warning"><span>Por vencer</span><strong>${{ "{:,.0f}".format(datos.por_vencer) }}</strong></div>
+            <small class="text-muted mt-2">{{ datos.items }} items</small>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Item</th><th>Modulo</th><th>Fecha</th><th>Estado</th>
+                    <th class="text-end">Total a pagar</th><th class="text-end">Total cancelado</th>
+                    <th class="text-end">Pendiente vencido</th><th class="text-end">Pendiente por vencer</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for item in items %}
+                {% set clase = 'row-pagado' if item.pendiente <= 0 else 'row-vencido' if item.vencido > 0 else 'row-vencer' %}
+                <tr class="{{ clase }}">
+                    <td>
+                        <div class="fw-semibold">{{ item.nombre }}</div>
+                        {% if item.tercero %}<small class="text-muted">{{ item.tercero }}</small>{% endif %}
+                    </td>
+                    <td>{{ item.modulo }}</td>
+                    <td>{{ item.fecha.strftime('%d/%m/%Y') if item.fecha else '-' }}</td>
+                    <td>
+                        <span class="estado-dot {{ 'dot-ok' if item.pendiente <= 0 else 'dot-danger' if item.vencido > 0 else 'dot-warn' }}"></span>
+                        <span class="text-uppercase small">{{ item.estado }}</span>
+                    </td>
+                    <td class="text-end">${{ "{:,.0f}".format(item.total) }}</td>
+                    <td class="text-end text-success">${{ "{:,.0f}".format(item.cancelado) }}</td>
+                    <td class="text-end text-danger">${{ "{:,.0f}".format(item.vencido) }}</td>
+                    <td class="text-end text-warning">${{ "{:,.0f}".format(item.por_vencer) }}</td>
+                </tr>
+            {% endfor %}
+            {% if not items %}
+                <tr><td colspan="8" class="text-center text-muted py-4">No hay pendientes ni pagos programados para este mes.</td></tr>
+            {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
