@@ -78,6 +78,36 @@ def _date_or_none(valor):
         return None
 
 
+def _money_or_none(valor):
+    if valor is None:
+        return None
+    valor = str(valor).strip()
+    if not valor:
+        return None
+
+    negative = valor.startswith('-')
+    unsigned = valor[1:] if negative else valor
+    last_dot = unsigned.rfind('.')
+    last_comma = unsigned.rfind(',')
+    separator_index = max(last_dot, last_comma)
+
+    integer_digits = ''.join(ch for ch in unsigned if ch.isdigit())
+    decimal_digits = ''
+
+    if separator_index >= 0:
+        tail = ''.join(ch for ch in unsigned[separator_index + 1:] if ch.isdigit())
+        head = ''.join(ch for ch in unsigned[:separator_index] if ch.isdigit())
+        if 0 < len(tail) <= 2:
+            integer_digits = head or '0'
+            decimal_digits = tail
+
+    if not integer_digits:
+        return None
+
+    normalized = integer_digits + (f'.{decimal_digits}' if decimal_digits else '')
+    return -float(normalized) if negative else float(normalized)
+
+
 def _normalizar_forma_pago_nomina(forma_pago):
     forma = (forma_pago or 'quincenal')
     if not isinstance(forma, str):
@@ -1000,7 +1030,7 @@ def saldos_anteriores():
 def nuevo():
     if request.method == 'POST':
         tipo_contrato = _normalizar_tipo_contrato_nomina(request.form.get('tipo_contrato', 'laboral'))
-        salario_base = None if _es_contrato_obra_labor_nomina(tipo_contrato) else (request.form.get('salario_base') or None)
+        salario_base = None if _es_contrato_obra_labor_nomina(tipo_contrato) else _money_or_none(request.form.get('salario_base'))
 
         # Crear tercero si no existe
         tercero_id = request.form.get('tercero_id')
@@ -1072,8 +1102,7 @@ def editar(id):
             _registrar_cambio_estado_empleado(empleado, nuevo_estado, fecha_cambio_estado, motivo_estado)
 
         # Verificar cambio de salario
-        nuevo_salario_str = '' if _es_contrato_obra_labor_nomina(tipo_contrato) else request.form.get('salario_base', '').strip()
-        nuevo_salario = float(nuevo_salario_str) if nuevo_salario_str else None
+        nuevo_salario = None if _es_contrato_obra_labor_nomina(tipo_contrato) else _money_or_none(request.form.get('salario_base'))
         salario_anterior = float(empleado.salario_base) if empleado.salario_base else None
 
         if (

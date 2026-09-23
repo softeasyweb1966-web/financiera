@@ -270,9 +270,14 @@ function checkCambioSalario() {
         if (motivoObra) motivoObra.required = false;
         return;
     }
-    var inputVal = (document.getElementById('salario_input').value || '').replace(/[^0-9.]/g, '');
-    var original = salarioOriginal.replace(/[^0-9.]/g, '');
-    var cambio = (inputVal && original && inputVal !== original);
+    var salarioInput = document.getElementById('salario_input');
+    var inputVal = window.FinancieraMoney
+        ? window.FinancieraMoney.parse(salarioInput.value)
+        : Number((salarioInput.value || '').replace(/\D/g, ''));
+    var original = window.FinancieraMoney
+        ? window.FinancieraMoney.parse(salarioOriginal)
+        : Number(salarioOriginal.replace(/\D/g, ''));
+    var cambio = Boolean(inputVal && original && Math.round(inputVal) !== Math.round(original));
     row.style.display = cambio ? '' : 'none';
     var fechaInput = document.getElementById('fecha_cambio_salario');
     var motivoInput = document.getElementById('motivo_salario');
