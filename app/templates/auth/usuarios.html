@@ -59,6 +59,10 @@
                             <input type="password" name="password" class="form-control" minlength="8" required>
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label">Confirmar contrasena</label>
+                            <input type="password" name="password_confirm" class="form-control" minlength="8" required>
+                        </div>
+                        <div class="col-md-6">
                             <label class="form-label">Roles</label>
                             {% for rol in roles %}
                                 <div class="form-check">
@@ -133,8 +137,12 @@
                                             <input type="email" name="email" class="form-control" value="{{ usuario.email }}" required>
                                         </div>
                                         <div class="col-md-4">
-                                            <label class="form-label">Nueva contrasena</label>
+                                            <label class="form-label">Asignar nueva contrasena</label>
                                             <input type="password" name="password" class="form-control" minlength="8">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">Confirmar nueva contrasena</label>
+                                            <input type="password" name="password_confirm" class="form-control" minlength="8">
                                         </div>
                                         <div class="col-12">
                                             <label class="form-label">Roles</label>

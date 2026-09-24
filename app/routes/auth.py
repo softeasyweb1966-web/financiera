@@ -150,6 +150,7 @@ def guardar_usuario():
     nombre = request.form.get('nombre', '').strip()
     email = request.form.get('email', '').strip().lower()
     password = request.form.get('password', '')
+    password_confirm = request.form.get('password_confirm', '')
     roles = _selected_roles()
     permisos = _selected_permissions()
 
@@ -173,6 +174,9 @@ def guardar_usuario():
         usuario.roles = roles
         _sync_permissions(usuario, permisos)
         if password:
+            if password != password_confirm:
+                flash('Las contrasenas no coinciden.', 'danger')
+                return redirect(url_for('auth.usuarios'))
             if len(password) < 8:
                 flash('La contraseña debe tener al menos 8 caracteres.', 'danger')
                 return redirect(url_for('auth.usuarios'))
@@ -181,6 +185,9 @@ def guardar_usuario():
     else:
         if existente:
             flash('Ya existe un usuario con ese correo.', 'danger')
+            return redirect(url_for('auth.usuarios'))
+        if password != password_confirm:
+            flash('Las contrasenas no coinciden.', 'danger')
             return redirect(url_for('auth.usuarios'))
         if len(password) < 8:
             flash('La contraseña nueva debe tener al menos 8 caracteres.', 'danger')
@@ -204,3 +211,35 @@ def toggle_usuario(usuario_id):
     estado = 'activado' if usuario.activo else 'desactivado'
     flash(f'Usuario "{usuario.nombre}" {estado}.', 'info')
     return redirect(url_for('auth.usuarios'))
+
+
+@auth_bp.route('/cambiar-clave', methods=['GET', 'POST'])
+def cambiar_clave():
+    usuario = Usuario.query.get(session.get('user_id'))
+    if not usuario:
+        return redirect(url_for('auth.login'))
+
+    if request.method == 'POST':
+        password_actual = request.form.get('password_actual', '')
+        password = request.form.get('password', '')
+        password_confirm = request.form.get('password_confirm', '')
+
+        if not usuario.check_password(password_actual):
+            flash('La clave actual no es correcta.', 'danger')
+            return render_template('auth/cambiar_clave.html')
+        if password != password_confirm:
+            flash('Las claves nuevas no coinciden.', 'danger')
+            return render_template('auth/cambiar_clave.html')
+        if len(password) < 8:
+            flash('La nueva clave debe tener al menos 8 caracteres.', 'danger')
+            return render_template('auth/cambiar_clave.html')
+        if usuario.check_password(password):
+            flash('La nueva clave debe ser diferente a la actual.', 'warning')
+            return render_template('auth/cambiar_clave.html')
+
+        usuario.set_password(password)
+        db.session.commit()
+        flash('Tu clave fue actualizada correctamente.', 'success')
+        return redirect(url_for('main.index'))
+
+    return render_template('auth/cambiar_clave.html')

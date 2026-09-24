@@ -86,6 +86,7 @@
                     <span class="navbar-text me-2">
                         <i class="bi bi-person-circle"></i> {{ g.user.nombre }}
                     </span>
+                    <a class="nav-link" href="{{ url_for('auth.cambiar_clave') }}"><i class="bi bi-key"></i> Cambiar clave</a>
                     <a class="nav-link" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right"></i> Salir</a>
                 </div>
                 {% endif %}
