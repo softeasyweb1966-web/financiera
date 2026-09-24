@@ -41,6 +41,18 @@ def upgrade():
             sa.Column('rol_id', sa.Integer, sa.ForeignKey('roles.id'), primary_key=True),
         )
 
+    if not inspector.has_table('usuario_permisos'):
+        op.create_table(
+            'usuario_permisos',
+            sa.Column('id', sa.Integer, primary_key=True),
+            sa.Column('usuario_id', sa.Integer, sa.ForeignKey('usuarios.id'), nullable=False),
+            sa.Column('menu', sa.String(50), nullable=False),
+            sa.Column('accion', sa.String(30), nullable=False),
+            sa.Column('created_at', sa.DateTime),
+            sa.UniqueConstraint('usuario_id', 'menu', 'accion', name='uq_usuario_permiso_menu_accion'),
+        )
+        op.create_index('ix_usuario_permisos_usuario_id', 'usuario_permisos', ['usuario_id'])
+
     op.execute("""
         INSERT INTO roles (nombre, descripcion)
         SELECT 'admin', 'Administrador del sistema'
@@ -60,6 +72,9 @@ def upgrade():
 
 def downgrade():
     inspector = sa.inspect(op.get_bind())
+    if inspector.has_table('usuario_permisos'):
+        op.drop_index('ix_usuario_permisos_usuario_id', table_name='usuario_permisos')
+        op.drop_table('usuario_permisos')
     if inspector.has_table('usuario_roles'):
         op.drop_table('usuario_roles')
     if inspector.has_table('usuarios'):

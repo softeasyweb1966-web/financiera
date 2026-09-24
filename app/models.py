@@ -20,6 +20,24 @@ usuario_roles = db.Table(
 )
 
 
+class UsuarioPermiso(db.Model):
+    """Permiso granular de un usuario sobre una opcion del menu."""
+    __tablename__ = 'usuario_permisos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False, index=True)
+    menu = db.Column(db.String(50), nullable=False)
+    accion = db.Column(db.String(30), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('usuario_id', 'menu', 'accion', name='uq_usuario_permiso_menu_accion'),
+    )
+
+    def __repr__(self):
+        return f'<UsuarioPermiso {self.usuario_id} {self.menu}:{self.accion}>'
+
+
 class Rol(db.Model):
     """Rol de seguridad asignable a usuarios."""
     __tablename__ = 'roles'
@@ -49,6 +67,12 @@ class Usuario(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     roles = db.relationship('Rol', secondary=usuario_roles, back_populates='usuarios')
+    permisos = db.relationship(
+        'UsuarioPermiso',
+        backref='usuario',
+        cascade='all, delete-orphan',
+        lazy='dynamic',
+    )
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -64,6 +88,29 @@ class Usuario(db.Model):
         if 'admin' in self.role_names:
             return True
         return bool(self.role_names.intersection(roles))
+
+    @property
+    def permission_keys(self):
+        return {f'{permiso.menu}:{permiso.accion}' for permiso in self.permisos}
+
+    def has_permission(self, menu, accion='ver'):
+        if self.has_role('admin'):
+            return True
+        keys = self.permission_keys
+        if not keys:
+            if self.has_role('operador'):
+                return menu != 'admin'
+            if self.has_role('consulta'):
+                return accion == 'ver'
+        return f'{menu}:{accion}' in keys
+
+    def can_access_menu(self, menu):
+        if self.has_role('admin'):
+            return True
+        keys = self.permission_keys
+        if not keys:
+            return self.has_role('operador') and menu != 'admin' or self.has_role('consulta')
+        return any(key.startswith(f'{menu}:') for key in keys)
 
     def __repr__(self):
         return f'<Usuario {self.email}>'

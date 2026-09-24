@@ -3,7 +3,8 @@ from datetime import datetime
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 from app import db
-from app.models import Rol, Usuario
+from app.models import Rol, Usuario, UsuarioPermiso
+from app.permissions import ACCION_LABELS, MENU_PERMISOS, PERMISSION_ACTIONS, PERMISSION_MENUS
 from app.security import roles_required
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
@@ -25,6 +26,39 @@ def ensure_default_roles():
 def _selected_roles():
     role_ids = [int(role_id) for role_id in request.form.getlist('roles') if role_id.isdigit()]
     return Rol.query.filter(Rol.id.in_(role_ids)).all() if role_ids else []
+
+
+def _selected_permissions():
+    permisos = set()
+    for raw in request.form.getlist('permisos'):
+        if ':' not in raw:
+            continue
+        menu, accion = raw.split(':', 1)
+        if menu in PERMISSION_MENUS and accion in PERMISSION_ACTIONS:
+            permisos.add((menu, accion))
+    return permisos
+
+
+def _default_permissions_for_roles(roles):
+    role_names = {rol.nombre for rol in roles}
+    permisos = set()
+    if 'admin' in role_names:
+        for menu in MENU_PERMISOS:
+            permisos.update((menu['key'], accion) for accion in menu['acciones'])
+    elif 'operador' in role_names:
+        for menu in MENU_PERMISOS:
+            if menu['key'] != 'admin':
+                permisos.update((menu['key'], accion) for accion in menu['acciones'])
+    elif 'consulta' in role_names:
+        permisos.update((menu['key'], 'ver') for menu in MENU_PERMISOS if 'ver' in menu['acciones'])
+    return permisos
+
+
+def _sync_permissions(usuario, permisos):
+    if usuario.id:
+        usuario.permisos.delete(synchronize_session=False)
+    for menu, accion in sorted(permisos):
+        usuario.permisos.append(UsuarioPermiso(menu=menu, accion=accion))
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
@@ -99,7 +133,13 @@ def usuarios():
     ensure_default_roles()
     usuarios = Usuario.query.order_by(Usuario.nombre).all()
     roles = Rol.query.order_by(Rol.nombre).all()
-    return render_template('auth/usuarios.html', usuarios=usuarios, roles=roles)
+    return render_template(
+        'auth/usuarios.html',
+        usuarios=usuarios,
+        roles=roles,
+        menu_permisos=MENU_PERMISOS,
+        accion_labels=ACCION_LABELS,
+    )
 
 
 @auth_bp.route('/usuarios/guardar', methods=['POST'])
@@ -111,6 +151,7 @@ def guardar_usuario():
     email = request.form.get('email', '').strip().lower()
     password = request.form.get('password', '')
     roles = _selected_roles()
+    permisos = _selected_permissions()
 
     if not nombre or not email:
         flash('Nombre y correo son obligatorios.', 'danger')
@@ -118,6 +159,8 @@ def guardar_usuario():
     if not roles:
         flash('Selecciona al menos un rol.', 'danger')
         return redirect(url_for('auth.usuarios'))
+    if not permisos:
+        permisos = _default_permissions_for_roles(roles)
 
     existente = Usuario.query.filter_by(email=email).first()
     if usuario_id:
@@ -128,6 +171,7 @@ def guardar_usuario():
         usuario.nombre = nombre
         usuario.email = email
         usuario.roles = roles
+        _sync_permissions(usuario, permisos)
         if password:
             if len(password) < 8:
                 flash('La contraseña debe tener al menos 8 caracteres.', 'danger')
@@ -144,6 +188,7 @@ def guardar_usuario():
         usuario = Usuario(nombre=nombre, email=email, roles=roles)
         usuario.set_password(password)
         db.session.add(usuario)
+        _sync_permissions(usuario, permisos)
         flash(f'Usuario "{nombre}" creado.', 'success')
 
     db.session.commit()

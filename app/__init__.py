@@ -49,6 +49,7 @@ def _ensure_schema():
         Rol,
         SaldoAnteriorNomina,
         Usuario,
+        UsuarioPermiso,
         usuario_roles,
     )
 
@@ -67,6 +68,10 @@ def _ensure_schema():
 
     if not inspector.has_table('usuario_roles'):
         usuario_roles.create(bind=db.engine, checkfirst=True)
+        inspector = inspect(db.engine)
+
+    if not inspector.has_table('usuario_permisos'):
+        UsuarioPermiso.__table__.create(bind=db.engine, checkfirst=True)
         inspector = inspect(db.engine)
 
     for nombre, descripcion in {
@@ -307,6 +312,7 @@ def create_app():
     def load_user_and_require_login():
         from flask import session
         from app.models import Usuario
+        from app.permissions import permission_from_endpoint
         from app.security import PUBLIC_ENDPOINTS
 
         uid = session.get('user_id')
@@ -324,6 +330,14 @@ def create_app():
 
         if not g.user:
             return redirect(url_for('auth.login', next=request.full_path))
+
+        required_permission = permission_from_endpoint(endpoint, request.method)
+        if required_permission:
+            menu, accion = required_permission
+            if not g.user.has_permission(menu, accion):
+                from flask import flash
+                flash('No tienes permisos para realizar esta accion.', 'warning')
+                return redirect(url_for('main.index'))
 
         return None
 
