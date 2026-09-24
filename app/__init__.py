@@ -335,8 +335,6 @@ def create_app():
         if required_permission:
             menu, accion = required_permission
             if not g.user.has_permission(menu, accion):
-                from flask import flash
-                flash('No tienes permisos para realizar esta accion.', 'warning')
                 return redirect(url_for('main.index'))
 
         return None

@@ -46,39 +46,60 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('main.index') }}"><i class="bi bi-house"></i> Inicio</a>
                     </li>
+                    {% if g.user.can_access_menu('servicios') %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('servicios.lista') }}"><i class="bi bi-lightning"></i> Servicios</a>
                     </li>
+                    {% endif %}
+                    {% if g.user.can_access_menu('obligaciones') %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('obligaciones.lista') }}"><i class="bi bi-bank"></i> Obligaciones</a>
                     </li>
+                    {% endif %}
+                    {% if g.user.can_access_menu('nomina') %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('nomina.lista') }}"><i class="bi bi-people"></i> Nómina</a>
+                        <a class="nav-link" href="{{ url_for('nomina.lista') }}"><i class="bi bi-people"></i> Nomina</a>
                     </li>
+                    {% endif %}
+                    {% if g.user.can_access_menu('compras') %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('compras.lista') }}"><i class="bi bi-cart"></i> Compras y Gastos</a>
                     </li>
+                    {% endif %}
+                    {% if g.user.can_access_menu('pendientes') %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('main.pendientes') }}"><i class="bi bi-calendar-check"></i> Pendientes</a>
                     </li>
+                    {% endif %}
+                    {% if g.user.can_access_menu('catalogos') or g.user.can_access_menu('terceros') or g.user.can_access_menu('admin') %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
                             <i class="bi bi-gear"></i> Catálogos
                         </a>
                         <ul class="dropdown-menu">
+                            {% if g.user.can_access_menu('terceros') %}
+
                             <li><a class="dropdown-item" href="{{ url_for('terceros.lista') }}"><i class="bi bi-person-lines-fill"></i> Terceros</a></li>
+
+                            {% endif %}
+                            {% if g.user.can_access_menu('catalogos') %}
+
                             <li><hr class="dropdown-divider"></li>
+
                             <li><a class="dropdown-item" href="{{ url_for('catalogos.medios_pago') }}"><i class="bi bi-credit-card"></i> Medios de Pago</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('catalogos.conceptos') }}"><i class="bi bi-tags"></i> Conceptos</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('catalogos.grupos_servicios') }}"><i class="bi bi-collection"></i> Grupos de Servicios</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('catalogos.conceptos_nomina') }}"><i class="bi bi-list-check"></i> Conceptos Nómina</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('catalogos.conceptos_compras') }}"><i class="bi bi-bag"></i> Conceptos e Items Compras</a></li>
-                            {% if g.user.has_role('admin') %}
+                            {% endif %}
+
+                            {% if g.user.can_access_menu('admin') %}
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('auth.usuarios') }}"><i class="bi bi-shield-lock"></i> Usuarios y Roles</a></li>
                             {% endif %}
                         </ul>
                     </li>
+                    {% endif %}
                     {% endif %}
                 </ul>
                 {% if g.user %}
@@ -230,3 +251,5 @@
     {% block scripts %}{% endblock %}
 </body>
 </html>
+
+

@@ -1,7 +1,7 @@
 from calendar import monthrange
 from datetime import date
 
-from flask import Blueprint, current_app, render_template, request
+from flask import Blueprint, current_app, g, render_template, request
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -251,12 +251,16 @@ def pendientes(anio=None, mes=None):
     items = []
     resumen = {}
 
-    for cargar in (
-        _items_servicios_mes,
-        _items_nomina_mes,
-        _items_obligaciones_mes,
-        _items_compras_mes,
-    ):
+    loaders = (
+        ('servicios', _items_servicios_mes),
+        ('nomina', _items_nomina_mes),
+        ('obligaciones', _items_obligaciones_mes),
+        ('compras', _items_compras_mes),
+    )
+
+    for menu, cargar in loaders:
+        if g.user and not g.user.can_access_menu(menu):
+            continue
         modulo_items, modulo_resumen = cargar(anio, mes, hoy)
         items.extend(modulo_items)
         for modulo, datos in modulo_resumen.items():

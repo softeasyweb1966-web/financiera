@@ -17,6 +17,7 @@
 </div>
 
 <div class="row g-3 mb-4">
+    {% if g.user.can_access_menu('servicios') %}
     <div class="col-6 col-md-4 col-lg">
         <a href="{{ url_for('servicios.lista') }}" class="text-decoration-none">
             <div class="card card-modulo p-3 text-center">
@@ -27,6 +28,8 @@
             </div>
         </a>
     </div>
+    {% endif %}
+    {% if g.user.can_access_menu('obligaciones') %}
     <div class="col-6 col-md-4 col-lg">
         <a href="{{ url_for('obligaciones.lista') }}" class="text-decoration-none">
             <div class="card card-modulo p-3 text-center">
@@ -37,6 +40,8 @@
             </div>
         </a>
     </div>
+    {% endif %}
+    {% if g.user.can_access_menu('nomina') %}
     <div class="col-6 col-md-4 col-lg">
         <a href="{{ url_for('nomina.lista') }}" class="text-decoration-none">
             <div class="card card-modulo p-3 text-center">
@@ -47,6 +52,8 @@
             </div>
         </a>
     </div>
+    {% endif %}
+    {% if g.user.can_access_menu('compras') %}
     <div class="col-6 col-md-4 col-lg">
         <a href="{{ url_for('compras.lista') }}" class="text-decoration-none">
             <div class="card card-modulo p-3 text-center">
@@ -56,25 +63,37 @@
             </div>
         </a>
     </div>
+    {% endif %}
 </div>
 
-{% set gran_total = total_servicios + total_obligaciones + total_nomina + total_compras_gastos %}
+{% set gran_total =
+    (total_servicios if g.user.can_access_menu('servicios') else 0)
+    + (total_obligaciones if g.user.can_access_menu('obligaciones') else 0)
+    + (total_nomina if g.user.can_access_menu('nomina') else 0)
+    + (total_compras_gastos if g.user.can_access_menu('compras') else 0)
+%}
 <div class="row g-3">
-    <div class="col-md-6">
+    <div class="{{ 'col-md-6' if g.user.can_access_menu('pendientes') else 'col-12' }}">
         <div class="card p-3">
             <h6 class="fw-bold"><i class="bi bi-calculator text-primary"></i> Total egresos del mes</h6>
             <div class="display-6 fw-bold text-primary">${{ "{:,.0f}".format(gran_total) }}</div>
         </div>
     </div>
+    {% if g.user.can_access_menu('pendientes') %}
     <div class="col-md-6">
         <div class="card p-3">
             <h6 class="fw-bold"><i class="bi bi-exclamation-triangle text-warning"></i> Pendientes</h6>
+            {% if g.user.can_access_menu('servicios') %}
             <p class="mb-1 small">Servicios pendientes: <strong>{{ servicios_pendientes }}</strong></p>
+            {% endif %}
+            {% if g.user.can_access_menu('obligaciones') %}
             <p class="mb-0 small">Obligaciones pendientes: <strong>{{ obligaciones_pendientes }}</strong></p>
+            {% endif %}
             <a href="{{ url_for('main.pendientes', anio=anio, mes=mes) }}" class="btn btn-outline-primary btn-sm mt-3">
                 <i class="bi bi-list-check"></i> Ver consolidado del mes
             </a>
         </div>
     </div>
+    {% endif %}
 </div>
 {% endblock %}
