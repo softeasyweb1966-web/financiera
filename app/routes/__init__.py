@@ -6,8 +6,10 @@ from app.routes.obligaciones import obligaciones_bp
 from app.routes.nomina import nomina_bp
 from app.routes.compras import compras_bp
 from app.routes.gastos import gastos_bp
+from app.routes.auth import auth_bp
 
 all_blueprints = [
+    auth_bp,
     main_bp,
     terceros_bp,
     catalogos_bp,

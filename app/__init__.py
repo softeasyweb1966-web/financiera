@@ -2,7 +2,7 @@ import logging
 import os
 import time
 
-from flask import Flask, current_app
+from flask import Flask, current_app, g, redirect, request, url_for
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import inspect, text
@@ -46,13 +46,37 @@ def _ensure_schema():
         HistorialCausacionNomina,
         HistorialPagoNomina,
         HistorialPagoObligacion,
+        Rol,
         SaldoAnteriorNomina,
+        Usuario,
+        usuario_roles,
     )
 
     inspector = inspect(db.engine)
     if not inspector.has_table('tipo_tercero'):
         db.create_all()
         inspector = inspect(db.engine)
+
+    if not inspector.has_table('roles'):
+        Rol.__table__.create(bind=db.engine, checkfirst=True)
+        inspector = inspect(db.engine)
+
+    if not inspector.has_table('usuarios'):
+        Usuario.__table__.create(bind=db.engine, checkfirst=True)
+        inspector = inspect(db.engine)
+
+    if not inspector.has_table('usuario_roles'):
+        usuario_roles.create(bind=db.engine, checkfirst=True)
+        inspector = inspect(db.engine)
+
+    for nombre, descripcion in {
+        'admin': 'Administrador del sistema',
+        'operador': 'Puede registrar y consultar informacion operativa',
+        'consulta': 'Puede consultar informacion sin administrar usuarios',
+    }.items():
+        if not Rol.query.filter_by(nombre=nombre).first():
+            db.session.add(Rol(nombre=nombre, descripcion=descripcion))
+    db.session.commit()
 
     if not inspector.has_table('historial_pagos_obligaciones'):
         HistorialPagoObligacion.__table__.create(bind=db.engine, checkfirst=True)
@@ -277,6 +301,30 @@ def create_app():
             retry_delay=0,
             strict=False,
         )
+        return None
+
+    @app.before_request
+    def load_user_and_require_login():
+        from flask import session
+        from app.models import Usuario
+        from app.security import PUBLIC_ENDPOINTS
+
+        uid = session.get('user_id')
+        g.user = Usuario.query.get(uid) if uid else None
+        if g.user and not g.user.activo:
+            session.clear()
+            g.user = None
+
+        endpoint = request.endpoint
+        if endpoint in PUBLIC_ENDPOINTS or (endpoint and endpoint.startswith('static')):
+            return None
+
+        if Usuario.query.count() == 0 and endpoint != 'auth.bootstrap':
+            return redirect(url_for('auth.bootstrap'))
+
+        if not g.user:
+            return redirect(url_for('auth.login', next=request.full_path))
+
         return None
 
     return app

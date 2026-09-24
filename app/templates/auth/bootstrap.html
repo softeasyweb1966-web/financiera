@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Primer administrador{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-sm-10 col-md-7 col-lg-5">
+        <div class="card">
+            <div class="card-body p-4">
+                <h1 class="h4 mb-3">Crear administrador inicial</h1>
+                <form method="post">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre</label>
+                        <input type="text" name="nombre" class="form-control" value="{{ nombre or '' }}" required autofocus>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Correo</label>
+                        <input type="email" name="email" class="form-control" value="{{ email or '' }}" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Contraseña</label>
+                            <input type="password" name="password" class="form-control" minlength="8" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Confirmar contraseña</label>
+                            <input type="password" name="password_confirm" class="form-control" minlength="8" required>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary w-100" type="submit">
+                        <i class="bi bi-person-plus"></i> Crear administrador
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

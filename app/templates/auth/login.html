@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}Ingresar{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-sm-10 col-md-6 col-lg-4">
+        <div class="card">
+            <div class="card-body p-4">
+                <h1 class="h4 mb-3">Ingresar</h1>
+                <form method="post">
+                    <div class="mb-3">
+                        <label class="form-label">Correo</label>
+                        <input type="email" name="email" class="form-control" value="{{ email or '' }}" required autofocus>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Contraseña</label>
+                        <input type="password" name="password" class="form-control" required>
+                    </div>
+                    <button class="btn btn-primary w-100" type="submit">
+                        <i class="bi bi-box-arrow-in-right"></i> Entrar
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

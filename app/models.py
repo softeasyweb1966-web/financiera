@@ -6,11 +6,68 @@ BD: financiera_gastos (independiente)
 from app import db
 from datetime import datetime, date
 import json
+from werkzeug.security import check_password_hash, generate_password_hash
 
 
 # ============================================================
 # CATÁLOGOS (tablas de referencia con CRUD)
 # ============================================================
+
+usuario_roles = db.Table(
+    'usuario_roles',
+    db.Column('usuario_id', db.Integer, db.ForeignKey('usuarios.id'), primary_key=True),
+    db.Column('rol_id', db.Integer, db.ForeignKey('roles.id'), primary_key=True),
+)
+
+
+class Rol(db.Model):
+    """Rol de seguridad asignable a usuarios."""
+    __tablename__ = 'roles'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(50), nullable=False, unique=True)
+    descripcion = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    usuarios = db.relationship('Usuario', secondary=usuario_roles, back_populates='roles')
+
+    def __repr__(self):
+        return f'<Rol {self.nombre}>'
+
+
+class Usuario(db.Model):
+    """Usuario que puede ingresar al sistema."""
+    __tablename__ = 'usuarios'
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(120), nullable=False, unique=True, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    activo = db.Column(db.Boolean, default=True, nullable=False)
+    ultimo_acceso = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    roles = db.relationship('Rol', secondary=usuario_roles, back_populates='usuarios')
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    @property
+    def role_names(self):
+        return {rol.nombre for rol in self.roles}
+
+    def has_role(self, *roles):
+        if 'admin' in self.role_names:
+            return True
+        return bool(self.role_names.intersection(roles))
+
+    def __repr__(self):
+        return f'<Usuario {self.email}>'
+
 
 class TipoTercero(db.Model):
     """Clasificación de terceros: Empleado, Proveedor, Entidad Financiera, etc."""
