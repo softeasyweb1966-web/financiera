@@ -47,6 +47,14 @@
     .acciones-compra .btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
     .acciones-compra .btn-abonar { width: auto; padding: 0 0.55rem; gap: 0.25rem; }
     .estado-badge { min-width: 76px; }
+    .resumen-conceptos { overflow: hidden; }
+    .resumen-conceptos .card-body { padding: 0.75rem 1rem; }
+    .resumen-conceptos-table { margin-bottom: 0; }
+    .resumen-conceptos-table th { padding-top: 0.35rem; padding-bottom: 0.35rem; }
+    .resumen-conceptos-table td { padding-top: 0.45rem; padding-bottom: 0.45rem; vertical-align: middle; }
+    .concepto-dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex: 0 0 auto; }
+    .concepto-name { font-weight: 700; line-height: 1.15; }
+    .concepto-count { color: #64748b; font-size: 0.74rem; white-space: nowrap; }
     @media (max-width: 767px) {
         .compras-panel { background: transparent; box-shadow: none; }
         .compras-table,
@@ -83,6 +91,28 @@
         .acciones-compra { justify-content: flex-start; }
         .acciones-compra .btn { width: 36px; height: 34px; }
         .acciones-compra .btn-abonar { width: auto; }
+        .resumen-conceptos { background: transparent; box-shadow: none; }
+        .resumen-conceptos .card-body { padding: 0; }
+        .resumen-conceptos-table,
+        .resumen-conceptos-table thead,
+        .resumen-conceptos-table tbody,
+        .resumen-conceptos-table tr,
+        .resumen-conceptos-table td { display: block; width: 100%; }
+        .resumen-conceptos-table thead { display: none; }
+        .resumen-conceptos-table tr {
+            background: #fff;
+            border-radius: 0.65rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 0.25rem 0.7rem;
+            margin-bottom: 0.45rem;
+            padding: 0.65rem 0.75rem;
+        }
+        .resumen-conceptos-table td { border: 0; padding: 0; }
+        .resumen-conceptos-table .td-concepto { grid-column: 1 / -1; }
+        .resumen-conceptos-table .td-count { color: #64748b; font-size: 0.76rem; }
+        .resumen-conceptos-table .td-money { text-align: left !important; }
     }
     @media (max-width: 420px) {
         .compras-table .td-amounts { grid-template-columns: 1fr; }
@@ -182,22 +212,39 @@
 {% endif %}
 
 {% if resumen_grupos %}
-<div class="card p-3 mb-3">
-    <h6 class="fw-bold mb-2"><i class="bi bi-pie-chart text-primary"></i> Resumen {{ meses[mes-1] }} por concepto</h6>
-    <div class="row g-2">
-        {% for grupo in resumen_grupos %}
-        <div class="col-6 col-md-3">
-            <div class="border rounded p-2 h-100">
-                <div class="fw-semibold">
-                    <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:{{ grupo.color }};"></span>
-                    {{ grupo.nombre }}
-                </div>
-                <div class="small text-success">Abonado: ${{ "{:,.0f}".format(grupo.pagado) }}</div>
-                <div class="small text-danger">Saldo: ${{ "{:,.0f}".format(grupo.pendiente) }}</div>
-                <small class="text-muted">{{ grupo.cantidad }} registros</small>
-            </div>
+<div class="card resumen-conceptos mb-3">
+    <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+            <h6 class="fw-bold mb-0"><i class="bi bi-pie-chart text-primary"></i> Resumen {{ meses[mes-1] }} por concepto</h6>
+            <small class="text-muted">{{ resumen_grupos|length }} conceptos</small>
         </div>
-        {% endfor %}
+        <div class="table-responsive">
+            <table class="table table-sm resumen-conceptos-table align-middle">
+                <thead>
+                    <tr>
+                        <th>Concepto</th>
+                        <th class="text-end">Abonado</th>
+                        <th class="text-end">Saldo</th>
+                        <th class="text-end">Registros</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for grupo in resumen_grupos %}
+                    <tr>
+                        <td class="td-concepto">
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="concepto-dot" style="background:{{ grupo.color }};"></span>
+                                <span class="concepto-name">{{ grupo.nombre }}</span>
+                            </div>
+                        </td>
+                        <td class="td-money text-end text-success fw-semibold">${{ "{:,.0f}".format(grupo.pagado) }}</td>
+                        <td class="td-money text-end {{ 'text-danger fw-semibold' if grupo.pendiente > 0 else 'text-success fw-semibold' }}">${{ "{:,.0f}".format(grupo.pendiente) }}</td>
+                        <td class="td-count text-end"><span class="concepto-count">{{ grupo.cantidad }} registros</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 {% endif %}
