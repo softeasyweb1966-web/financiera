@@ -38,19 +38,20 @@
     <div class="col-6 col-lg-3"><div class="card metric p-3"><div class="metric-label">Pendiente por vencer</div><div class="metric-value text-warning">${{ "{:,.0f}".format(total_mes.por_vencer) }}</div></div></div>
 </div>
 
-<div class="row g-2 mb-3">
+<div class="d-flex flex-wrap gap-2 mb-2">
     {% for nombre, datos in resumen.items() %}
-    <div class="col-12 col-md-6 col-xl-3">
-        <div class="card p-3 h-100">
-            <div class="fw-bold mb-2">{{ nombre }}</div>
-            <div class="small d-flex justify-content-between"><span>Total a pagar</span><strong>${{ "{:,.0f}".format(datos.total) }}</strong></div>
-            <div class="small d-flex justify-content-between text-success"><span>Cancelado</span><strong>${{ "{:,.0f}".format(datos.cancelado) }}</strong></div>
-            <div class="small d-flex justify-content-between text-danger"><span>Vencido</span><strong>${{ "{:,.0f}".format(datos.vencido) }}</strong></div>
-            <div class="small d-flex justify-content-between text-warning"><span>Por vencer</span><strong>${{ "{:,.0f}".format(datos.por_vencer) }}</strong></div>
-            <small class="text-muted mt-2">{{ datos.items }} items</small>
+    <div class="card px-3 py-2 d-flex flex-row align-items-center gap-3">
+        <div>
+            <div class="fw-semibold small">{{ nombre }}</div>
+            <div class="fw-bold text-primary">${{ "{:,.0f}".format(datos.total) }}</div>
+            <small class="text-muted">{{ datos.items }} items</small>
         </div>
+        <button class="btn btn-outline-secondary btn-sm" onclick="filtrarModulo('{{ nombre }}', this)">Ver detalle</button>
     </div>
     {% endfor %}
+    <div id="btn-quitar" style="display:none;align-self:center">
+        <button class="btn btn-sm btn-outline-danger" onclick="filtrarModulo('', null)">Quitar filtro</button>
+    </div>
 </div>
 
 <div class="card">
@@ -66,7 +67,7 @@
             <tbody>
             {% for item in items %}
                 {% set clase = 'row-pagado' if item.pendiente <= 0 else 'row-vencido' if item.vencido > 0 else 'row-vencer' %}
-                <tr class="{{ clase }}">
+                <tr class="{{ clase }}" data-modulo="{{ item.modulo }}">
                     <td>
                         <div class="fw-semibold">{{ item.nombre }}</div>
                         {% if item.tercero %}<small class="text-muted">{{ item.tercero }}</small>{% endif %}
@@ -90,4 +91,14 @@
         </table>
     </div>
 </div>
+<script>
+function filtrarModulo(modulo, btn) {
+    document.querySelectorAll('tbody tr[data-modulo]').forEach(function(f) {
+        f.style.display = (!modulo || f.dataset.modulo === modulo) ? '' : 'none';
+    });
+    document.getElementById('btn-quitar').style.display = modulo ? 'flex' : 'none';
+    document.querySelectorAll('[onclick^="filtrarModulo"]').forEach(function(b) { b.classList.remove('active'); });
+    if (btn) btn.classList.add('active');
+}
+</script>
 {% endblock %}

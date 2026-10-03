@@ -47,14 +47,26 @@
     .acciones-compra .btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
     .acciones-compra .btn-abonar { width: auto; padding: 0 0.55rem; gap: 0.25rem; }
     .estado-badge { min-width: 76px; }
-    .resumen-conceptos { overflow: hidden; }
-    .resumen-conceptos .card-body { padding: 0.75rem 1rem; }
-    .resumen-conceptos-table { margin-bottom: 0; }
-    .resumen-conceptos-table th { padding-top: 0.35rem; padding-bottom: 0.35rem; }
-    .resumen-conceptos-table td { padding-top: 0.45rem; padding-bottom: 0.45rem; vertical-align: middle; }
-    .concepto-dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex: 0 0 auto; }
-    .concepto-name { font-weight: 700; line-height: 1.15; }
-    .concepto-count { color: #64748b; font-size: 0.74rem; white-space: nowrap; }
+    .resumen-items { overflow: hidden; }
+    .resumen-items .card-body { padding: 0.75rem 1rem; }
+    .resumen-items-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 420px));
+        gap: 0.45rem;
+    }
+    .resumen-item-row {
+        align-items: center;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.5rem;
+        display: grid;
+        gap: 0.5rem;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        padding: 0.5rem 0.6rem;
+    }
+    .resumen-item-name { font-weight: 700; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .resumen-item-meta { color: #64748b; font-size: 0.72rem; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .resumen-item-value { font-weight: 700; white-space: nowrap; }
+    .resumen-item-row .btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
     @media (max-width: 767px) {
         .compras-panel { background: transparent; box-shadow: none; }
         .compras-table,
@@ -91,28 +103,15 @@
         .acciones-compra { justify-content: flex-start; }
         .acciones-compra .btn { width: 36px; height: 34px; }
         .acciones-compra .btn-abonar { width: auto; }
-        .resumen-conceptos { background: transparent; box-shadow: none; }
-        .resumen-conceptos .card-body { padding: 0; }
-        .resumen-conceptos-table,
-        .resumen-conceptos-table thead,
-        .resumen-conceptos-table tbody,
-        .resumen-conceptos-table tr,
-        .resumen-conceptos-table td { display: block; width: 100%; }
-        .resumen-conceptos-table thead { display: none; }
-        .resumen-conceptos-table tr {
-            background: #fff;
-            border-radius: 0.65rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 0.25rem 0.7rem;
-            margin-bottom: 0.45rem;
-            padding: 0.65rem 0.75rem;
-        }
-        .resumen-conceptos-table td { border: 0; padding: 0; }
-        .resumen-conceptos-table .td-concepto { grid-column: 1 / -1; }
-        .resumen-conceptos-table .td-count { color: #64748b; font-size: 0.76rem; }
-        .resumen-conceptos-table .td-money { text-align: left !important; }
+        .resumen-items { background: transparent; box-shadow: none; }
+        .resumen-items .card-body { padding: 0; }
+        .resumen-items-list { grid-template-columns: 1fr; }
+        .resumen-item-row { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    }
+    @media (max-width: 420px) {
+        .resumen-item-row { grid-template-columns: minmax(0, 1fr) auto; }
+        .resumen-item-value { grid-column: 1; }
+        .resumen-item-row .btn { grid-column: 2; grid-row: 1 / span 2; }
     }
     @media (max-width: 420px) {
         .compras-table .td-amounts { grid-template-columns: 1fr; }
@@ -211,39 +210,26 @@
 </div>
 {% endif %}
 
-{% if resumen_grupos %}
-<div class="card resumen-conceptos mb-3">
+{% if items_mes_actual %}
+<div class="card resumen-items mb-3">
     <div class="card-body">
         <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
-            <h6 class="fw-bold mb-0"><i class="bi bi-pie-chart text-primary"></i> Resumen {{ meses[mes-1] }} por concepto</h6>
-            <small class="text-muted">{{ resumen_grupos|length }} conceptos</small>
+            <h6 class="fw-bold mb-0"><i class="bi bi-pie-chart text-primary"></i> Resumen {{ meses[mes-1] }} por item</h6>
+            <small class="text-muted">{{ items_mes_actual|length }} registros</small>
         </div>
-        <div class="table-responsive">
-            <table class="table table-sm resumen-conceptos-table align-middle">
-                <thead>
-                    <tr>
-                        <th>Concepto</th>
-                        <th class="text-end">Abonado</th>
-                        <th class="text-end">Saldo</th>
-                        <th class="text-end">Registros</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for grupo in resumen_grupos %}
-                    <tr>
-                        <td class="td-concepto">
-                            <div class="d-flex align-items-center gap-2">
-                                <span class="concepto-dot" style="background:{{ grupo.color }};"></span>
-                                <span class="concepto-name">{{ grupo.nombre }}</span>
-                            </div>
-                        </td>
-                        <td class="td-money text-end text-success fw-semibold">${{ "{:,.0f}".format(grupo.pagado) }}</td>
-                        <td class="td-money text-end {{ 'text-danger fw-semibold' if grupo.pendiente > 0 else 'text-success fw-semibold' }}">${{ "{:,.0f}".format(grupo.pendiente) }}</td>
-                        <td class="td-count text-end"><span class="concepto-count">{{ grupo.cantidad }} registros</span></td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <div class="resumen-items-list">
+            {% for item in items_mes_actual %}
+            <div class="resumen-item-row">
+                <div class="min-w-0">
+                    <div class="resumen-item-name">{{ item.item }}</div>
+                    <div class="resumen-item-meta">{{ item.concepto }}{% if item.proveedor != '-' %} | {{ item.proveedor }}{% endif %}</div>
+                </div>
+                <div class="resumen-item-value">${{ "{:,.0f}".format(item.valor) }}</div>
+                <a href="{{ url_for('compras.detalle', id=item.id) }}" class="btn btn-sm btn-outline-primary" title="Ver detalle">
+                    <i class="bi bi-eye"></i>
+                </a>
+            </div>
+            {% endfor %}
         </div>
     </div>
 </div>
