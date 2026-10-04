@@ -274,17 +274,17 @@
 
 <ul class="nav nav-tabs mb-0" id="serviciosTabs" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="servicios-tarjetas-tab" data-bs-toggle="tab" data-bs-target="#servicios-tarjetas" type="button" role="tab">Tarjetas</button>
+        <button class="nav-link active" id="servicios-resumen-tab" data-bs-toggle="tab" data-bs-target="#servicios-resumen" type="button" role="tab">Servicios</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="servicios-resumen-tab" data-bs-toggle="tab" data-bs-target="#servicios-resumen" type="button" role="tab">Resumen</button>
+        <button class="nav-link" id="servicios-tarjetas-tab" data-bs-toggle="tab" data-bs-target="#servicios-tarjetas" type="button" role="tab">Tarjetas</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="servicios-grupos-tab" data-bs-toggle="tab" data-bs-target="#servicios-grupos" type="button" role="tab">Por grupo</button>
     </li>
 </ul>
 <div class="tab-content mb-3">
-<div class="tab-pane fade show active tab-pane-box" id="servicios-tarjetas" role="tabpanel" aria-labelledby="servicios-tarjetas-tab">
+<div class="tab-pane fade tab-pane-box" id="servicios-tarjetas" role="tabpanel" aria-labelledby="servicios-tarjetas-tab">
 <div class="row g-2">
     {% for item in servicios_mes %}
     {% set s = item.servicio %}
@@ -391,7 +391,7 @@
 </div>
 </div>
 
-<div class="tab-pane fade tab-pane-box" id="servicios-resumen" role="tabpanel" aria-labelledby="servicios-resumen-tab">
+<div class="tab-pane fade show active tab-pane-box" id="servicios-resumen" role="tabpanel" aria-labelledby="servicios-resumen-tab">
     <div class="summary-table">
         <div class="summary-header">
             <div>Item</div>
