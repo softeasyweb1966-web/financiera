@@ -30,14 +30,21 @@
     }
     .summary-card {
         border: 1px solid #dbeafe;
-        min-height: 78px;
+        cursor: pointer;
+        min-height: 54px;
         padding: 0.65rem 0.75rem;
+        text-align: left;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
     }
-    .summary-inline { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.65rem; }
-    .summary-inline-label { font-size: 0.75rem; color: #475569; line-height: 1.15; }
+    .summary-card:hover,
+    .summary-card.active {
+        box-shadow: 0 2px 8px rgba(37,99,235,0.16);
+        transform: translateY(-1px);
+    }
+    .summary-inline { display: flex; align-items: center; justify-content: space-between; gap: 0.65rem; }
+    .summary-inline-label { color: #111827; font-size: 0.82rem; font-weight: 700; line-height: 1.15; }
+    .summary-inline-count { color: #64748b; font-weight: 400; }
     .summary-inline-value { font-size: 0.98rem; font-weight: 700; line-height: 1.1; white-space: nowrap; }
-    .summary-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.45rem; }
-    .summary-card-note { color: #64748b; font-size: 0.72rem; line-height: 1.15; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .summary-detail-card { border: 1px solid #e2e8f0; border-radius: 0.6rem; background: #fff; padding: 0.75rem; }
     .summary-detail-row {
         align-items: center;
@@ -159,55 +166,38 @@
     {% endfor %}
 </div>
 
+{% set pendientes_mes = namespace(total=0) %}
+{% for item in compras_cards %}
+    {% if item.saldo > 0 %}
+        {% set pendientes_mes.total = pendientes_mes.total + 1 %}
+    {% endif %}
+{% endfor %}
+
 <div class="summary-grid mb-2">
-    <div class="card summary-card" style="background:#f0fdf4; border-color:#bbf7d0;">
+    <button type="button" class="card summary-card bg-white" style="background:#f0fdf4 !important; border-color:#bbf7d0;" data-summary-target="detalleAbonadoAnterior" onclick="toggleResumenCompra(this)">
         <div class="summary-inline">
-            <span class="summary-inline-label">Abonado anterior</span>
+            <span class="summary-inline-label">Abonado anterior <span class="summary-inline-count">({{ compras_pagadas_anteriores|length }})</span></span>
             <span class="summary-inline-value text-success">${{ "{:,.0f}".format(acum_pagado_anterior) }}</span>
         </div>
-        <div class="summary-card-actions">
-            <span class="summary-card-note">{{ compras_pagadas_anteriores|length }} registros</span>
-            <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="collapse" data-bs-target="#detalleAbonadoAnterior">
-                <i class="bi bi-eye"></i>
-            </button>
-        </div>
-    </div>
-    <div class="card summary-card" style="background:#fef2f2; border-color:#fecaca;">
+    </button>
+    <button type="button" class="card summary-card bg-white" style="background:#fef2f2 !important; border-color:#fecaca;" data-summary-target="detalleSaldoAnterior" onclick="toggleResumenCompra(this)">
         <div class="summary-inline">
-            <span class="summary-inline-label">Saldo anterior</span>
+            <span class="summary-inline-label">Saldo anterior <span class="summary-inline-count">({{ pendientes_anteriores|length }})</span></span>
             <span class="summary-inline-value text-danger">${{ "{:,.0f}".format(total_deuda_anterior) }}</span>
         </div>
-        <div class="summary-card-actions">
-            <span class="summary-card-note text-danger">{{ pendientes_anteriores|length }} pendientes</span>
-            <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="collapse" data-bs-target="#detalleSaldoAnterior">
-                <i class="bi bi-eye"></i>
-            </button>
-        </div>
-    </div>
-    <div class="card summary-card" style="background:#eff6ff; border-color:#bfdbfe;">
+    </button>
+    <button type="button" class="card summary-card bg-white" style="background:#eff6ff !important; border-color:#bfdbfe;" data-summary-target="detalleMesActual" onclick="toggleResumenCompra(this)">
         <div class="summary-inline">
-            <span class="summary-inline-label">{{ meses[mes-1] }} abonado</span>
+            <span class="summary-inline-label">{{ meses[mes-1] }} abonado <span class="summary-inline-count">({{ items_mes_actual|length }})</span></span>
             <span class="summary-inline-value text-primary">${{ "{:,.0f}".format(pagado_mes) }}</span>
         </div>
-        <div class="summary-card-actions">
-            <span class="summary-card-note">Total ${{ "{:,.0f}".format(total_mes) }}</span>
-            <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#detalleMesActual">
-                <i class="bi bi-eye"></i>
-            </button>
-        </div>
-    </div>
-    <div class="card summary-card" style="background:#fff7ed; border-color:#fdba74;">
+    </button>
+    <button type="button" class="card summary-card bg-white" style="background:#fff7ed !important; border-color:#fdba74;" data-summary-target="detalleSaldoMes" onclick="toggleResumenCompra(this)">
         <div class="summary-inline">
-            <span class="summary-inline-label">Saldo del mes</span>
+            <span class="summary-inline-label">Saldo del mes <span class="summary-inline-count">({{ pendientes_mes.total }})</span></span>
             <span class="summary-inline-value" style="color:#c2410c;">${{ "{:,.0f}".format(pendiente_mes) }}</span>
         </div>
-        <div class="summary-card-actions">
-            <span class="summary-card-note">{{ top_concepto.nombre if top_concepto else 'Sin movimientos' }}</span>
-            <button class="btn btn-sm btn-outline-warning" type="button" data-bs-toggle="collapse" data-bs-target="#detalleSaldoMes">
-                <i class="bi bi-eye"></i>
-            </button>
-        </div>
-    </div>
+    </button>
 </div>
 
 <div class="mb-3">
@@ -280,10 +270,8 @@
     <div class="collapse" id="detalleSaldoMes">
         <div class="summary-detail-card mb-2">
             <div class="row g-2">
-                {% set pendientes_mes = namespace(total=0) %}
                 {% for item in compras_cards %}
                 {% if item.saldo > 0 %}
-                {% set pendientes_mes.total = pendientes_mes.total + 1 %}
                 {% set compra = item.compra %}
                 <div class="col-12 col-lg-6">
                     <div class="summary-detail-row">
@@ -527,6 +515,24 @@ function prepararAnulacionCompra(id, descripcion, nextUrl) {
     document.getElementById('anularCompraTitulo').textContent = 'Anular compra - ' + descripcion;
     document.getElementById('anularCompraNext').value = nextUrl || '';
     document.getElementById('anularCompraMotivo').value = '';
+}
+
+function toggleResumenCompra(card) {
+    var targetId = card.getAttribute('data-summary-target');
+    var target = document.getElementById(targetId);
+    var yaActivo = card.classList.contains('active');
+
+    document.querySelectorAll('.summary-card').forEach(function(item) {
+        item.classList.remove('active');
+    });
+    document.querySelectorAll('#detalleAbonadoAnterior, #detalleSaldoAnterior, #detalleMesActual, #detalleSaldoMes').forEach(function(panel) {
+        panel.classList.remove('show');
+    });
+
+    if (!yaActivo && target) {
+        card.classList.add('active');
+        target.classList.add('show');
+    }
 }
 </script>
 {% endblock %}
