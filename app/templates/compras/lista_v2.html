@@ -23,10 +23,31 @@
 <style>
     .nav-mes .btn { min-width: 44px; }
     .nav-mes .btn.activo { background: #2563eb; color: #fff; font-weight: 700; }
-    .summary-card { border: 1px solid #dbeafe; }
-    .summary-inline { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .summary-inline-label { font-size: 0.78rem; color: #475569; }
-    .summary-inline-value { font-size: 1rem; font-weight: 700; line-height: 1; white-space: nowrap; }
+    .summary-grid {
+        display: grid;
+        gap: 0.55rem;
+        grid-template-columns: repeat(4, minmax(180px, 1fr));
+    }
+    .summary-card {
+        border: 1px solid #dbeafe;
+        min-height: 78px;
+        padding: 0.65rem 0.75rem;
+    }
+    .summary-inline { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.65rem; }
+    .summary-inline-label { font-size: 0.75rem; color: #475569; line-height: 1.15; }
+    .summary-inline-value { font-size: 0.98rem; font-weight: 700; line-height: 1.1; white-space: nowrap; }
+    .summary-card-actions { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.45rem; }
+    .summary-card-note { color: #64748b; font-size: 0.72rem; line-height: 1.15; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .summary-detail-card { border: 1px solid #e2e8f0; border-radius: 0.6rem; background: #fff; padding: 0.75rem; }
+    .summary-detail-row {
+        align-items: center;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.5rem;
+        display: flex;
+        gap: 0.75rem;
+        justify-content: space-between;
+        padding: 0.5rem 0.6rem;
+    }
     .estado-row { border-left: 4px solid #e2e8f0; }
     .estado-pendiente { border-left-color: #fb923c; }
     .estado-parcial { border-left-color: #0ea5e9; }
@@ -68,6 +89,7 @@
     .resumen-item-value { font-weight: 700; white-space: nowrap; }
     .resumen-item-row .btn { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
     @media (max-width: 767px) {
+        .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .compras-panel { background: transparent; box-shadow: none; }
         .compras-table,
         .compras-table thead,
@@ -109,6 +131,7 @@
         .resumen-item-row { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     }
     @media (max-width: 420px) {
+        .summary-grid { grid-template-columns: 1fr; }
         .resumen-item-row { grid-template-columns: minmax(0, 1fr) auto; }
         .resumen-item-value { grid-column: 1; }
         .resumen-item-row .btn { grid-column: 2; grid-row: 1 / span 2; }
@@ -136,64 +159,87 @@
     {% endfor %}
 </div>
 
-<div class="row g-2 mb-3">
-    <div class="col-md-3">
-        <div class="card p-3 summary-card" style="background:#f0fdf4; border-color:#bbf7d0;">
-            <div class="summary-inline">
-                <span class="summary-inline-label">Abonado meses anteriores</span>
-                <span class="summary-inline-value text-success">${{ "{:,.0f}".format(acum_pagado_anterior) }}</span>
-            </div>
+<div class="summary-grid mb-2">
+    <div class="card summary-card" style="background:#f0fdf4; border-color:#bbf7d0;">
+        <div class="summary-inline">
+            <span class="summary-inline-label">Abonado anterior</span>
+            <span class="summary-inline-value text-success">${{ "{:,.0f}".format(acum_pagado_anterior) }}</span>
+        </div>
+        <div class="summary-card-actions">
+            <span class="summary-card-note">{{ compras_pagadas_anteriores|length }} registros</span>
+            <button class="btn btn-sm btn-outline-success" type="button" data-bs-toggle="collapse" data-bs-target="#detalleAbonadoAnterior">
+                <i class="bi bi-eye"></i>
+            </button>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card p-3 summary-card" style="background:#fef2f2; border-color:#fecaca;">
-            <div class="summary-inline">
-                <span class="summary-inline-label">Saldo meses anteriores</span>
-                <span class="summary-inline-value text-danger">${{ "{:,.0f}".format(total_deuda_anterior) }}</span>
-            </div>
-            {% if pendientes_anteriores %}
-            <small class="text-danger mt-1 d-block">{{ pendientes_anteriores|length }} pendientes</small>
-            {% endif %}
+    <div class="card summary-card" style="background:#fef2f2; border-color:#fecaca;">
+        <div class="summary-inline">
+            <span class="summary-inline-label">Saldo anterior</span>
+            <span class="summary-inline-value text-danger">${{ "{:,.0f}".format(total_deuda_anterior) }}</span>
+        </div>
+        <div class="summary-card-actions">
+            <span class="summary-card-note text-danger">{{ pendientes_anteriores|length }} pendientes</span>
+            <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="collapse" data-bs-target="#detalleSaldoAnterior">
+                <i class="bi bi-eye"></i>
+            </button>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card p-3 summary-card" style="background:#eff6ff; border-color:#bfdbfe;">
-            <div class="summary-inline">
-                <span class="summary-inline-label">{{ meses[mes-1] }} abonado / total</span>
-                <span class="summary-inline-value text-primary">${{ "{:,.0f}".format(pagado_mes) }}</span>
-            </div>
-            <small class="text-muted mt-1 d-block">Total causado: ${{ "{:,.0f}".format(total_mes) }}</small>
+    <div class="card summary-card" style="background:#eff6ff; border-color:#bfdbfe;">
+        <div class="summary-inline">
+            <span class="summary-inline-label">{{ meses[mes-1] }} abonado</span>
+            <span class="summary-inline-value text-primary">${{ "{:,.0f}".format(pagado_mes) }}</span>
+        </div>
+        <div class="summary-card-actions">
+            <span class="summary-card-note">Total ${{ "{:,.0f}".format(total_mes) }}</span>
+            <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#detalleMesActual">
+                <i class="bi bi-eye"></i>
+            </button>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card p-3 summary-card" style="background:#fff7ed; border-color:#fdba74;">
-            <div class="summary-inline">
-                <span class="summary-inline-label">Saldo del mes</span>
-                <span class="summary-inline-value" style="color:#c2410c;">${{ "{:,.0f}".format(pendiente_mes) }}</span>
-            </div>
-            <small class="text-muted mt-1 d-block">{{ top_concepto.nombre if top_concepto else 'Sin movimientos' }}</small>
+    <div class="card summary-card" style="background:#fff7ed; border-color:#fdba74;">
+        <div class="summary-inline">
+            <span class="summary-inline-label">Saldo del mes</span>
+            <span class="summary-inline-value" style="color:#c2410c;">${{ "{:,.0f}".format(pendiente_mes) }}</span>
+        </div>
+        <div class="summary-card-actions">
+            <span class="summary-card-note">{{ top_concepto.nombre if top_concepto else 'Sin movimientos' }}</span>
+            <button class="btn btn-sm btn-outline-warning" type="button" data-bs-toggle="collapse" data-bs-target="#detalleSaldoMes">
+                <i class="bi bi-eye"></i>
+            </button>
         </div>
     </div>
 </div>
 
-{% if pendientes_anteriores %}
-<div class="card mb-3">
-    <div class="card-body p-3">
-        <div class="d-flex justify-content-between align-items-center">
-            <div>
-                <h6 class="fw-bold text-danger mb-1"><i class="bi bi-exclamation-triangle"></i> Pendientes anteriores</h6>
-                <small class="text-muted">Se muestra el saldo real restante, no solo el valor original del registro.</small>
+<div class="mb-3">
+    <div class="collapse" id="detalleAbonadoAnterior">
+        <div class="summary-detail-card mb-2">
+            <div class="row g-2">
+                {% for item in compras_pagadas_anteriores %}
+                <div class="col-12 col-lg-6">
+                    <div class="summary-detail-row">
+                        <div class="min-w-0">
+                            <div class="fw-semibold">{{ item.compra.producto_compra.nombre if item.compra.producto_compra else item.compra.descripcion }}</div>
+                            <small class="text-muted">{{ item.compra.fecha.strftime('%d/%m/%Y') }}{% if item.compra.tercero %} | {{ item.compra.tercero.nombre }}{% endif %}</small>
+                        </div>
+                        <div class="text-end">
+                            <div class="text-success fw-bold">${{ "{:,.0f}".format(item.abonado) }}</div>
+                            <small class="text-muted">Saldo ${{ "{:,.0f}".format(item.saldo) }}</small>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="col-12 text-muted small">No hay abonos de meses anteriores.</div>
+                {% endfor %}
             </div>
-            <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="collapse" data-bs-target="#pendientesAnteriores">
-                Ver / ocultar
-            </button>
         </div>
-        <div class="collapse mt-3" id="pendientesAnteriores">
+    </div>
+    <div class="collapse" id="detalleSaldoAnterior">
+        <div class="summary-detail-card mb-2">
             <div class="row g-2">
                 {% for item in pendientes_anteriores %}
                 <div class="col-12 col-lg-6">
-                    <div class="border rounded p-2 bg-white d-flex justify-content-between gap-2">
-                        <div>
+                    <div class="summary-detail-row">
+                        <div class="min-w-0">
                             <div class="fw-semibold">{{ item.compra.producto_compra.nombre if item.compra.producto_compra else item.compra.descripcion }}</div>
                             <small class="text-muted">{{ item.mes_nombre }} {{ item.anio }}{% if item.compra.tercero %} | {{ item.compra.tercero.nombre }}{% endif %}</small>
                         </div>
@@ -203,12 +249,63 @@
                         </div>
                     </div>
                 </div>
+                {% else %}
+                <div class="col-12 text-muted small">No hay saldos pendientes de meses anteriores.</div>
                 {% endfor %}
             </div>
         </div>
     </div>
+    <div class="collapse" id="detalleMesActual">
+        <div class="summary-detail-card mb-2">
+            <div class="row g-2">
+                {% for item in items_mes_actual %}
+                <div class="col-12 col-lg-6">
+                    <div class="summary-detail-row">
+                        <div class="min-w-0">
+                            <div class="fw-semibold">{{ item.item }}</div>
+                            <small class="text-muted">{{ item.concepto }}{% if item.proveedor != '-' %} | {{ item.proveedor }}{% endif %}</small>
+                        </div>
+                        <div class="text-end">
+                            <div class="text-primary fw-bold">${{ "{:,.0f}".format(item.abonado) }}</div>
+                            <small class="text-muted">Total ${{ "{:,.0f}".format(item.valor) }}</small>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="col-12 text-muted small">No hay compras registradas en {{ meses[mes-1] }}.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="collapse" id="detalleSaldoMes">
+        <div class="summary-detail-card mb-2">
+            <div class="row g-2">
+                {% set pendientes_mes = namespace(total=0) %}
+                {% for item in compras_cards %}
+                {% if item.saldo > 0 %}
+                {% set pendientes_mes.total = pendientes_mes.total + 1 %}
+                {% set compra = item.compra %}
+                <div class="col-12 col-lg-6">
+                    <div class="summary-detail-row">
+                        <div class="min-w-0">
+                            <div class="fw-semibold">{{ compra.producto_compra.nombre if compra.producto_compra else compra.descripcion }}</div>
+                            <small class="text-muted">{{ compra.concepto_compra.nombre if compra.concepto_compra else 'Sin concepto' }}{% if compra.tercero %} | {{ compra.tercero.nombre }}{% endif %}</small>
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-bold" style="color:#c2410c;">${{ "{:,.0f}".format(item.saldo) }}</div>
+                            <small class="text-muted text-uppercase">{{ item.estado }}</small>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+                {% if pendientes_mes.total == 0 %}
+                <div class="col-12 text-muted small">No hay saldo pendiente en {{ meses[mes-1] }}.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
 </div>
-{% endif %}
 
 {% if items_mes_actual %}
 <div class="card resumen-items mb-3">
