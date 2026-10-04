@@ -50,8 +50,8 @@
     .summary-row-grid {
         align-items: center;
         display: grid;
-        gap: 12px;
-        grid-template-columns: minmax(220px, 2fr) minmax(110px, 0.8fr) minmax(130px, 1fr) minmax(130px, 1fr) minmax(140px, 1fr) minmax(150px, 1fr);
+        gap: 8px;
+        grid-template-columns: minmax(210px, 2fr) minmax(100px, 0.75fr) minmax(120px, 0.9fr) minmax(120px, 0.9fr) minmax(130px, 1fr) minmax(190px, 1.25fr);
     }
     .summary-header {
         background: #fff;
@@ -77,8 +77,9 @@
     .summary-badge-vencido { background: #fee2e2; color: #991b1b; }
     .summary-badge-parcial { background: #ede9fe; color: #6d28d9; }
     .summary-badge-por_causar { background: #e2e8f0; color: #475569; }
-    .summary-actions { display: flex; flex-wrap: wrap; gap: 4px; }
-    .summary-actions .btn { padding: 0.2rem 0.45rem; }
+    .summary-actions { display: flex; flex-wrap: nowrap; gap: 4px; }
+    .summary-actions .btn { align-items: center; display: inline-flex; gap: 3px; min-height: 30px; padding: 0.2rem 0.42rem; white-space: nowrap; }
+    .summary-actions .btn-history { width: 32px; justify-content: center; padding-left: 0; padding-right: 0; }
     @media (max-width: 991px) {
         .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .summary-table { max-height: none; overflow: visible; }
@@ -380,7 +381,7 @@
                     </button>
                     {% endif %}
                 {% endif %}
-                <a href="{{ url_for('servicios.detalle', id=s.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary" title="Historial mes a mes">
+                <a href="{{ url_for('servicios.detalle', id=s.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary btn-history" title="Historial mes a mes">
                     <i class="bi bi-clock-history"></i>
                 </a>
             </div>
