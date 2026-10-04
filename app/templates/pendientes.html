@@ -44,7 +44,7 @@
         <div>
             <div class="fw-semibold small">{{ nombre }}</div>
             <div class="fw-bold text-primary">${{ "{:,.0f}".format(datos.total) }}</div>
-            <small class="text-muted">{{ datos.items }} items</small>
+            <small class="text-muted">{{ datos['items'] }} items</small>
         </div>
         <button class="btn btn-outline-secondary btn-sm" onclick="filtrarModulo('{{ nombre }}', this)">Ver detalle</button>
     </div>
