@@ -3,9 +3,26 @@
 
 {% block content %}
 <style>
-    .metric { border: 1px solid #e2e8f0; }
+    .metric { border: 1px solid #e2e8f0; min-height: 54px; }
+    .metric-inline { align-items: center; display: flex; gap: 0.75rem; justify-content: space-between; }
     .metric-label { color: #64748b; font-size: 0.78rem; }
     .metric-value { font-size: 1.1rem; font-weight: 700; }
+    .module-card {
+        border: 1px solid #e2e8f0;
+        cursor: pointer;
+        min-width: 210px;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    }
+    .module-card:hover,
+    .module-card.active {
+        border-color: #2563eb;
+        box-shadow: 0 2px 8px rgba(37,99,235,0.16);
+        transform: translateY(-1px);
+    }
+    .module-card-main { align-items: center; display: flex; gap: 0.75rem; justify-content: space-between; }
+    .module-card-name { font-size: 0.82rem; font-weight: 700; }
+    .module-card-items { color: #64748b; font-size: 0.72rem; white-space: nowrap; }
+    .module-card-value { color: #0d6efd; font-weight: 700; white-space: nowrap; }
     .estado-dot { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
     .dot-ok { background:#10b981; }
     .dot-warn { background:#f59e0b; }
@@ -32,22 +49,23 @@
 </div>
 
 <div class="row g-2 mb-3">
-    <div class="col-6 col-lg-3"><div class="card metric p-3"><div class="metric-label">Total a pagar</div><div class="metric-value text-primary">${{ "{:,.0f}".format(total_mes.total) }}</div></div></div>
-    <div class="col-6 col-lg-3"><div class="card metric p-3"><div class="metric-label">Total cancelado</div><div class="metric-value text-success">${{ "{:,.0f}".format(total_mes.cancelado) }}</div></div></div>
-    <div class="col-6 col-lg-3"><div class="card metric p-3"><div class="metric-label">Pendiente vencido</div><div class="metric-value text-danger">${{ "{:,.0f}".format(total_mes.vencido) }}</div></div></div>
-    <div class="col-6 col-lg-3"><div class="card metric p-3"><div class="metric-label">Pendiente por vencer</div><div class="metric-value text-warning">${{ "{:,.0f}".format(total_mes.por_vencer) }}</div></div></div>
+    <div class="col-12 col-md-6 col-xl-3"><div class="card metric p-3"><div class="metric-inline"><div class="metric-label">Total a pagar</div><div class="metric-value text-primary">${{ "{:,.0f}".format(total_mes.total) }}</div></div></div></div>
+    <div class="col-12 col-md-6 col-xl-3"><div class="card metric p-3"><div class="metric-inline"><div class="metric-label">Total cancelado</div><div class="metric-value text-success">${{ "{:,.0f}".format(total_mes.cancelado) }}</div></div></div></div>
+    <div class="col-12 col-md-6 col-xl-3"><div class="card metric p-3"><div class="metric-inline"><div class="metric-label">Pendiente vencido</div><div class="metric-value text-danger">${{ "{:,.0f}".format(total_mes.vencido) }}</div></div></div></div>
+    <div class="col-12 col-md-6 col-xl-3"><div class="card metric p-3"><div class="metric-inline"><div class="metric-label">Pendiente por vencer</div><div class="metric-value text-warning">${{ "{:,.0f}".format(total_mes.por_vencer) }}</div></div></div></div>
 </div>
 
 <div class="d-flex flex-wrap gap-2 mb-2">
     {% for nombre, datos in resumen.items() %}
-    <div class="card px-3 py-2 d-flex flex-row align-items-center gap-3">
-        <div>
-            <div class="fw-semibold small">{{ nombre }}</div>
-            <div class="fw-bold text-primary">${{ "{:,.0f}".format(datos.total) }}</div>
-            <small class="text-muted">{{ datos['items'] }} items</small>
+    <button type="button" class="card module-card px-3 py-2 text-start bg-white" onclick="filtrarModulo('{{ nombre }}', this)">
+        <div class="module-card-main">
+            <div>
+                <div class="module-card-name">{{ nombre }}</div>
+                <div class="module-card-items">{{ datos['items'] }} items</div>
+            </div>
+            <div class="module-card-value">${{ "{:,.0f}".format(datos.total) }}</div>
         </div>
-        <button class="btn btn-outline-secondary btn-sm" onclick="filtrarModulo('{{ nombre }}', this)">Ver detalle</button>
-    </div>
+    </button>
     {% endfor %}
     <div id="btn-quitar" style="display:none;align-self:center">
         <button class="btn btn-sm btn-outline-danger" onclick="filtrarModulo('', null)">Quitar filtro</button>
@@ -97,7 +115,7 @@ function filtrarModulo(modulo, btn) {
         f.style.display = (!modulo || f.dataset.modulo === modulo) ? '' : 'none';
     });
     document.getElementById('btn-quitar').style.display = modulo ? 'flex' : 'none';
-    document.querySelectorAll('[onclick^="filtrarModulo"]').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.module-card').forEach(function(b) { b.classList.remove('active'); });
     if (btn) btn.classList.add('active');
 }
 </script>
