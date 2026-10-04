@@ -65,9 +65,6 @@
         </div>
     </button>
     {% endfor %}
-    <div id="btn-quitar" style="display:none;align-self:center">
-        <button class="btn btn-sm btn-outline-danger" onclick="filtrarModulo('', null)">Quitar filtro</button>
-    </div>
 </div>
 
 <div class="card">
@@ -109,12 +106,13 @@
 </div>
 <script>
 function filtrarModulo(modulo, btn) {
+    var yaActivo = btn && btn.classList.contains('active');
+    var moduloFiltrado = yaActivo ? '' : modulo;
     document.querySelectorAll('tbody tr[data-modulo]').forEach(function(f) {
-        f.style.display = (!modulo || f.dataset.modulo === modulo) ? '' : 'none';
+        f.style.display = (!moduloFiltrado || f.dataset.modulo === moduloFiltrado) ? '' : 'none';
     });
-    document.getElementById('btn-quitar').style.display = modulo ? 'flex' : 'none';
     document.querySelectorAll('.module-card').forEach(function(b) { b.classList.remove('active'); });
-    if (btn) btn.classList.add('active');
+    if (btn && moduloFiltrado) btn.classList.add('active');
 }
 </script>
 {% endblock %}
