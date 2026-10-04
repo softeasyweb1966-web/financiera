@@ -45,6 +45,26 @@
     .title-meta { font-size: 0.78rem; color: #7c3aed; font-weight: 700; }
     .card-meta-line { font-size: 0.75rem; line-height: 1.35; }
     .tab-pane-box { border: 1px solid #e2e8f0; border-top: 0; border-radius: 0 0 14px 14px; background: #fff; padding: 14px; }
+    .summary-table { max-height: calc(100vh - 210px); overflow: auto; }
+    .summary-header,
+    .summary-row-grid {
+        align-items: center;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: minmax(220px, 2fr) minmax(110px, 0.8fr) minmax(130px, 1fr) minmax(130px, 1fr) minmax(140px, 1fr) minmax(150px, 1fr);
+    }
+    .summary-header {
+        background: #fff;
+        border-bottom: 1px solid #cbd5e1;
+        color: #475569;
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 8px 0;
+        position: sticky;
+        text-transform: uppercase;
+        top: 0;
+        z-index: 3;
+    }
     .summary-row { border-bottom: 1px solid #e2e8f0; padding: 10px 0; }
     .summary-row:last-child { border-bottom: 0; }
     .summary-title { font-size: 0.92rem; font-weight: 700; color: #0f172a; }
@@ -57,8 +77,13 @@
     .summary-badge-vencido { background: #fee2e2; color: #991b1b; }
     .summary-badge-parcial { background: #ede9fe; color: #6d28d9; }
     .summary-badge-por_causar { background: #e2e8f0; color: #475569; }
+    .summary-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+    .summary-actions .btn { padding: 0.2rem 0.45rem; }
     @media (max-width: 991px) {
         .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .summary-table { max-height: none; overflow: visible; }
+        .summary-header { display: none; }
+        .summary-row-grid { grid-template-columns: 1fr; gap: 6px; }
     }
     @media (max-width: 575px) {
         .metric-grid { grid-template-columns: 1fr; }
@@ -366,15 +391,24 @@
 </div>
 
 <div class="tab-pane fade tab-pane-box" id="servicios-resumen" role="tabpanel" aria-labelledby="servicios-resumen-tab">
+    <div class="summary-table">
+        <div class="summary-header">
+            <div>Item</div>
+            <div>Estado</div>
+            <div>Fecha estimada</div>
+            <div>Valor estimado</div>
+            <div>D&iacute;as para pago</div>
+            <div>Acciones</div>
+        </div>
     {% for item in servicios_mes %}
     {% set s = item.servicio %}
     <div class="summary-row">
-        <div class="row g-2 align-items-center">
-            <div class="col-lg-4">
+        <div class="summary-row-grid">
+            <div>
                 <div class="summary-title">{{ s.concepto.nombre }}</div>
                 <div class="summary-subtitle">{{ s.tercero.nombre }}{% if s.referencia %} - {{ s.referencia }}{% endif %}</div>
             </div>
-            <div class="col-lg-2">
+            <div>
                 {% set badge_class = 'summary-badge-por_causar' %}
                 {% if item.resumen_estado == 'Pagado' %}
                     {% set badge_class = 'summary-badge-pagado' %}
@@ -387,35 +421,47 @@
                 {% endif %}
                 <span class="summary-badge {{ badge_class }}">{{ item.resumen_estado }}</span>
             </div>
-            <div class="col-lg-2">
-                <div class="summary-meta">{{ item.resumen_fecha_label }}</div>
+            <div>
                 <div class="summary-value">{{ item.resumen_fecha.strftime('%d/%m/%Y') if item.resumen_fecha else '-' }}</div>
             </div>
-            <div class="col-lg-2">
-                <div class="summary-meta">{{ item.resumen_valor_label }}</div>
+            <div>
                 <div class="summary-value">${{ "{:,.0f}".format(item.resumen_valor or 0) if item.resumen_valor else '-' }}</div>
             </div>
-            <div class="col-lg-2">
-                <div class="summary-meta">Dias para pago</div>
+            <div>
                 <div class="summary-value {{ item.resumen_dias_clase }}">{{ item.resumen_dias_texto }}</div>
             </div>
-            <div class="col-lg-12 mt-1">
+            <div class="summary-actions">
+                {% if item.estado != 'pagado' %}
+                <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
+                        onclick='prepararPago({{ s.id }}, {{ s.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or item.resumen_valor or 0 }})'>
+                    <i class="bi bi-check-lg"></i> Pagar
+                </button>
+                {% if item.estado == 'sin_causar' %}
+                <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#modalPago"
+                        onclick='prepararCausar({{ s.id }}, {{ s.tercero.nombre|tojson }}, {{ mes }}, {{ item.valor_mostrar or item.resumen_valor or 0 }}, {{ s.dia_limite_pago if s.dia_limite_pago is not none else "null" }})'>
+                    <i class="bi bi-pencil"></i> Causar
+                </button>
+                {% endif %}
+                {% endif %}
                 {% if item.pago and item.estado in ['pagado', 'parcial'] %}
                     {% if item.pago.comprobante_archivo %}
                     <a href="{{ url_for('servicios.descargar_comprobante', pago_id=item.pago.id) }}" class="btn btn-sm btn-outline-info">
-                        <i class="bi bi-paperclip"></i> Ver recibo de pago
+                        <i class="bi bi-paperclip"></i>
                     </a>
                     <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalComprobante"
                             onclick='prepararComprobante({{ item.pago.id }}, {{ s.tercero.nombre|tojson }}, true)'>
-                        <i class="bi bi-arrow-repeat"></i> Cambiar recibo
+                        <i class="bi bi-arrow-repeat"></i>
                     </button>
                     {% else %}
                     <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalComprobante"
                             onclick='prepararComprobante({{ item.pago.id }}, {{ s.tercero.nombre|tojson }}, false)'>
-                        <i class="bi bi-upload"></i> Adjuntar recibo
+                        <i class="bi bi-upload"></i>
                     </button>
                     {% endif %}
                 {% endif %}
+                <a href="{{ url_for('servicios.detalle', id=s.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary" title="Historial mes a mes">
+                    <i class="bi bi-clock-history"></i>
+                </a>
             </div>
         </div>
     </div>
@@ -423,6 +469,7 @@
     {% if not servicios_mes %}
     <div class="text-center text-muted py-4">No hay servicios programados para este mes.</div>
     {% endif %}
+    </div>
 </div>
 
 <div class="tab-pane fade tab-pane-box" id="servicios-grupos" role="tabpanel" aria-labelledby="servicios-grupos-tab">
