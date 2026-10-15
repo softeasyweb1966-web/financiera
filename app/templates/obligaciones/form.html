@@ -12,9 +12,10 @@
                 <strong>Modalidades:</strong>
                 Bancario (cuota fija mensual) - Credito con amortizacion - Solo interes (paga interes mensual, devuelve capital al final) -
                 Cadena (cuota fija entre personas) - Pago total (se paga todo cuando se pacte) -
-                Corto plazo (prestamo a dias: 8, 15, 30 dias).
+                Corto plazo (prestamo a dias: 8, 15, 30 dias) - Capital fijo e interés anticipado.
                 <br><strong>Cadena:</strong> use fecha inicio, fecha final, fecha en que recibe y frecuencia mensual o quincenal.
                 <br><strong>Tabla de amortizacion:</strong> defina desde que fecha aplica y pegue las filas de la tabla. Desde ese corte la causacion se toma directo de la tabla.
+                <br><strong>Capital fijo e interés anticipado:</strong> la primera cuota es solo interés sobre el capital inicial; desde la segunda se abona el capital fijo y el interés se calcula sobre el saldo resultante.
                 <br>Si no encuentra el concepto o tercero, creelos desde
                 <a href="{{ url_for('catalogos.conceptos') }}">Conceptos</a> o
                 <a href="{{ url_for('terceros.nuevo') }}">Terceros</a>.
@@ -246,7 +247,8 @@ function toggleCampos() {
     const bloqueTabla = document.getElementById('bloque_tabla_amortizacion');
     const fechaInicioTabla = document.getElementById('fecha_inicio_amortizacion');
     const tablaAmortizacion = document.getElementById('tabla_amortizacion');
-    const mostrarDesglose = requiereDesglose.checked;
+    const modalidadCapitalFijo = mod === 'capital_fijo_interes_anticipado';
+    const mostrarDesglose = requiereDesglose.checked || modalidadCapitalFijo;
     const esTablaAmortizacion = mod === 'credito_con_amortizacion' || mod === 'bancario_tabla_amortizacion';
 
     plazoDias.style.display = 'none';
@@ -267,7 +269,10 @@ function toggleCampos() {
         tablaAmortizacion.required = false;
     }
 
-    if (mod === 'prestamo_corto_plazo') {
+    if (modalidadCapitalFijo) {
+        cuotas.style.display = 'block';
+        cuotaFija.style.display = 'none';
+    } else if (mod === 'prestamo_corto_plazo') {
         plazoDias.style.display = 'block';
         plazoMeses.style.display = 'none';
         cuotas.style.display = mostrarDesglose ? 'block' : 'none';

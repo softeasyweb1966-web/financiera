@@ -30,6 +30,7 @@ MODALIDADES = [
     ('cadena', 'Cadena (cuota fija entre personas)'),
     ('pago_total_pactado', 'Pago total pactado'),
     ('prestamo_corto_plazo', 'Préstamo a días (corto plazo)'),
+    ('capital_fijo_interes_anticipado', 'Capital fijo e interés anticipado'),
 ]
 
 MODALIDAD_LABELS = dict(MODALIDADES)
@@ -166,6 +167,31 @@ def _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes):
 
 
 def _componentes_programados_periodo(obligacion, anio, mes):
+    if obligacion.modalidad == 'capital_fijo_interes_anticipado':
+        inicio = _coerce_date(obligacion.fecha_inicio)
+        periodo = date(anio, mes, 1)
+        if not inicio or periodo < inicio.replace(day=1):
+            return {'capital': 0, 'interes': 0, 'seguro_vida': 0, 'otros': 0, 'total': 0,
+                    'tasa_namv': None, 'saldo_capital': float(obligacion.saldo_actual or obligacion.capital_inicial or 0),
+                    'fecha_pago': None}
+        numero = (periodo.year - inicio.year) * 12 + periodo.month - inicio.month
+        capital_inicial = Decimal(str(obligacion.capital_inicial or obligacion.saldo_actual or 0))
+        abono = Decimal(str(obligacion.valor_cuota_capital or 0))
+        tasa = Decimal(str(obligacion.tasa_interes_mensual or 0)) / 100
+        # Primera cuota: sólo interés anticipado. Desde la segunda, primero
+        # se aplica el abono fijo y el interés se calcula sobre el saldo nuevo.
+        if numero == 0:
+            capital = Decimal('0')
+            base_interes = capital_inicial
+        else:
+            capital = min(abono, max(capital_inicial - abono * numero, Decimal('0')))
+            base_interes = max(capital_inicial - abono * numero, Decimal('0'))
+        interes = (base_interes * tasa).quantize(Decimal('0.01'))
+        saldo = max(capital_inicial - abono * (numero if numero == 0 else numero + 1), Decimal('0'))
+        return {'capital': float(capital), 'interes': float(interes), 'seguro_vida': 0, 'otros': 0,
+                'total': float(capital + interes), 'tasa_namv': None, 'saldo_capital': float(saldo),
+                'fecha_pago': inicio.replace(day=min(obligacion.dia_limite_pago or inicio.day,
+                                                     monthrange(anio, mes)[1]))}
     if intereses_service.aplica(obligacion) and not abonos_service.activo(obligacion):
         fechas = _fechas_programadas_obligacion(obligacion, anio, mes)
         total = _valor_programado_mes_obligacion(obligacion, anio, mes)
@@ -1133,6 +1159,12 @@ def _date_or_none(valor):
 
 
 def _validar_desglose_cuota_form(modalidad, requiere_desglose, valor_cuota_fija, valor_cuota_capital, valor_cuota_interes):
+    if modalidad == 'capital_fijo_interes_anticipado':
+        if _float_or_none(valor_cuota_capital) in (None, 0):
+            return 'Esta modalidad requiere definir el abono fijo a capital.'
+        if _float_or_none(valor_cuota_interes) not in (None, 0):
+            return 'En esta modalidad el interés se calcula automáticamente; no diligencie un interés fijo.'
+        return None
     if _es_modalidad_amortizacion(modalidad):
         return None
 
