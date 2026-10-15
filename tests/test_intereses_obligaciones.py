@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import test_abonos_obligaciones as fixtures
 from app import db
-from app.models import PagoObligacion, AjusteObligacion, AbonoCapitalObligacion
+from app.models import PagoObligacion, AjusteObligacion, AbonoCapitalObligacion, HistorialPagoObligacion
 from app.routes.obligaciones import (
     _fechas_programadas_obligacion, _valor_programado_mes_obligacion,
     _valor_deuda_periodo_obligacion, _componentes_programados_periodo,
@@ -220,6 +220,45 @@ class InteresesTest(unittest.TestCase):
         self.assertEqual(historial.status_code, 200)
         self.assertIn(b'Capital cancelado el 10/09/2026', historial.data)
         self.assertEqual(AbonoCapitalObligacion.query.count(), 1)
+
+    def test_anular_causacion_deja_cuota_sin_causar_y_conserva_historial(self):
+        self.prestamo()
+        pago = PagoObligacion(obligacion_id=self.o.id, anio=2026, mes=9,
+            valor_causado=100000, estado='causado', fecha_causacion=date(2026, 9, 10),
+            dia_pago_reportado=10)
+        db.session.add(pago)
+        db.session.commit()
+        pago_id = pago.id
+
+        # Sin motivo no debe anular
+        self.client.post(f'/obligaciones/pago/{pago_id}/anular-causacion', data={'motivo': ''})
+        self.assertEqual(PagoObligacion.query.get(pago_id).estado, 'causado')
+
+        resp = self.client.post(f'/obligaciones/pago/{pago_id}/anular-causacion',
+            data={'motivo': 'Causacion registrada por error'})
+        self.assertEqual(resp.status_code, 302)
+        p = PagoObligacion.query.get(pago_id)
+        self.assertEqual(p.estado, 'sin_causar')
+        self.assertIsNone(p.valor_causado)
+        self.assertIsNone(p.fecha_causacion)
+        self.assertIsNone(p.dia_pago_reportado)
+        self.assertIn('CAUSACION ANULADA', p.observaciones or '')
+        self.assertEqual(
+            HistorialPagoObligacion.query.filter_by(accion='anular_causacion').count(), 1)
+
+    def test_anular_causacion_bloquea_cuota_con_pago(self):
+        self.prestamo()
+        pago = PagoObligacion(obligacion_id=self.o.id, anio=2026, mes=9,
+            valor_causado=100000, valor_pagado=100000, componente_interes=100000,
+            estado='pagado', fecha_pago=date(2026, 9, 10))
+        db.session.add(pago)
+        db.session.commit()
+        pago_id = pago.id
+        self.client.post(f'/obligaciones/pago/{pago_id}/anular-causacion',
+            data={'motivo': 'Intento indebido'})
+        p = PagoObligacion.query.get(pago_id)
+        self.assertEqual(p.estado, 'pagado')
+        self.assertEqual(float(p.valor_causado), 100000)
 
 
 class MigracionInteresesTest(unittest.TestCase):

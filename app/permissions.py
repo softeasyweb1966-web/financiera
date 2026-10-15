@@ -108,6 +108,7 @@ CANCEL_ENDPOINTS = {
     'revertir_deuda',
     'anular',
     'anular_pago',
+    'anular_causacion',
     'ajustar_pago',
 }
 

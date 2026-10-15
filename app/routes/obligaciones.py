@@ -2610,6 +2610,42 @@ def anular_pago(pago_id):
     return redirect(request.form.get('next') or url_for('obligaciones.pagos', anio=pago.anio, mes=pago.mes))
 
 
+@obligaciones_bp.route('/pago/<int:pago_id>/anular-causacion', methods=['POST'])
+def anular_causacion(pago_id):
+    """Anula la causación de una cuota (deja de exigir el cobro) sin tocar pagos reales."""
+    pago = PagoObligacion.query.get_or_404(pago_id)
+    motivo = (request.form.get('motivo') or '').strip()
+    destino = request.form.get('next') or url_for('obligaciones.pagos', anio=pago.anio, mes=pago.mes)
+
+    if not motivo:
+        flash('Debe indicar el motivo para anular la causacion.', 'danger')
+        return redirect(destino)
+
+    if pago.estado in ('pagado', 'parcial') or float(pago.valor_pagado or 0) > 0:
+        flash('Esta cuota tiene un pago registrado. Primero anule el pago y luego la causacion.', 'warning')
+        return redirect(destino)
+
+    if pago.estado == 'saldo_anulado':
+        flash('Esta cuota tiene un saldo anulado. Revierta la anulacion de deuda antes de tocar la causacion.', 'warning')
+        return redirect(destino)
+
+    if not pago.valor_causado and pago.estado not in ('causado', 'vencido', 'pendiente'):
+        flash('Esta cuota no esta causada, no hay nada que anular.', 'warning')
+        return redirect(destino)
+
+    _registrar_historial_pago_obligacion(pago, 'anular_causacion', motivo)
+    pago.estado = 'sin_causar'
+    pago.valor_causado = None
+    pago.fecha_causacion = None
+    pago.dia_pago_reportado = None
+    marca = f'CAUSACION ANULADA {date.today().strftime("%d/%m/%Y")}: {motivo}'
+    pago.observaciones = f'{pago.observaciones}\n{marca}'.strip() if pago.observaciones else marca
+
+    db.session.commit()
+    flash('Causacion anulada. La cuota vuelve a estar sin causar y el historial se conservo.', 'success')
+    return redirect(destino)
+
+
 @obligaciones_bp.route('/pago/<int:pago_id>/ajustar', methods=['POST'])
 def ajustar_pago_cancelado(pago_id):
     pago = PagoObligacion.query.get_or_404(pago_id)
