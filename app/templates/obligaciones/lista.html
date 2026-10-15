@@ -7,6 +7,7 @@
     <div class="d-flex gap-2">
         <a href="{{ url_for('obligaciones.pagos', anio=anio) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-calendar-check"></i> Pagos {{ anio }}</a>
         <a href="{{ url_for('obligaciones.verificar_valores', anio=anio) }}" class="btn btn-outline-warning btn-sm"><i class="bi bi-search"></i> Verificar valores</a>
+        <a href="{{ url_for('obligaciones.reporte_creditos') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-bar-chart"></i> Reporte de créditos</a>
         <a href="{{ url_for('catalogos.conceptos') }}" class="btn btn-outline-secondary btn-sm" title="Administrar conceptos de obligaciones"><i class="bi bi-tags"></i> Conceptos</a>
         <a href="{{ url_for('obligaciones.nueva') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Nueva obligación</a>
     </div>
@@ -152,6 +153,7 @@
                     <td class="text-nowrap">
                         <a href="{{ url_for('obligaciones.detalle', id=o.id) }}" class="btn btn-sm btn-outline-primary py-0" title="Historial"><i class="bi bi-clock-history"></i></a>
                         <a href="{{ url_for('obligaciones.editar', id=o.id) }}" class="btn btn-sm btn-outline-secondary py-0" title="Editar"><i class="bi bi-pencil"></i></a>
+                        {% if o.estado != 'finalizado' %}<a href="{{ url_for('obligaciones.editar', id=o.id) }}#finalizar_obligacion" class="btn btn-sm btn-outline-danger py-0" title="Finalizar obligación"><i class="bi bi-check-circle"></i></a>{% endif %}
                         <a href="{{ url_for('obligaciones.refinanciaciones', id=o.id) }}" class="btn btn-sm btn-outline-info py-0" title="Abonos, refinanciaciones y cambios"><i class="bi bi-arrow-repeat"></i></a>
                     </td>
                 </tr>

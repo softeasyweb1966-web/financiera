@@ -1165,6 +1165,39 @@ def lista():
                            obligaciones=obligaciones, anio=anio, meses=MESES)
 
 
+@obligaciones_bp.route('/reporte-creditos')
+def reporte_creditos():
+    """Resumen de créditos seleccionados y de los pagos efectivamente registrados."""
+    ids = request.args.getlist('obligacion_id', type=int)
+    todas = Obligacion.query.filter(Obligacion.activo.is_(True)).order_by(Obligacion.id).all()
+    consulta = Obligacion.query.filter(Obligacion.activo.is_(True))
+    if ids:
+        consulta = consulta.filter(Obligacion.id.in_(ids))
+    obligaciones = consulta.order_by(Obligacion.id).all()
+    filas = []
+    for o in obligaciones:
+        pagos = o.pagos.filter(PagoObligacion.estado.in_(['pagado', 'parcial'])).all()
+        pagos = [p for p in pagos if p.estado != 'anulado']
+        capital_pagos = sum((p.componente_capital or 0) for p in pagos)
+        intereses = sum((p.componente_interes or 0) for p in pagos)
+        abonos = AbonoCapitalObligacion.query.filter_by(obligacion_id=o.id).all()
+        capital_abonos = sum((a.valor_abono or 0) for a in abonos if not a.revertido)
+        capital = capital_pagos + capital_abonos
+        fechas_capital = [p.fecha_pago for p in pagos if (p.componente_capital or 0) > 0 and p.fecha_pago]
+        filas.append({
+            'obligacion': o,
+            'valor_credito': o.capital_inicial or 0,
+            'fecha_inicio': o.fecha_inicio,
+            'fecha_final': o.fecha_finalizacion or o.fecha_vencimiento,
+            'fecha_pago_capital': o.fecha_pago_capital or (max(fechas_capital) if fechas_capital else None),
+            'capital': capital,
+            'intereses': intereses,
+            'total': capital + intereses,
+        })
+    return render_template('obligaciones/reporte_creditos.html', obligaciones=todas, filas=filas,
+                           seleccionados=ids)
+
+
 @obligaciones_bp.route('/verificar-valores')
 def verificar_valores():
     anio = request.args.get('anio', date.today().year, type=int)

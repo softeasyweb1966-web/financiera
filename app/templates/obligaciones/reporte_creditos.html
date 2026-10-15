@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Reporte de créditos{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h5 class="fw-bold mb-0"><i class="bi bi-bar-chart"></i> Reporte de créditos</h5>
+    <a href="{{ url_for('obligaciones.lista') }}" class="btn btn-outline-secondary btn-sm">Volver a obligaciones</a>
+</div>
+<form method="get" class="card p-3 mb-3">
+    <label class="form-label fw-semibold">Seleccione uno o varios créditos</label>
+    <select name="obligacion_id" class="form-select" multiple size="6">
+        {% for o in obligaciones %}
+        <option value="{{ o.id }}" {{ 'selected' if o.id in seleccionados else '' }}>{{ o.tercero.nombre }} — {{ o.concepto.nombre }}{% if o.referencia %} ({{ o.referencia }}){% endif %}</option>
+        {% endfor %}
+    </select>
+    <div class="form-text">Sin seleccionar, muestra todos los créditos activos. Use Ctrl/Cmd para seleccionar varios.</div>
+    <div class="mt-2"><button class="btn btn-primary btn-sm">Consultar</button> <a href="{{ url_for('obligaciones.reporte_creditos') }}" class="btn btn-outline-secondary btn-sm">Todos</a></div>
+</form>
+<div class="table-responsive card">
+<table class="table table-sm table-hover mb-0">
+<thead class="table-light"><tr><th>Crédito</th><th>Valor crédito</th><th>Fecha inicio</th><th>Fecha final</th><th>Fecha pago capital</th><th>Capital pagado</th><th>Intereses pagados</th><th>Total pagado</th></tr></thead>
+<tbody>{% for f in filas %}<tr>
+<td>{{ f.obligacion.tercero.nombre }}<br><small class="text-muted">{{ f.obligacion.concepto.nombre }}</small></td>
+<td>${{ "{:,.2f}".format(f.valor_credito|float) }}</td><td>{{ f.fecha_inicio.strftime('%d/%m/%Y') if f.fecha_inicio else '-' }}</td><td>{{ f.fecha_final.strftime('%d/%m/%Y') if f.fecha_final else '-' }}</td><td>{{ f.fecha_pago_capital.strftime('%d/%m/%Y') if f.fecha_pago_capital else '-' }}</td>
+<td>${{ "{:,.2f}".format(f.capital|float) }}</td><td>${{ "{:,.2f}".format(f.intereses|float) }}</td><td class="fw-bold">${{ "{:,.2f}".format(f.total|float) }}</td>
+</tr>{% else %}<tr><td colspan="8" class="text-center text-muted py-3">No hay créditos para mostrar.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}
