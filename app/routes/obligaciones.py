@@ -30,7 +30,7 @@ MODALIDADES = [
     ('cadena', 'Cadena (cuota fija entre personas)'),
     ('pago_total_pactado', 'Pago total pactado'),
     ('prestamo_corto_plazo', 'Préstamo a días (corto plazo)'),
-    ('capital_fijo_interes_anticipado', 'Capital fijo e interés anticipado'),
+    ('capital_fijo_anticipado', 'Capital fijo e interés anticipado'),
 ]
 
 MODALIDAD_LABELS = dict(MODALIDADES)
@@ -167,7 +167,7 @@ def _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes):
 
 
 def _componentes_programados_periodo(obligacion, anio, mes):
-    if obligacion.modalidad == 'capital_fijo_interes_anticipado':
+    if obligacion.modalidad == 'capital_fijo_anticipado':
         inicio = _coerce_date(obligacion.fecha_inicio)
         periodo = date(anio, mes, 1)
         if not inicio or periodo < inicio.replace(day=1):
@@ -1159,7 +1159,7 @@ def _date_or_none(valor):
 
 
 def _validar_desglose_cuota_form(modalidad, requiere_desglose, valor_cuota_fija, valor_cuota_capital, valor_cuota_interes):
-    if modalidad == 'capital_fijo_interes_anticipado':
+    if modalidad == 'capital_fijo_anticipado':
         if _float_or_none(valor_cuota_capital) in (None, 0):
             return 'Esta modalidad requiere definir el abono fijo a capital.'
         if _float_or_none(valor_cuota_interes) not in (None, 0):
