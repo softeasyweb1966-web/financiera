@@ -1219,6 +1219,7 @@ def reporte_creditos():
         pagos = [p for p in pagos if p.estado != 'anulado']
         capital_pagos = 0.0
         intereses = 0.0
+        total_pagado = 0.0
         for p in pagos:
             componentes = _componentes_programados_periodo(o, p.anio, p.mes)
             # Los pagos antiguos o registrados sin desglose conservan sólo el
@@ -1228,6 +1229,7 @@ def reporte_creditos():
                                    else componentes.get('capital', 0) or 0)
             intereses += float(p.componente_interes if p.componente_interes is not None
                                 else componentes.get('interes', 0) or 0)
+            total_pagado += float(p.valor_pagado or 0)
         abonos = AbonoCapitalObligacion.query.filter_by(obligacion_id=o.id).all()
         capital_abonos = sum(float(a.valor_abono or 0) for a in abonos if not a.revertido)
         capital = capital_pagos + capital_abonos
@@ -1240,7 +1242,9 @@ def reporte_creditos():
             'fecha_pago_capital': o.fecha_pago_capital or (max(fechas_capital) if fechas_capital else None),
             'capital': capital,
             'intereses': intereses,
-            'total': capital + intereses,
+            # El costo real se basa en el dinero efectivamente pagado. Si un
+            # pago antiguo no tiene desglose, no debe desaparecer del total.
+            'total': total_pagado + capital_abonos,
         })
     return render_template('obligaciones/reporte_creditos.html', obligaciones=todas, filas=filas,
                            seleccionados=ids)
