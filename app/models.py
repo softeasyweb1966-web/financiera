@@ -375,7 +375,7 @@ class Obligacion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     tercero_id = db.Column(db.Integer, db.ForeignKey('terceros.id'), nullable=False)
     concepto_id = db.Column(db.Integer, db.ForeignKey('conceptos.id'), nullable=False)
-    modalidad = db.Column(db.String(30), nullable=False)
+    modalidad = db.Column(db.String(50), nullable=False)
     # Modalidades: solo_interes, cadena, pago_total_pactado, bancario_cuota_fija, credito_con_amortizacion
     capital_inicial = db.Column(db.Numeric(14, 2))
     saldo_actual = db.Column(db.Numeric(14, 2))
