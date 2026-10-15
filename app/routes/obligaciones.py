@@ -1217,8 +1217,17 @@ def reporte_creditos():
     for o in obligaciones:
         pagos = o.pagos.filter(PagoObligacion.estado.in_(['pagado', 'parcial'])).all()
         pagos = [p for p in pagos if p.estado != 'anulado']
-        capital_pagos = sum((p.componente_capital or 0) for p in pagos)
-        intereses = sum((p.componente_interes or 0) for p in pagos)
+        capital_pagos = 0
+        intereses = 0
+        for p in pagos:
+            componentes = _componentes_programados_periodo(o, p.anio, p.mes)
+            # Los pagos antiguos o registrados sin desglose conservan sólo el
+            # total pagado; para el reporte usamos el reparto calculado del
+            # crédito en ese período.
+            capital_pagos += (p.componente_capital if p.componente_capital is not None
+                              else componentes.get('capital', 0))
+            intereses += (p.componente_interes if p.componente_interes is not None
+                          else componentes.get('interes', 0))
         abonos = AbonoCapitalObligacion.query.filter_by(obligacion_id=o.id).all()
         capital_abonos = sum((a.valor_abono or 0) for a in abonos if not a.revertido)
         capital = capital_pagos + capital_abonos
