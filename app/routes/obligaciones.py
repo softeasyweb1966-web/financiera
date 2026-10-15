@@ -169,6 +169,13 @@ def _obligacion_usa_tabla_amortizacion_en_periodo(obligacion, anio, mes):
 def _componentes_programados_periodo(obligacion, anio, mes):
     if obligacion.modalidad == 'capital_fijo_anticipado':
         inicio = _coerce_date(obligacion.fecha_inicio)
+        # El mes de recepción no genera una cuota en el liquidador: el interés
+        # de ese primer período se descuenta al desembolsar. La primera cuota
+        # visible corresponde al mes siguiente y es sólo de intereses.
+        if inicio:
+            siguiente_mes = inicio.month + 1
+            inicio = date(inicio.year + (1 if siguiente_mes == 13 else 0),
+                          1 if siguiente_mes == 13 else siguiente_mes, 1)
         periodo = date(anio, mes, 1)
         if not inicio or periodo < inicio.replace(day=1):
             return {'capital': 0, 'interes': 0, 'seguro_vida': 0, 'otros': 0, 'total': 0,
@@ -645,6 +652,10 @@ def _fechas_programadas_obligacion(obligacion, anio, mes):
 
     fecha_inicio = _coerce_date(obligacion.fecha_inicio)
     fecha_final = _coerce_date(obligacion.fecha_vencimiento)
+    if obligacion.modalidad == 'capital_fijo_anticipado' and fecha_inicio:
+        siguiente_mes = fecha_inicio.month + 1
+        fecha_inicio = date(fecha_inicio.year + (1 if siguiente_mes == 13 else 0),
+                            1 if siguiente_mes == 13 else siguiente_mes, 1)
     dia_base_programado = _dia_base_obligacion(obligacion, fecha_inicio)
 
     if obligacion.modalidad == 'pago_total_pactado':
