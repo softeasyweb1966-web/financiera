@@ -4,6 +4,12 @@
 {% block content %}
 <a class="btn btn-outline-warning mb-3" href="{{ url_for('obligaciones.gestionar_deuda', id=obligacion.id) }}">Gestionar capital y anular cuotas / saldos</a>
 <p>Pago de intereses: {{ obligacion.tipo_interes or 'Sin definir (calendario anterior)' }}</p>
+{% for abono in obligacion.abonos_capital.all() if abono.opcion_recalculo == 'pago_capital' and not abono.revertido and abono.fecha_abono.year == anio %}
+<div class="alert alert-success">Capital cancelado el {{ abono.fecha_abono.strftime('%d/%m/%Y') }}:
+    <strong>${{ '{:,.0f}'.format(abono.valor_abono) }}</strong>.
+    Los intereses pendientes se conservan en el historial de cuotas.
+</div>
+{% endfor %}
 {% if obligacion._abono_plan_cache %}
 {% set ultimo_abono = obligacion._abono_plan_cache %}
 <div class="card p-3 mb-3">

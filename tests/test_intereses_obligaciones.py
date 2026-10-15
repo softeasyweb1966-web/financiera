@@ -184,6 +184,43 @@ class InteresesTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'name="tipo_interes"', response.data)
 
+    def test_capital_pendiente_sigue_visible_sin_interes_en_octubre(self):
+        self.prestamo()
+        self.o.saldo_actual = 15000000
+        self.o.tercero.nombre = 'KAREN-ECOBABY'
+        db.session.commit()
+        self.assertTrue(_obligacion_visible_mes(self.o, 2026, 10))
+        self.assertTrue(_obligacion_visible_mes(self.o, 2026, 11))
+        self.assertFalse(_obligacion_visible_mes(self.o, 2026, 6))
+        response = self.client.get('/obligaciones/pagos/2026/10')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'KAREN-ECOBABY', response.data)
+        self.assertIn(b'Capital pendiente', response.data)
+        self.assertEqual(self.o.saldo_actual, 15000000)
+        self.assertIsNone(self.o.fecha_pago_capital)
+        self.assertEqual(AbonoCapitalObligacion.query.count(), 0)
+        self.assertEqual(PagoObligacion.query.count(), 0)
+
+    def test_pago_real_septiembre_muestra_capital_cancelado_y_valor(self):
+        self.prestamo()
+        self.o.saldo_actual = 15000000
+        for mes in (7, 8):
+            db.session.add(PagoObligacion(obligacion_id=self.o.id, anio=2026, mes=mes,
+                valor_causado=100000, valor_pagado=100000, componente_interes=100000,
+                estado='pagado', fecha_pago=date(2026, mes, 10)))
+        db.session.commit()
+        self.client.post(f'/obligaciones/{self.o.id}/pagar-capital-intereses', data={
+            'fecha_pago': '2026-09-10', 'capital_confirmado': '15000000', 'motivo': 'Pago real'})
+        self.assertTrue(_obligacion_visible_mes(self.o, 2026, 9))
+        response = self.client.get('/obligaciones/pagos/2026/9')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Capital cancelado el 10/09/2026', response.data)
+        self.assertIn(b'Capital pagado: <strong>$15,000,000</strong>', response.data)
+        historial = self.client.get(f'/obligaciones/detalle/{self.o.id}?anio=2026')
+        self.assertEqual(historial.status_code, 200)
+        self.assertIn(b'Capital cancelado el 10/09/2026', historial.data)
+        self.assertEqual(AbonoCapitalObligacion.query.count(), 1)
+
 
 class MigracionInteresesTest(unittest.TestCase):
     def test_upgrade_idempotente_preserva_saldos(self):

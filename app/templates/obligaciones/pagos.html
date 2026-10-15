@@ -378,7 +378,12 @@
                 {% if item.es_informativo %}
                 <small class="text-muted d-block">Este valor se refleja en saldos solo en el mes pactado.</small>
                 {% endif %}
-                <small class="text-muted d-block">Saldo actual: <strong>${{ "{:,.0f}".format(o.saldo_actual) if o.saldo_actual else '-' }}</strong></small>
+                <small class="text-muted d-block">Saldo actual: <strong>${{ "{:,.0f}".format(o.saldo_actual or 0) }}</strong></small>
+                {% if o.fecha_pago_capital and (o.fecha_pago_capital.year, o.fecha_pago_capital.month) <= (anio, mes) %}
+                <small class="text-success d-block">Capital cancelado el {{ o.fecha_pago_capital.strftime('%d/%m/%Y') }}. Los intereses pendientes se muestran por separado.</small>
+                {% elif o.modalidad == 'solo_interes' and o.tipo_interes and o.saldo_actual and not item.cuota_esperada %}
+                <small class="text-warning d-block">Capital pendiente de pago. Este mes no tiene una nueva cuota de intereses programada.</small>
+                {% endif %}
                 {% if o.cuotas_pendientes is not none %}
                 <small class="text-muted d-block">Cuotas pendientes: <strong>{{ o.cuotas_pendientes }}</strong></small>
                 {% endif %}
@@ -430,7 +435,7 @@
             </div>
 
             <div class="mt-2 d-flex gap-1 flex-wrap">
-                {% if item.estado not in ['pagado', 'acordado', 'saldo_anulado'] and not item.es_informativo and (not o._abono_plan_cache or item.cuota_esperada > 0) and (not o.fecha_pago_capital or item.cuota_esperada > 0) %}
+                {% if item.estado not in ['pagado', 'acordado', 'saldo_anulado'] and not item.es_informativo and (not o._abono_plan_cache or item.cuota_esperada > 0) and (not o.fecha_pago_capital or item.cuota_esperada > 0) and (not (o.modalidad == 'solo_interes' and o.tipo_interes) or item.cuota_esperada > 0 or (pago and pago.valor_causado)) %}
                 <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
                         onclick='prepararPago({{ o.id }}, {{ nombre_modal|tojson }}, {{ mes }}, {{ item.valor_pago_sugerido or item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ item.programado_capital or 0 }}, {{ item.programado_interes or 0 }}, {{ item.programado_seguro_vida or 0 }}, {{ item.programado_otros or 0 }}, {{ "true" if item.usa_tabla_amortizacion else "false" }})'>
                     <i class="bi bi-check-lg"></i> Pagar cuota / mora

@@ -761,6 +761,14 @@ def _obligacion_aplica_mes(obligacion, anio, mes):
 
 
 def _obligacion_visible_mes(obligacion, anio, mes):
+    # La ausencia de interés este mes no extingue el capital del préstamo.
+    if (intereses_service.aplica(obligacion)
+            and float(obligacion.saldo_actual or 0) > 0
+            and not obligacion.fecha_finalizacion
+            and not abonos_service.activo(obligacion)
+            and (not obligacion.fecha_inicio
+                 or (anio, mes) >= (obligacion.fecha_inicio.year, obligacion.fecha_inicio.month))):
+        return True
     for pago_existente in obligacion.pagos.all():
         periodo = (pago_existente.anio, pago_existente.mes)
         if periodo == (anio, mes):
@@ -1869,6 +1877,9 @@ def pagos(anio=None, mes=None):
 
         totales_pago = totales_pago_dict.get(o.id, {})
         capital_pagado_total = float(totales_pago.get('capital_pagado', 0))
+        capital_pagado_total += sum(float(a.valor_abono) for a in o.abonos_capital.all()
+                                   if a.opcion_recalculo == 'pago_capital' and not a.revertido
+                                   and (a.fecha_abono.year, a.fecha_abono.month) <= (anio, mes))
         interes_pagado_total = float(totales_pago.get('interes_pagado', 0))
         seguro_pagado_total = float(totales_pago.get('seguro_pagado', 0))
         otros_pagado_total = float(totales_pago.get('otros_pagado', 0))
@@ -1956,6 +1967,17 @@ def pagos(anio=None, mes=None):
         elif dias_restantes is not None:
             resumen_dias_texto = f'Por vencer en {dias_restantes}d' if dias_restantes >= 0 else f'Vencido {abs(dias_restantes)}d'
             resumen_dias_clase = 'text-warning' if dias_restantes >= 0 else 'text-danger'
+
+        if intereses_service.aplica(o) and not pago and cuota_esperada == 0:
+            resumen_estado = 'Capital pendiente' if float(o.saldo_actual or 0) > 0 else 'Sin nueva cuota de intereses'
+            resumen_valor_label = 'Capital pendiente'
+            resumen_valor = float(o.saldo_actual or 0)
+            resumen_fecha_label = 'Vencimiento del capital'
+            resumen_fecha = o.fecha_vencimiento
+            if o.fecha_pago_capital and (o.fecha_pago_capital.year, o.fecha_pago_capital.month) <= (anio, mes):
+                resumen_estado = 'Capital cancelado'
+                resumen_fecha_label = 'Fecha de pago del capital'
+                resumen_fecha = o.fecha_pago_capital
 
         obligaciones_mes.append({
             'obligacion': o,
