@@ -787,6 +787,11 @@ def _obligacion_aplica_mes(obligacion, anio, mes):
 
 
 def _obligacion_visible_mes(obligacion, anio, mes):
+    # La fecha de finalización bloquea todos los meses posteriores, incluso
+    # si existen pagos históricos con saldo pendiente.
+    fecha_finalizacion = _coerce_date(obligacion.fecha_finalizacion)
+    if fecha_finalizacion and (anio, mes) > (fecha_finalizacion.year, fecha_finalizacion.month):
+        return False
     # La ausencia de interés este mes no extingue el capital del préstamo.
     if (intereses_service.aplica(obligacion)
             and float(obligacion.saldo_actual or 0) > 0
