@@ -326,6 +326,8 @@
                             <span class="tipo-tarde"> - pago tarde</span>
                         {% endif %}
                     </small>
+                {% elif item.estado == 'saldo_anulado' %}
+                    <small class="text-secondary d-block">Saldo anulado; los pagos reales se conservan.</small>
                 {% elif item.estado == 'acordado' %}
                     <small class="text-success d-block">Cuotas anteriores cubiertas por el acuerdo. Consulte el próximo vencimiento.</small>
                 {% elif item.estado == 'parcial' %}
@@ -428,7 +430,7 @@
             </div>
 
             <div class="mt-2 d-flex gap-1 flex-wrap">
-                {% if item.estado not in ['pagado', 'acordado'] and not item.es_informativo and (not o._abono_plan_cache or item.cuota_esperada > 0) %}
+                {% if item.estado not in ['pagado', 'acordado', 'saldo_anulado'] and not item.es_informativo and (not o._abono_plan_cache or item.cuota_esperada > 0) and (not o.fecha_pago_capital or item.cuota_esperada > 0) %}
                 <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPago"
                         onclick='prepararPago({{ o.id }}, {{ nombre_modal|tojson }}, {{ mes }}, {{ item.valor_pago_sugerido or item.valor_mostrar or 0 }}, {{ "true" if o.requiere_desglose_pago else "false" }}, {{ item.programado_capital or 0 }}, {{ item.programado_interes or 0 }}, {{ item.programado_seguro_vida or 0 }}, {{ item.programado_otros or 0 }}, {{ "true" if item.usa_tabla_amortizacion else "false" }})'>
                     <i class="bi bi-check-lg"></i> Pagar cuota / mora
@@ -473,6 +475,7 @@
                 <a href="{{ url_for('obligaciones.detalle', id=o.id, anio=anio) }}" class="btn btn-sm btn-outline-secondary" title="Historial mes a mes">
                     <i class="bi bi-clock-history"></i>
                 </a>
+                <a href="{{ url_for('obligaciones.gestionar_deuda', id=o.id) }}" class="btn btn-sm btn-outline-danger">Capital / anular cuotas</a>
                 <a href="{{ url_for('obligaciones.abonar_capital', id=o.id) }}" class="btn btn-sm btn-outline-warning" title="Registrar abono a capital, a tiempo o con acuerdo">
                     <i class="bi bi-cash-coin"></i> Abonar
                 </a>

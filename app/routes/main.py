@@ -132,16 +132,21 @@ def _items_obligaciones_mes(anio, mes, hoy):
     obligaciones = Obligacion.query.filter_by(activo=True).order_by(Obligacion.id).all()
     pagos = {(p.obligacion_id, p.anio, p.mes): p for p in PagoObligacion.query.filter_by(anio=anio, mes=mes).all()}
     for obligacion in obligaciones:
-        if not obligaciones_service._obligacion_aplica_mes(obligacion, anio, mes):
+        pago = pagos.get((obligacion.id, anio, mes))
+        if not pago and not obligaciones_service._obligacion_aplica_mes(obligacion, anio, mes):
             continue
         fechas = obligaciones_service._fechas_programadas_obligacion(obligacion, anio, mes)
+        if not fechas and pago:
+            dia = pago.dia_pago_reportado or obligacion.dia_limite_pago or 1
+            fechas = [date(anio, mes, min(dia, monthrange(anio, mes)[1]))]
         if not fechas:
             continue
         pago = pagos.get((obligacion.id, anio, mes))
         componentes = obligaciones_service._componentes_programados_periodo(obligacion, anio, mes)
         total = float((pago.valor_causado if pago and pago.valor_causado else None) or componentes.get('total') or 0)
         cancelado = float(pago.valor_pagado or 0) if pago else 0
-        saldo = max(total - cancelado, 0)
+        saldo = obligaciones_service._valor_deuda_periodo_obligacion(obligacion, pago, anio, mes)
+        total = cancelado + saldo
         fecha_limite = min(fechas)
         item = {
             'modulo': 'Obligaciones',

@@ -270,7 +270,7 @@
                             <td>{{ a.fecha_abono.strftime('%d/%m/%Y') }}</td>
                             <td class="fw-bold text-success">Pago: ${{ "{:,.0f}".format(a.valor_abono) }}
                             {% if a.descuento_intereses %}<small class="d-block text-muted">Descuento de intereses: ${{ "{:,.0f}".format(a.descuento_intereses) }}</small>{% endif %}</td>
-                            <td>{{ 'Acuerdo de saldo y cuotas' if a.opcion_recalculo == 'acuerdo' else ('Baja cuota' if a.opcion_recalculo == 'reducir_cuota' else 'Baja tiempo') }}{% if a.revertido %}<span class="badge bg-secondary d-block">Revertido</span>{% endif %}</td>
+                            <td>{{ 'Pago de capital (conserva intereses)' if a.opcion_recalculo == 'pago_capital' else ('Acuerdo de saldo y cuotas' if a.opcion_recalculo == 'acuerdo' else ('Baja cuota' if a.opcion_recalculo == 'reducir_cuota' else 'Baja tiempo')) }}{% if a.revertido %}<span class="badge bg-secondary d-block">Revertido</span>{% endif %}</td>
                             <td>
                                 <small class="text-muted d-block">Antes: ${{ "{:,.0f}".format(a.saldo_anterior) if a.saldo_anterior else '0' }}</small>
                                 <small class="fw-semibold">Despues: ${{ "{:,.0f}".format(a.saldo_nuevo) if a.saldo_nuevo else '0' }}</small>

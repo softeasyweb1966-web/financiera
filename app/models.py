@@ -380,6 +380,9 @@ class Obligacion(db.Model):
     capital_inicial = db.Column(db.Numeric(14, 2))
     saldo_actual = db.Column(db.Numeric(14, 2))
     tasa_interes_mensual = db.Column(db.Numeric(6, 4))  # Ej: 1.5% = 1.5000
+    tipo_interes = db.Column(db.String(12))  # NULL conserva el calendario anterior
+    fecha_pago_capital = db.Column(db.Date)
+    interes_cierre = db.Column(db.Numeric(14, 2))
     plazo_meses = db.Column(db.Integer)
     plazo_dias = db.Column(db.Integer)  # Para préstamos a días (corto plazo)
     cuotas_totales = db.Column(db.Integer)
@@ -444,6 +447,23 @@ class Obligacion(db.Model):
 
     def __repr__(self):
         return f'<Obligacion {self.tercero.nombre if self.tercero else "?"} - {self.modalidad}>'
+
+
+class AjusteObligacion(db.Model):
+    """Anulación de deuda, independiente de los pagos reales."""
+    __tablename__ = 'ajustes_obligaciones'
+    id = db.Column(db.Integer, primary_key=True)
+    obligacion_id = db.Column(db.Integer, db.ForeignKey('obligaciones.id'), nullable=False)
+    anio = db.Column(db.Integer, nullable=False)
+    mes = db.Column(db.Integer, nullable=False)
+    valor = db.Column(db.Numeric(14, 2), nullable=False)
+    motivo = db.Column(db.Text, nullable=False)
+    datos_anteriores = db.Column(db.Text, nullable=False)
+    registrado_por = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    revertido = db.Column(db.Boolean, nullable=False, default=False)
+    fecha_reversion = db.Column(db.DateTime)
+    obligacion = db.relationship('Obligacion', backref='ajustes_deuda')
 
 
 class AmortizacionObligacion(db.Model):

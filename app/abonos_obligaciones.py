@@ -77,6 +77,10 @@ def _mes(fecha, desplazamiento):
 
 
 def preparar(o, form):
+    if o.fecha_pago_capital:
+        raise ValueError('El capital ya está cancelado; conserve y gestione los intereses pendientes.')
+    if o.modalidad == 'solo_interes' and o.tipo_interes:
+        raise ValueError('Use Gestionar capital y cuotas para pagar capital sin saldar los intereses pendientes.')
     opcion = form.get('opcion_recalculo')
     if opcion not in ETIQUETAS:
         raise ValueError('Seleccione el efecto del abono.')

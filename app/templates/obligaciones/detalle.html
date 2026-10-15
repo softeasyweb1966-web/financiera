@@ -2,6 +2,8 @@
 {% block title %}{{ obligacion.tercero.nombre }} - Historial{% endblock %}
 
 {% block content %}
+<a class="btn btn-outline-warning mb-3" href="{{ url_for('obligaciones.gestionar_deuda', id=obligacion.id) }}">Gestionar capital y anular cuotas / saldos</a>
+<p>Pago de intereses: {{ obligacion.tipo_interes or 'Sin definir (calendario anterior)' }}</p>
 {% if obligacion._abono_plan_cache %}
 {% set ultimo_abono = obligacion._abono_plan_cache %}
 <div class="card p-3 mb-3">

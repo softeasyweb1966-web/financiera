@@ -36,6 +36,7 @@ def _env_flag(name, default=False):
 
 
 def _ensure_schema():
+    from app.models import AjusteObligacion
     from app.models import (
         AbonoCompra,
         AbonoGasto,
@@ -61,6 +62,15 @@ def _ensure_schema():
     if not inspector.has_table('roles'):
         Rol.__table__.create(bind=db.engine, checkfirst=True)
         inspector = inspect(db.engine)
+
+    if inspector.has_table('obligaciones'):
+        columnas_intereses = {c['name'] for c in inspector.get_columns('obligaciones')}
+        for nombre, tipo in [('tipo_interes', 'VARCHAR(12)'), ('fecha_pago_capital', 'DATE'),
+                             ('interes_cierre', 'NUMERIC(14, 2)')]:
+            if nombre not in columnas_intereses:
+                db.session.execute(text(f'ALTER TABLE obligaciones ADD COLUMN {nombre} {tipo}'))
+        db.session.commit()
+        AjusteObligacion.__table__.create(bind=db.engine, checkfirst=True)
 
     if not inspector.has_table('usuarios'):
         Usuario.__table__.create(bind=db.engine, checkfirst=True)

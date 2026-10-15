@@ -65,6 +65,15 @@
                     </div>
                 </div>
 
+                <div class="mb-3">
+                    <label class="form-label" for="tipo_interes">Pago de intereses</label>
+                    <select id="tipo_interes" name="tipo_interes" class="form-select">
+                        <option value="">Sin definir (conservar calendario actual)</option>
+                        <option value="anticipado" {{ 'selected' if obligacion and obligacion.tipo_interes == 'anticipado' else '' }}>Anticipado — al inicio del período</option>
+                        <option value="vencido" {{ 'selected' if obligacion and obligacion.tipo_interes == 'vencido' else '' }}>Vencido — al terminar el período</option>
+                    </select>
+                    <div class="form-text">En Solo interés mensual, el calendario parte de la fecha de inicio: anticipado cobra desde el inicio y vencido desde el mes siguiente. No marca intereses como pagados. Las tablas y acuerdos conservan su calendario pactado.</div>
+                </div>
                 <div class="row" id="fila_tasa">
                     <div class="col-md-3 mb-3">
                         <label class="form-label">Tasa interes mensual %</label>

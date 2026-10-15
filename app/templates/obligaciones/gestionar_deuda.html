@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Capital e intereses{% endblock %}
+{% block content %}
+<a href="{{ url_for('obligaciones.detalle', id=obligacion.id) }}" class="btn btn-outline-secondary mb-3">Volver al historial</a>
+<h3>{{ obligacion.tercero.nombre }} — Capital y cuotas pendientes</h3>
+<p>Referencia: {{ obligacion.referencia or 'Sin referencia' }} · Interés: {{ obligacion.tipo_interes or 'Sin definir' }}</p>
+<p><strong>{{ 'Capital' if obligacion.modalidad == 'solo_interes' else 'Saldo registrado' }}: ${{ '{:,.2f}'.format(obligacion.saldo_actual or 0) }}</strong> · Cuotas pendientes: ${{ '{:,.2f}'.format(filas|sum(attribute='saldo')) }}</p>
+{% if obligacion.fecha_pago_capital %}<div class="alert alert-info">Capital cancelado el {{ obligacion.fecha_pago_capital }}. Las cuotas que aparecen abajo siguen pendientes.</div>{% endif %}
+{% if permite_capital and not obligacion.fecha_pago_capital and obligacion.saldo_actual %}
+<form method="post" action="{{ url_for('obligaciones.pagar_capital_intereses', id=obligacion.id) }}" class="card p-3 mb-4" onsubmit="return confirm('¿Registrar el pago real de todo el capital? Los intereses pendientes se conservarán.');">
+    <h4>Pagar capital y conservar intereses pendientes</h4>
+    <p>Se registrará un pago real de <strong>${{ '{:,.2f}'.format(obligacion.saldo_actual) }}</strong>. No utilice esta opción para anular deuda.</p>
+    <p class="small">Los intereses se manejan por períodos mensuales completos, sin prorrateo automático. Revise y anule cualquier cuota ya causada que no corresponda al cierre.</p>
+    <input type="hidden" name="capital_confirmado" value="{{ obligacion.saldo_actual }}">
+    <label>Fecha del pago <input class="form-control" type="date" name="fecha_pago" max="{{ hoy }}" required value="{{ hoy }}"></label>
+    <label>Observación / referencia <textarea class="form-control" name="motivo" required></textarea></label>
+    <button class="btn btn-primary mt-2">Registrar pago de capital</button>
+</form>
+{% endif %}
+<h4>Anular una cuota o su saldo pendiente</h4>
+<p>Elimina únicamente el importe pendiente de la cuota seleccionada. Conserva los pagos reales y exige un motivo. Para anular varias cuotas, revise cada una.</p>
+<div class="table-responsive"><table class="table">
+<thead><tr><th>Período</th><th>Saldo por anular</th><th>Motivo y confirmación</th></tr></thead>
+<tbody>{% for fila in filas %}<tr>
+<td>{{ fila.anio }}-{{ '%02d'|format(fila.mes) }}</td><td>${{ '{:,.2f}'.format(fila.saldo) }}</td>
+<td><form class="d-flex gap-2" method="post" action="{{ url_for('obligaciones.anular_deuda', id=obligacion.id) }}" onsubmit="return confirm('¿Anular este saldo sin registrar dinero pagado?');">
+<input type="hidden" name="anio" value="{{ fila.anio }}"><input type="hidden" name="mes" value="{{ fila.mes }}"><input type="hidden" name="saldo_confirmado" value="{{ fila.saldo }}">
+<input name="motivo" class="form-control" required aria-label="Motivo de anulación" placeholder="Ej.: cobro adicional que no corresponde">
+<button class="btn btn-outline-danger">Anular saldo</button></form></td></tr>
+{% else %}<tr><td colspan="3">Sin cuotas pendientes.</td></tr>{% endfor %}</tbody></table></div>
+<h4>Historial de anulaciones</h4>
+<table class="table"><thead><tr><th>Fecha / período</th><th>Valor anulado</th><th>Motivo</th><th>Estado</th></tr></thead>
+<tbody>{% for a in obligacion.ajustes_deuda|sort(attribute='id', reverse=true) %}<tr>
+<td>{{ a.created_at }} · {{ a.anio }}-{{ '%02d'|format(a.mes) }}</td><td>${{ '{:,.2f}'.format(a.valor) }}</td><td>{{ a.motivo }}</td>
+<td>{% if a.revertido %}Revertida {{ a.fecha_reversion }}{% else %}<form method="post" action="{{ url_for('obligaciones.revertir_deuda', id=obligacion.id, ajuste_id=a.id) }}" onsubmit="return confirm('¿Restablecer la deuda anulada?');"><button class="btn btn-sm btn-outline-secondary">Revertir anulación</button></form>{% endif %}</td>
+</tr>{% else %}<tr><td colspan="4">Sin anulaciones.</td></tr>{% endfor %}</tbody></table>
+{% endblock %}

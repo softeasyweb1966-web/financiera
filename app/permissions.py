@@ -95,6 +95,7 @@ EDIT_ENDPOINTS = {
 }
 
 PAY_ENDPOINTS = {
+    'pagar_capital_intereses',
     'pago',
     'registrar_pago',
     'pagar',
@@ -104,6 +105,7 @@ PAY_ENDPOINTS = {
 }
 
 CANCEL_ENDPOINTS = {
+    'revertir_deuda',
     'anular',
     'anular_pago',
     'ajustar_pago',
