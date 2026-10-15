@@ -843,6 +843,8 @@ def _valor_programado_mes_obligacion(obligacion, anio, mes, ultimo_pago=None):
 
 
 def _valor_programado_sin_ajuste(obligacion, anio, mes, ultimo_pago=None):
+    if obligacion.modalidad == 'capital_fijo_anticipado':
+        return _componentes_programados_periodo(obligacion, anio, mes)['total']
     if intereses_service.aplica(obligacion):
         if not _fechas_programadas_obligacion(obligacion, anio, mes):
             return 0
