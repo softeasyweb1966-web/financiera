@@ -493,6 +493,12 @@ def _estado_visible_pago(pago, cuota_referencia=None):
     valor_causado = _float_or_none(pago.valor_causado)
     base = valor_causado if valor_causado is not None and valor_causado > 0 else (_float_or_none(cuota_referencia) or 0)
 
+    # Algunos pagos parciales históricos quedaron con estado "parcial" aun
+    # cuando los abonos posteriores ya cubrieron toda la cuota. La vista debe
+    # determinar el estado por el acumulado real pagado.
+    if base > 0 and valor_pagado + 1 >= base:
+        return 'pagado'
+
     # Corrige registros que quedaron como "pagado" aunque el valor no cubrio la cuota completa.
     if pago.estado == 'pagado' and base > 0 and valor_pagado > 0 and valor_pagado + 1 < base:
         return 'parcial'
