@@ -692,14 +692,24 @@ def _valor_periodo_empleado(empleado, anio, mes, quincena, forma_pago=None):
     salario = float(empleado.salario_base or 0)
     if not salario:
         return 0
+    # La base laboral de nómina es siempre de 30 días, incluso en meses de
+    # 28, 29 o 31 días. Los pagos proporcionales se calculan sobre los días
+    # efectivamente vinculados dentro del período.
+    base_dias_nomina = 30
     if frecuencia == 'mensual':
         quincena_pago = empleado.quincena_pago_mensual or 2
-        return (salario / dias_mes * dias_trabajados_mes) if quincena == quincena_pago and dias_mes else 0
+        dias_base_mes = min(dias_trabajados_mes, base_dias_nomina)
+        return (salario / base_dias_nomina * dias_base_mes) if quincena == quincena_pago else 0
     if frecuencia in ('diaria', 'semanal'):
-        return salario / dias_mes * dias_trabajados_periodo if dias_mes else 0
+        return salario / base_dias_nomina * dias_trabajados_periodo
     if not dias_periodo:
         return 0
-    return (salario / 2) * (dias_trabajados_periodo / dias_periodo)
+    # Una quincena completa equivale a 15 días; para una quincena incompleta
+    # se conserva la base diaria salario/30.
+    dias_base_quincena = 15 if frecuencia == 'quincenal' else dias_periodo
+    if frecuencia == 'quincenal':
+        return (salario / 2) * (min(dias_trabajados_periodo, 15) / dias_base_quincena)
+    return salario / base_dias_nomina * dias_trabajados_periodo
 
 
 def _concepto_base_predeterminado_empleado(empleado, conceptos):
