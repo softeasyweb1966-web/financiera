@@ -1363,10 +1363,8 @@ def pagos(anio=None, mes=None, quincena=None):
     if normalizados:
         db.session.commit()
 
-    empleados = Empleado.query.filter_by(activo=True).order_by(Empleado.cargo, Empleado.id).all()
+    empleados = Empleado.query.order_by(Empleado.cargo, Empleado.id).all()
     empleados_dict = {empleado.id: empleado for empleado in empleados}
-    empleados_periodo = _empleados_nomina_periodo(anio, mes, quincena)
-    empleados_periodo_ids = {e.id for e in empleados_periodo}
     conceptos = ConceptoNomina.query.filter_by(activo=True).order_by(ConceptoNomina.tipo, ConceptoNomina.nombre).all()
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
 
@@ -1374,6 +1372,16 @@ def pagos(anio=None, mes=None, quincena=None):
     registros_quincena = RegistroNomina.query.filter_by(
         anio=anio, mes=mes, quincena=quincena
     ).all()
+    abonos_quincena = AbonoNomina.query.filter_by(
+        anio=anio, mes=mes, quincena=quincena
+    ).all()
+    movimiento_ids = {r.empleado_id for r in registros_quincena}
+    movimiento_ids.update(a.empleado_id for a in abonos_quincena)
+    empleados_periodo = [
+        e for e in empleados
+        if _empleado_aplica_periodo(e, anio, mes, quincena) or e.id in movimiento_ids
+    ]
+    empleados_periodo_ids = {e.id for e in empleados_periodo}
     registros_quincena = [
         r for r in registros_quincena
         if r.empleado_id is None or r.empleado_id in empleados_periodo_ids
