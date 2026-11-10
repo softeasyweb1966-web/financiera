@@ -2400,12 +2400,15 @@ def registrar_pago():
             if pago.estado in ('sin_causar', 'anulado'):
                 pago.estado = 'causado'
         else:
-            pago.valor_pagado = valor_pagado
-            pago.componente_capital = componente_capital
-            pago.componente_interes = componente_interes
-            pago.componente_seguro_vida = componente_seguro_vida
-            pago.componente_otros = componente_otros
-            pago.componente_anticipo = componente_anticipo
+            # Un segundo abono en el mismo período debe acumularse sobre el
+            # pago anterior. Antes se reemplazaba valor_pagado y la cuota
+            # seguía apareciendo parcialmente pendiente.
+            pago.valor_pagado = float(pago.valor_pagado or 0) + float(valor_pagado or 0)
+            pago.componente_capital = float(pago.componente_capital or 0) + float(componente_capital or 0)
+            pago.componente_interes = float(pago.componente_interes or 0) + float(componente_interes or 0)
+            pago.componente_seguro_vida = float(pago.componente_seguro_vida or 0) + float(componente_seguro_vida or 0)
+            pago.componente_otros = float(pago.componente_otros or 0) + float(componente_otros or 0)
+            pago.componente_anticipo = float(pago.componente_anticipo or 0) + float(componente_anticipo or 0)
             pago.estado = estado
             pago.medio_pago_id = medio_pago_id
             pago.fecha_pago = fecha_pago
