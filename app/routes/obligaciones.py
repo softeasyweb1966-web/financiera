@@ -2409,6 +2409,10 @@ def registrar_pago():
             pago.componente_seguro_vida = float(pago.componente_seguro_vida or 0) + float(componente_seguro_vida or 0)
             pago.componente_otros = float(pago.componente_otros or 0) + float(componente_otros or 0)
             pago.componente_anticipo = float(pago.componente_anticipo or 0) + float(componente_anticipo or 0)
+            if not pago.valor_causado or float(pago.valor_causado or 0) <= 0:
+                pago.valor_causado = base_estado or _valor_programado_mes_obligacion(obligacion, anio, mes)
+            if pago.valor_causado and pago.valor_pagado + 1 >= float(pago.valor_causado):
+                pago.estado = 'pagado'
             pago.estado = estado
             pago.medio_pago_id = medio_pago_id
             pago.fecha_pago = fecha_pago
