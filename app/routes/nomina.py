@@ -1372,14 +1372,9 @@ def pagos(anio=None, mes=None, quincena=None):
     registros_quincena = RegistroNomina.query.filter_by(
         anio=anio, mes=mes, quincena=quincena
     ).all()
-    abonos_quincena = AbonoNomina.query.filter_by(
-        anio=anio, mes=mes, quincena=quincena
-    ).all()
-    movimiento_ids = {r.empleado_id for r in registros_quincena}
-    movimiento_ids.update(a.empleado_id for a in abonos_quincena)
     empleados_periodo = [
         e for e in empleados
-        if _empleado_aplica_periodo(e, anio, mes, quincena) or e.id in movimiento_ids
+        if _empleado_aplica_periodo(e, anio, mes, quincena)
     ]
     empleados_periodo_ids = {e.id for e in empleados_periodo}
     registros_quincena = [
