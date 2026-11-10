@@ -1611,10 +1611,8 @@ def detalle(id):
             key = (mes, quincena_check)
             aplica_quincena[key] = _empleado_aplica_periodo(empleado, anio, mes, quincena_check)
     for key, items in pagos_raw_dict.items():
-        if not aplica_quincena.get(key, True):
-            pagos_dict[key] = []
-            estados_quincena[key] = 'no_aplica'
-            continue
+        # El retiro controla nuevos períodos, pero no debe ocultar del
+        # historial una causación o pago ya registrado.
         desglose = _desglose_registros_periodo_nomina(empleado, anio, key[0], key[1], registros=items)
         total_causado = float(desglose['total_causado'] or 0)
         total_abonado = float(abonos_totales.get(key, 0) or 0)
@@ -1629,7 +1627,7 @@ def detalle(id):
             _, periodo_fin = _rango_periodo_nomina(anio, mes_key, quincena_key)
             estados_quincena[key] = 'vencido' if periodo_fin < date.today() else 'causado'
     for key, aplica in aplica_quincena.items():
-        if not aplica:
+        if not aplica and key not in pagos_raw_dict:
             estados_quincena[key] = 'no_aplica'
     estados_mes = {}
     for mes in meses_habilitados:
@@ -2191,11 +2189,14 @@ def registrar_quincena():
         db.session.commit()
     empleado_seleccionado = None
     if empleado_id_filtro:
-        empleado_seleccionado = Empleado.query.filter_by(activo=True, id=empleado_id_filtro).first_or_404()
+        # También se deben consultar pagos históricos de empleados retirados.
+        empleado_seleccionado = Empleado.query.filter_by(id=empleado_id_filtro).first_or_404()
         if not _empleado_aplica_periodo(empleado_seleccionado, anio, mes, quincena):
             flash('Ese empleado no aplica para la quincena seleccionada.', 'warning')
             return redirect(url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena))
-    empleados_periodo = _empleados_nomina_periodo(anio, mes, quincena, empleado_id=empleado_id_filtro)
+    empleados_periodo = _empleados_nomina_periodo(
+        anio, mes, quincena, empleado_id=empleado_id_filtro, solo_activos=False
+    )
     empleados = []
     for empleado in empleados_periodo:
         resumen_periodo = _resumen_pago_periodo_nomina(empleado.id, anio, mes, quincena)
