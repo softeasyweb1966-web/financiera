@@ -2352,23 +2352,29 @@ def pagar_quincena():
 
     empleado_seleccionado = None
     if empleado_id_filtro:
-        empleado_seleccionado = Empleado.query.filter_by(activo=True, id=empleado_id_filtro).first_or_404()
+        empleado_seleccionado = Empleado.query.filter_by(id=empleado_id_filtro).first_or_404()
         if not _empleado_aplica_periodo(empleado_seleccionado, anio, mes, quincena):
             flash('Ese empleado no aplica para la quincena seleccionada.', 'warning')
             return redirect(url_for('nomina.pagos', anio=anio, mes=mes, quincena=quincena))
 
-    empleados_periodo = _empleados_nomina_periodo(anio, mes, quincena, empleado_id=empleado_id_filtro)
-    empleados_periodo_ids = [e.id for e in empleados_periodo]
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.nombre).all()
 
     registros_quincena = RegistroNomina.query.filter_by(anio=anio, mes=mes, quincena=quincena).all()
+    abonos_quincena = AbonoNomina.query.filter_by(anio=anio, mes=mes, quincena=quincena).all()
+    movimiento_ids = {r.empleado_id for r in registros_quincena}
+    movimiento_ids.update(a.empleado_id for a in abonos_quincena)
+    empleados_periodo = [
+        e for e in Empleado.query.all()
+        if (not empleado_id_filtro or e.id == empleado_id_filtro)
+        and (_empleado_aplica_periodo(e, anio, mes, quincena) or e.id in movimiento_ids)
+    ]
+    empleados_periodo_ids = [e.id for e in empleados_periodo]
     registros_por_empleado = {}
     for registro in registros_quincena:
         if registro.empleado_id not in empleados_periodo_ids:
             continue
         registros_por_empleado.setdefault(registro.empleado_id, []).append(registro)
 
-    abonos_quincena = AbonoNomina.query.filter_by(anio=anio, mes=mes, quincena=quincena).all()
     abonos_por_empleado = {}
     for abono in abonos_quincena:
         abonos_por_empleado[abono.empleado_id] = abonos_por_empleado.get(abono.empleado_id, 0) + float(abono.valor_abono or 0)
